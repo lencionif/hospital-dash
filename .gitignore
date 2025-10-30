@@ -1,0 +1,40 @@
+# SO / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+*.log
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Node (por si en el futuro añades tooling)
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+dist/
+build/
+.cache/
+coverage/
+
+# Bundlers / herramientas
+.eslintcache
+parcel-cache/
+.cache-loader/
+
+# Publicaciones temporales
+tmp/
+temp/
+*.zip
+*.7z
+
+# Entornos
+.env
+.env.*
+*.local
+
+# Mac / Linux
+.Trash/
