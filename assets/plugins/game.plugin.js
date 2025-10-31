@@ -335,7 +335,7 @@ document.addEventListener('keydown', (e)=>{
   }
 
   // ------------------------------------------------------------
-  // Mapa ASCII — leyenda completa (usa placement.api.js)
+  // Mapa ASCII — leyenda completa (usa placement.plugin.js)
   // S: spawn del héroe
   // P: paciente encamado
   // I: pastilla vinculada al paciente (target = primer P si no se indica)
@@ -1576,7 +1576,7 @@ function drawEntities(c2){
         return;
       }
 
-      // Fallback LOCAL: instanciar lo básico si no hay placement.api.js
+      // Fallback LOCAL: instanciar lo básico si no hay placement.plugin.js
       const T = (window.TILE_SIZE || 32);
       for (const p of G.mapgenPlacements) {
         if (!p || !p.type) continue;
@@ -1628,7 +1628,7 @@ function drawEntities(c2){
     G.carry = null;
     G._placementsFinalized = false; 
 
-    // Flag global (lo usará placement.api.js para NO sembrar)
+    // Flag global (lo usará placement.plugin.js para NO sembrar)
     window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
     G.flags = G.flags || {};
     G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;

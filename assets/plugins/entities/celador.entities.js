@@ -447,7 +447,7 @@
     };
   }
 
-  // Facilitar llamada desde placement.api.js si alguna vez usa Entities.Celador.spawn
+  // Facilitar llamada desde placement.plugin.js si alguna vez usa Entities.Celador.spawn
   W.Entities.Celador.spawn = (x,y,p)=> CeladorAPI.create(x,y,p);
 
 })(this);

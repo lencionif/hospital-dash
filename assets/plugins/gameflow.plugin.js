@@ -1,4 +1,4 @@
-// filename: gameflow.api.js
+// filename: gameflow.plugin.js
 // Gestión del flujo del juego: progreso, victoria y game over para “Il Divo: Hospital Dash!”.
 // Módulo tolerante: no rompe si faltan APIs (Fog/Lights/Camera/Objects). Se integra con G, ENT y DOM overlays si existen.
 

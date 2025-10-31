@@ -9,7 +9,7 @@
 //   Entities.Elevator.update(dt)
 //
 // Notas:
-// - Soporta coords en píxeles (placement.api.js ya envía px).
+// - Soporta coords en píxeles (placement.plugin.js ya envía px).
 // - Si no llega pairId, auto-asigna (A,B,C,...) y empareja de dos en dos por cercanía.
 // - Llama a Entities.Elevator.update(dt) en tu loop de juego.
 // - Cooldown global entre activaciones: 600s (10 min). Pareja al azar cada ciclo.

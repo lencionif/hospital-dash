@@ -1,4 +1,4 @@
-// assets/entities/rats.entities.js
+// assets/plugins/entities/rats.entities.js
 // Rata hiper-lenta (“modo caracol”), sin linterna, IA simple y daño por nivel.
 
 ;(function () {
@@ -195,7 +195,7 @@
   (W.Entities ||= {}).Rat = (W.Entities.Rat || {});
   W.Entities.Rat.spawn = function (x, y, props) { return createRat(x, y, props || {}); };
 
-  // API legacy / compat (usada por placement.api.js)
+  // API legacy / compat (usada por placement.plugin.js)
   W.RatsAPI = {
     spawn(x, y, props){ return createRat(x, y, props || {}); },
     spawnAtTiles(tx, ty, props){

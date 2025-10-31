@@ -13,7 +13,7 @@
 //   <script src="enfermera_sexy.entities.js"></script>
 //   // Se auto-registra en G.systems; puedes llamar:
 //   Entities.NurseSexy.spawn(x,y,{tile:true})  // x,y en tiles si tile:true
-//   // o via placement.api -> Entities.NPC.spawn('enfermera_sexy', x,y, p)
+//   // o via placement.plugin -> Entities.NPC.spawn('enfermera_sexy', x,y, p)
 
 (function (W) {
   'use strict';
@@ -521,7 +521,7 @@
   W.Entities = W.Entities || {};
   W.Entities.NurseSexy = API;
 
-  // Hook seguro para placement.api → Entities.NPC.spawn('enfermera_sexy', …)
+  // Hook seguro para placement.plugin → Entities.NPC.spawn('enfermera_sexy', …)
   (function hookNPCSpawn(){
     W.Entities.NPC = W.Entities.NPC || {};
     const prev = W.Entities.NPC.spawn;

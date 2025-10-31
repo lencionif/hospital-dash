@@ -75,12 +75,12 @@
   }
 
   function setHeroHead(rig, heroKey){
-    // Carga 'assets/images/<hero>.png' (frente) y 'assets/images/<hero>_back.png' (espalda)
+    // Carga './assets/images/<hero>.png' (frente) y './assets/images/<hero>_back.png' (espalda)
     if (!rig?.parts?.head) return;
     const front = new Image();
     const back  = new Image();
-    front.src = `assets/images/${heroKey}.png`;
-    back.src  = `assets/images/${heroKey}_back.png`;
+    front.src = `./assets/images/${heroKey}.png`;
+    back.src  = `./assets/images/${heroKey}_back.png`;
     front.onload = () => { rig.parts.head.img = front; };
     back.onload  = () => { rig.parts.head.imgBack = back; };
   }
