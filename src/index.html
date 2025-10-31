@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Il Divo: Hospital Dash!</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="game-shell">
+    <header class="hud" id="hud"></header>
+    <canvas id="game-canvas" width="960" height="540"></canvas>
+    <canvas id="fog-canvas" width="960" height="540"></canvas>
+    <aside class="debug" id="debug-log"></aside>
+  </main>
+  <section id="hero-select" class="overlay">
+    <h1>Il Divo: Hospital Dash!</h1>
+    <p>Elige a tu enfermero para iniciar el turno.</p>
+    <div class="hero-grid">
+      <button data-hero="enrique">Enrique</button>
+      <button data-hero="roberto">Roberto</button>
+      <button data-hero="francesco">Francesco</button>
+    </div>
+    <p class="hint">WASD o cursores para moverte · Espacio para interactuar · M para silenciar</p>
+  </section>
+
+  <script src="sprites.plugin.js"></script>
+  <script src="physics.plugin.js"></script>
+  <script src="lighting.plugin.js"></script>
+  <script src="skyweather.plugin.js"></script>
+  <script src="arrowguide.plugin.js"></script>
+
+  <script src="damage.api.js"></script>
+  <script src="puppet.api.js"></script>
+
+  <script src="audio.api.js"></script>
+  <script src="score.api.js"></script>
+  <script src="placement.api.js"></script>
+  <script src="mapgen.plugin.js"></script>
+
+  <script src="entities/heroes.entities.js"></script>
+  <script src="entities/patients.entities.js"></script>
+  <script src="entities/doors.entities.js"></script>
+  <script src="entities/elevators.entities.js"></script>
+  <script src="entities/carts.entities.js"></script>
+  <script src="entities/hazards.entities.js"></script>
+  <script src="entities/rat.entities.js"></script>
+  <script src="entities/mosquito.entities.js"></script>
+
+  <script src="gameflow.api.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
