@@ -118,6 +118,7 @@
         DamageSystem.unregisterSource(entity);
       }
       PhysicsAPI.unregisterBody(entity);
+      PuppetAPI.detach?.(entity);
     });
     state.entities = [];
     state.events = [];
@@ -227,6 +228,7 @@
         DamageSystem.unregisterSource(entity);
       }
       PhysicsAPI.unregisterBody(entity);
+      PuppetAPI.detach?.(entity);
       state.entities.splice(i, 1);
     }
   }
