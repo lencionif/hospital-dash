@@ -1,24 +1,44 @@
 (function(){
+  'use strict';
+
   const Damage = {};
-  const COOLDOWNS = new WeakMap();
-  const IF_FRAMES_MS = 1000;
-  const TICK_MS = 1000;
-  const DMG_HEARTS = 0.5; // medio corazón
+  const cooldownById = new Map();
+  let autoId = 1;
 
   function ensureState(state){
-    const g = window.G || (window.G = {});
-    if (!state || typeof state !== 'object') return g;
-    return state;
+    if (state && typeof state === 'object') return state;
+    if (!window.G) window.G = {};
+    return window.G;
   }
 
-  function toMs(dt){
-    const n = Number.isFinite(dt) ? dt : 0;
-    return n > 0 ? n * 1000 : 0;
+  function getNow(){
+    return performance.now() / 1000;
+  }
+
+  function getId(ent){
+    if (!ent) return null;
+    if (ent.id != null) return ent.id;
+    if (!ent.__damageAutoId){
+      ent.__damageAutoId = `auto-${autoId++}`;
+    }
+    return ent.__damageAutoId;
+  }
+
+  function isHostile(ent){
+    if (!ent) return false;
+    if (ent.hostile === true) return true;
+    const kind = (ent.kindName || ent.kind || '').toString().toLowerCase();
+    return kind.includes('rat') || kind.includes('mosquito');
   }
 
   function aabb(a, b){
     if (!a || !b) return false;
-    return !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
+    return !(
+      a.x + a.w <= b.x ||
+      a.x >= b.x + b.w ||
+      a.y + a.h <= b.y ||
+      a.y >= b.y + b.h
+    );
   }
 
   Damage.update = function(state, dt){
@@ -26,46 +46,44 @@
     const player = state.player;
     if (!player) return;
 
-    const dtMs = toMs(dt);
-    if (player.iframes != null){
-      player.iframes = Math.max(0, player.iframes - dtMs);
+    if (typeof player.health !== 'number'){
+      const halves = typeof state.health === 'number' ? state.health : (typeof player.hp === 'number' ? player.hp * 2 : 0);
+      player.health = halves * 0.5;
     }
+    if (typeof player.invulnUntil !== 'number') player.invulnUntil = 0;
 
     const entities = Array.isArray(state.entities) ? state.entities : [];
+    const now = getNow();
+
     for (const ent of entities){
       if (!ent || ent.dead) continue;
-      if (!ent.kind || !ent.hostile) continue;
-      if (!aabb(ent, player)) continue;
+      if (!isHostile(ent)) continue;
+      if (!aabb(player, ent)) continue;
 
-      let cd = COOLDOWNS.get(ent) || 0;
-      cd = Math.max(0, cd - dtMs);
+      const key = getId(ent);
+      const nextHit = cooldownById.get(key) || 0;
+      if (now < nextHit) continue;
+      if (now < player.invulnUntil) continue;
 
-      const hasIFrames = player.iframes && player.iframes > 0;
-      if (cd === 0 && !hasIFrames){
-        const halves = Math.max(1, Math.round(DMG_HEARTS * 2));
-        if (typeof window.damagePlayer === 'function'){
-          window.damagePlayer(ent, halves);
-        } else {
-          if (typeof player.hp === 'number'){
-            player.hp = Math.max(0, player.hp - DMG_HEARTS);
-          }
-          if (typeof state.health === 'number'){
-            state.health = Math.max(0, state.health - halves);
-          }
-        }
-
-        COOLDOWNS.set(ent, TICK_MS);
-        player.iframes = IF_FRAMES_MS;
-        if (typeof player.invuln === 'number'){
-          player.invuln = Math.max(player.invuln, IF_FRAMES_MS / 1000);
-        } else {
-          player.invuln = IF_FRAMES_MS / 1000;
-        }
-
-        if (!Array.isArray(state.events)) state.events = [];
-        state.events.push({ type: 'HIT', from: ent });
+      const base = (typeof player.health === 'number')
+        ? player.health
+        : (typeof player.hp === 'number') ? player.hp : ((typeof state.health === 'number') ? state.health * 0.5 : 0);
+      const newHealth = Math.max(0, base - 0.5);
+      player.health = newHealth;
+      if (typeof player.hp === 'number'){
+        player.hp = Math.max(0, newHealth);
+      }
+      state.health = Math.max(0, Math.round(newHealth * 2));
+      cooldownById.set(key, now + 1.0);
+      player.invulnUntil = now + 1.0;
+      if (typeof player.invuln === 'number'){
+        player.invuln = Math.max(player.invuln, 1.0);
       } else {
-        COOLDOWNS.set(ent, cd);
+        player.invuln = 1.0;
+      }
+
+      if (window.DEBUG_FORCE_ASCII){
+        console.log('[Damage] hit by', ent.kindName || ent.kind || key, 'hp=', player.health.toFixed(2));
       }
     }
   };

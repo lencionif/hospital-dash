@@ -45,6 +45,7 @@
     };
 
     attachPuppet(ent);
+    window.MovementSystem?.register?.(ent);
     state.entities.push(ent);
     state.enemies.push(ent);
     state.movers.push(ent);

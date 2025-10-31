@@ -48,6 +48,7 @@
       w: opts.w || TILE,
       h: opts.h || TILE,
       solid: !(opts.open),
+      static: true,
       bossDoor: !!opts.bossDoor,
       state: {
         open: !!opts.open,
@@ -57,6 +58,7 @@
     door.open = door.state.open;
 
     attachPuppet(door);
+    window.MovementSystem?.register?.(door);
     state.entities.push(door);
     if (!state.doors.includes(door)) state.doors.push(door);
     return door;

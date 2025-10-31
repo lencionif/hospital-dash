@@ -108,6 +108,196 @@
     cycleSeconds: 0
   };
   window.G = G; // (expuesto)
+  const MovementSystem = (() => {
+    const states = new WeakMap();
+    const movers = new Set();
+    let currentMap = null;
+    let tileSize = TILE;
+
+    function ensure(e){
+      if (!e) return null;
+      let st = states.get(e);
+      if (st) return st;
+      st = {
+        x: e.x || 0,
+        y: e.y || 0,
+        vx: e.vx || 0,
+        vy: e.vy || 0,
+        intentVx: e.vx || 0,
+        intentVy: e.vy || 0,
+        teleportX: e.x || 0,
+        teleportY: e.y || 0,
+        forceTeleport: false,
+        friction: typeof e.mu === 'number' ? Math.max(0, Math.min(1, e.mu)) : 0
+      };
+      states.set(e, st);
+      defineProps(e, st);
+      if (!e.static) movers.add(e);
+      return st;
+    }
+
+    function defineProps(e, st){
+      Object.defineProperty(e, 'x', {
+        configurable: true,
+        enumerable: true,
+        get(){ return st.x; },
+        set(value){
+          const v = Number(value) || 0;
+          st.teleportX = v;
+          st.x = v;
+          st.forceTeleport = true;
+        }
+      });
+      Object.defineProperty(e, 'y', {
+        configurable: true,
+        enumerable: true,
+        get(){ return st.y; },
+        set(value){
+          const v = Number(value) || 0;
+          st.teleportY = v;
+          st.y = v;
+          st.forceTeleport = true;
+        }
+      });
+      Object.defineProperty(e, 'vx', {
+        configurable: true,
+        enumerable: true,
+        get(){ return st.vx; },
+        set(value){
+          const v = Number(value) || 0;
+          st.intentVx = v;
+          st.vx = v;
+        }
+      });
+      Object.defineProperty(e, 'vy', {
+        configurable: true,
+        enumerable: true,
+        get(){ return st.vy; },
+        set(value){
+          const v = Number(value) || 0;
+          st.intentVy = v;
+          st.vy = v;
+        }
+      });
+    }
+
+    function unregister(e){
+      if (!e) return;
+      movers.delete(e);
+      states.delete(e);
+    }
+
+    function setMap(map, size){
+      currentMap = map || null;
+      tileSize = size || TILE;
+    }
+
+    function isBlocked(x, y, w, h){
+      if (!currentMap) return false;
+      const tx1 = Math.floor(x / tileSize);
+      const ty1 = Math.floor(y / tileSize);
+      const tx2 = Math.floor((x + w) / tileSize);
+      const ty2 = Math.floor((y + h) / tileSize);
+      const H = currentMap.length;
+      const W = H ? currentMap[0].length : 0;
+      const clamped = (tx,ty)=> tx<0 || ty<0 || tx>=W || ty>=H;
+      if (clamped(tx1,ty1) || clamped(tx2,ty1) || clamped(tx1,ty2) || clamped(tx2,ty2)) return true;
+      return (
+        currentMap[ty1][tx1] === 1 ||
+        currentMap[ty1][tx2] === 1 ||
+        currentMap[ty2][tx1] === 1 ||
+        currentMap[ty2][tx2] === 1
+      );
+    }
+
+    function collidesEntity(e, x, y){
+      if (!Array.isArray(G.entities)) return false;
+      for (const other of G.entities){
+        if (!other || other === e) continue;
+        if (!other.solid || other.dead) continue;
+        const stOther = states.get(other);
+        const ox = stOther ? stOther.x : other.x;
+        const oy = stOther ? stOther.y : other.y;
+        const ow = other.w || 0;
+        const oh = other.h || 0;
+        if (x + e.w <= ox || x >= ox + ow) continue;
+        if (y + e.h <= oy || y >= oy + oh) continue;
+        return true;
+      }
+      return false;
+    }
+
+    function moveAxis(e, st, dt, axis){
+      const vel = axis === 'x' ? st.vx : st.vy;
+      if (Math.abs(vel) < 1e-6) return;
+      let pos = axis === 'x' ? st.x : st.y;
+      const delta = vel * dt;
+      const steps = Math.max(1, Math.ceil(Math.abs(delta)));
+      const step = delta / steps;
+      for (let i = 0; i < steps; i++){
+        const next = pos + step;
+        const nx = axis === 'x' ? next : st.x;
+        const ny = axis === 'y' ? next : st.y;
+        if (isBlocked(nx, ny, e.w, e.h) || collidesEntity(e, nx, ny)){
+          if (axis === 'x') st.vx = 0; else st.vy = 0;
+          return;
+        }
+        pos = next;
+        if (axis === 'x') st.x = pos; else st.y = pos;
+      }
+    }
+
+    function applyFriction(e, st){
+      const mu = (typeof e.mu === 'number') ? Math.max(0, Math.min(1, e.mu)) : (st.friction || 0);
+      st.friction = mu;
+      const fr = 1 - Math.max(0, Math.min(0.95, mu || 0));
+      st.vx *= fr;
+      st.vy *= fr;
+      if (Math.abs(st.vx) < 0.0001) st.vx = 0;
+      if (Math.abs(st.vy) < 0.0001) st.vy = 0;
+    }
+
+    function step(dt){
+      if (!dt || dt <= 0) return;
+      for (const e of movers){
+        if (!e || e.dead) continue;
+        const st = ensure(e);
+        if (st.forceTeleport){
+          st.x = st.teleportX;
+          st.y = st.teleportY;
+          st.forceTeleport = false;
+          st.vx = st.intentVx;
+          st.vy = st.intentVy;
+          continue;
+        }
+        st.vx = st.intentVx;
+        st.vy = st.intentVy;
+        const maxSp = (typeof e.maxSpeed === 'number') ? e.maxSpeed : null;
+        if (maxSp != null){
+          const sp = Math.hypot(st.vx, st.vy);
+          if (sp > maxSp){
+            const k = maxSp / (sp || 1);
+            st.vx *= k;
+            st.vy *= k;
+          }
+        }
+        moveAxis(e, st, dt, 'x');
+        moveAxis(e, st, dt, 'y');
+        applyFriction(e, st);
+        st.intentVx = st.vx;
+        st.intentVy = st.vy;
+      }
+    }
+
+    return {
+      register: ensure,
+      unregister,
+      step,
+      setMap,
+      getState(e){ return ensure(e); }
+    };
+  })();
+  window.MovementSystem = MovementSystem;
   // Control de respawn diferido (solo al morir)
   const SPAWN = {
     max: BALANCE.enemies.mosquito.max,
@@ -461,6 +651,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     e.rest = (opts.rest ?? def.rest);
     e.mu   = (opts.mu   ?? def.mu);
     e.invMass = e.mass > 0 ? 1 / e.mass : 0;
+    MovementSystem.register(e);
     return e;
   }
 
@@ -510,6 +701,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // Asegura corazones mínimos si no hay API
     p.hp = p.hp || 3;
     p.hpMax = p.hpMax || 3;
+    MovementSystem.register(p);
     return p;
   }
   // --------- Spawn de mosquito (enemigo básico) ----------
@@ -589,6 +781,10 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.map   = res.map;             // matriz 0/1
     G.mapW  = res.width;
     G.mapH  = res.height;
+    MovementSystem.setMap(G.map, TILE);
+    if (Array.isArray(G.entities)){
+      for (const ent of G.entities){ MovementSystem.register(ent); }
+    }
 
     return true;
   }
@@ -754,6 +950,10 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         : (window.Entities?.Hero?.spawnPlayer?.(TILE*2, TILE*2, {}) || null);
       if (p){ G.player = p; G.entities.push(p); }
     }
+    MovementSystem.setMap(G.map, TILE);
+    if (Array.isArray(G.entities)){
+      for (const ent of G.entities){ MovementSystem.register(ent); }
+    }
   }
 
 
@@ -876,6 +1076,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // saca de las listas
     G.enemies = G.enemies.filter(x => x !== e);
     G.entities = G.entities.filter(x => x !== e);
+    MovementSystem.unregister(e);
     // notificar respawn diferido
     SPAWN.pending = Math.min(SPAWN.pending + 1, SPAWN.max);
     // Planificar respawn si hay spawner de este tipo
@@ -896,6 +1097,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.enemies  = G.enemies.filter(x => x !== e);
     G.npcs     = G.npcs.filter(x => x !== e);
     G.patients = G.patients.filter(x => x !== e);
+    MovementSystem.unregister(e);
 
     // si era enemigo “con vida”, respawn por su sistema
     if (e.kind === ENT.MOSQUITO) {
@@ -1077,6 +1279,32 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     const p = G.player;
     if (!p) return;
 
+    const talkRange = TILE * 1.2;
+    if (Array.isArray(G.npcs) && window.DialogAPI?.open){
+      const px = p.x + p.w * 0.5;
+      const py = p.y + p.h * 0.5;
+      for (const npc of G.npcs){
+        if (!npc || npc.dead) continue;
+        const nx = npc.x + (npc.w || 0) * 0.5;
+        const ny = npc.y + (npc.h || 0) * 0.5;
+        const dist = Math.hypot(nx - px, ny - py);
+        if (dist > talkRange) continue;
+        const lines = Array.isArray(npc.dialogLines)
+          ? npc.dialogLines
+          : (npc.dialog ? [String(npc.dialog)] : null);
+        if (lines && lines.length){
+          const title = npc.dialogTitle || npc.name || 'Conversación';
+          const text = lines.join('\n\n');
+          window.DialogAPI.open({
+            title,
+            text,
+            buttons: [{ id: 'ok', label: 'Cerrar', action: () => window.DialogAPI.close() }]
+          });
+          return;
+        }
+      }
+    }
+
     // 1 segundo de anim de empuje
     p.pushAnimT = 1;
 
@@ -1184,52 +1412,24 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   // - Muestra logs de depuración en modo debug (?map=debug).
   // Actualiza TODAS las entidades (IA + física) evitando doble movimiento
   function updateEntities(dt){
-  const dbg = !!window.DEBUG_FORCE_ASCII;
-  // sin lista, no hay nada que hacer
-  if (!Array.isArray(G.entities)) return;
-  const num = G.entities.length;
-  //if (dbg) console.log('[updateEntities] dt:', (dt ?? 0).toFixed(4), 'ents:', num);
-
-  for (const e of G.entities){
-    if (!e || e.dead) continue;
-    // posición inicial (para detectar saltos bruscos)
-    const bx = e.x, by = e.y;
-
-    // 1) IA propia
-    if (typeof e.update === 'function'){
-      try { e.update(dt); }
-      catch(err){
-        if (dbg) console.warn('[updateEntities] error update', e.id || e.kindName || e, err);
+    const dbg = !!window.DEBUG_FORCE_ASCII;
+    if (!Array.isArray(G.entities)) return;
+    for (const e of G.entities){
+      if (!e || e.dead) continue;
+      MovementSystem.register(e);
+      if (typeof e.update === 'function'){
+        try { e.update(dt); }
+        catch(err){
+          if (dbg) console.warn('[updateEntities] error update', e.id || e.kindName || e, err);
+        }
       }
     }
 
-    // 2) Movimiento y colisiones — lo hace Physics.step(dt). No mover aquí para evitar doble integración.
-    // (Dejamos un clamp suave de seguridad sobre la velocidad)
-    if (typeof e.vx === 'number' && typeof e.vy === 'number'){
-      const LIM = 160;
-      e.vx = Math.max(-LIM, Math.min(LIM, e.vx));
-      e.vy = Math.max(-LIM, Math.min(LIM, e.vy));
-    }
-
-    // 3) Anti‑warp: limita la distancia recorrida en un solo frame
-    const dx = e.x - bx, dy = e.y - by;
-    const step = Math.hypot(dx, dy);
-    // Usa e.maxSpeed si existe, de lo contrario 90 px/s por defecto
-    const maxStep = ((typeof e.maxSpeed === 'number' ? e.maxSpeed : 90) * dt * 1.5);
-    if (step > maxStep && maxStep > 0){
-      const s = maxStep / step;
-      e.x = bx + dx * s;
-      e.y = by + dy * s;
-      if (dbg) console.warn('[updateEntities] CLAMP_WARP', e.id || e.kindName || e.kind, 'step', step.toFixed(3), 'limit', maxStep.toFixed(3));
+    if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
+      try { SpawnerManager.update(dt); }
+      catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
     }
   }
-
-  // 4) Actualiza spawners (mosquitos, ratas, etc.)
-  if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
-    try { SpawnerManager.update(dt); }
-    catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
-  }
-}
 
   function updateDoorEntities(dt){
     if (!window.Doors?.update) return;
@@ -1290,6 +1490,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     if (G.door && G.patients.length === 0) {
       G.door.color = COLORS.doorOpen;
       G.door.solid = false;
+      G.door.open = true;
     }
 
     // 4) Victoria: carro de urgencias cerca del boss con puerta abierta
@@ -1401,6 +1602,10 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // enemigos
     runEntityAI(dt);
     updateEntities(dt);
+
+    // integración de movimiento centralizada
+    MovementSystem.step(dt);
+
     // ascensores
     Entities?.Elevator?.update?.(dt);
 
@@ -1408,8 +1613,6 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
     // reglas
     gameplay(dt);
-    // === paso de física (rebotes, empujes, aplastamientos, etc.)
-    Physics.step(dt);
 
     updateDoorEntities(dt);
     if (window.Doors?.gameflow) {
@@ -1875,9 +2078,13 @@ function drawEntities(c2){
       MouseNav._performUse = (player, target) => {
         if (!target) return;
         if (target.kind === ENT.DOOR) {
-          // abre/cierra cambiando solidez y color (tu puerta ya usa esto)
-          target.solid = !target.solid;
-          target.color = target.solid ? '#7f8c8d' : '#2ecc71';
+          if (window.Doors?.toggle) {
+            window.Doors.toggle(target);
+          } else {
+            target.solid = !target.solid;
+            target.open = !target.solid;
+            target.color = target.solid ? '#7f8c8d' : '#2ecc71';
+          }
           return;
         }
         if (target.pushable === true) {

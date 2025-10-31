@@ -111,6 +111,7 @@
       // util
       onDestroy(){ for(const fn of this._destroyCbs) try{ fn(); }catch(e){}; this._destroyCbs.length=0; },
     };
+    window.MovementSystem?.register?.(p);
     return p;
   }
 
