@@ -99,6 +99,8 @@
     const tMax = Math.max(B.ringMinMs, B.ringMaxMs);
     const deadline = Math.floor(rng()*(tMax - tMin)) + tMin;
 
+    const skinVariant = p.skinFile || p.skin || `paciente${1 + Math.floor(rng() * 7)}.png`;
+
     const e = {
       id: nextId('PAT'),
       kind: ENT.PATIENT,
@@ -111,6 +113,9 @@
       bellId: null,
       attended: false
     };
+
+    e.puppetSkin = skinVariant;
+    try { window.PuppetAPI?.attach?.(e, { rig: 'patient.std', z: 0, scale: 1, data: { skin: skinVariant } }); } catch (_) {}
 
     // timbre asociado al paciente (al lado de la cama)
     const bell = createBellNear(e);
@@ -163,6 +168,8 @@
       skin: `pill_${patient.requiredPillName}`,
       targetId: patient.id,
     };
+    const pillRig = `pill.${(pill.name || patient.requiredPillName || 'azul').toLowerCase()}`;
+    try { window.PuppetAPI?.attach?.(pill, { rig: pillRig, z: 0, scale: 1 }); } catch (_) {}
     entities().push(pill);
     G.pills = G.pills || []; G.pills.push(pill);
     return pill;
@@ -348,6 +355,7 @@
       vx:0, vy:0, speed:B.furiousSpeed, damage:B.furiousDamage, emitsLight:true,
       skin:'furious'
     };
+    try { window.PuppetAPI?.attach?.(f, { rig: 'patient.furiosa', z: 0, scale: 1 }); } catch (_) {}
     entities().push(f);
     G.enemies = G.enemies || []; G.enemies.push(f);
     if (G.sfx?.angry) G.sfx.angry(f);
@@ -415,6 +423,8 @@
           x: x - (B.pillW*0.5), y: y - (B.pillH*0.5), w:B.pillW, h:B.pillH,
           name, skin:`pill_${name}`, targetId: p?.targetId || null
         };
+        const pillRig = `pill.${(name || 'azul').toLowerCase()}`;
+        try { window.PuppetAPI?.attach?.(pill, { rig: pillRig, z: 0, scale: 1 }); } catch (_) {}
         entities().push(pill); G.pills=(G.pills||[]).push?G.pills:(G.pills=[]); G.pills.push(pill);
         return pill;
       }

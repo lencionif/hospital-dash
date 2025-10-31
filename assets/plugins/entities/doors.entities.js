@@ -26,7 +26,7 @@
   }
 
   function attachPuppet(ent){
-    try { window.PuppetAPI?.attach?.(ent, { rig: 'door', z: 0, scale: 1.0 }); } catch (_) {}
+    try { window.PuppetAPI?.attach?.(ent, { rig: 'door', z: 0, scale: 1 }); } catch (_) {}
     if (!ent.state) ent.state = { open: false, openProgress: 0 };
   }
 
