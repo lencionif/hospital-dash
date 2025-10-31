@@ -43,23 +43,6 @@
     return 'raton'; // fallback
   }
 
-  // 1 unidad = 1/2 corazón. Intentamos usar la API del proyecto si existe.
-  function damageUnits(units){
-    try {
-      if (typeof W.damagePlayer === 'function') {
-        // firma más común: (player, units)
-        return W.damagePlayer(G.player || G.hero, units);
-      }
-      if (G.player && typeof G.player.damage === 'function') {
-        return G.player.damage(units);
-      }
-    } catch(_){}
-    // fallback muy básico sobre G.health (en medios corazones)
-    G.health = Math.max(0, (G.health ?? 0) - units);
-    if (G.player) { G.player.hp = Math.ceil((G.health ?? 0)/2); }
-    try { W.HUD?.invalidate?.(); } catch(_){}
-  }
-
   function ensureOnLists(e){
     (G.entities ||= []).includes(e) || G.entities.push(e);
     (G.enemies  ||= []).includes(e) || G.enemies.push(e);
@@ -97,13 +80,16 @@
       // IA
       state: 'FORAGE',     // FORAGE (deambular) | CHASE (persecución en tier 3)
       thinkCd: 0,          // decide rumbo cada cierto tiempo
-      biteCd: 0,           // cooldown de mordisco
+      biteCd: 0,           // cooldown para knockback
 
       // Stats reales
       moveSpeed: SPEED_BY_TIER[tier],
       seeRadius: SEE_BY_TIER[tier],
       biteUnits: BITE_BY_TIER[tier],
       canChase:  (tier === 3),
+
+      touchDamage: 0.5,
+      touchCooldown: 1.0,
 
       // Sprite
       spriteKey,
@@ -148,23 +134,18 @@
         this.vx = dirX * this.moveSpeed;
         this.vy = dirY * this.moveSpeed;
 
-        // Daño por contacto: SIEMPRE que toque, con pequeño cooldown
-        if (this.biteCd <= 0 && P && aabbOverlap(this, P)) {
-          this.biteCd = 0.50;              // 0.5 s entre mordiscos
-          if (typeof window.damagePlayer === 'function') {
-            window.damagePlayer(this, this.biteUnits);   // ← la fuente es la RATA
-          } else {
-            damageUnits(this.biteUnits);
+        if (P && aabbOverlap(this, P)) {
+          if (this.biteCd <= 0) {
+            this.biteCd = 0.50;
+            try {
+              const px = (P.x + P.w*0.5) - (this.x + this.w*0.5);
+              const py = (P.y + P.h*0.5) - (this.y + this.h*0.5);
+              const d = len(px,py);
+              const K = 30;
+              P.vx = (P.vx||0) + (px/d)*K;
+              P.vy = (P.vy||0) + (py/d)*K;
+            } catch(_){}
           }
-          // Empujón suave al héroe
-          try {
-            const px = (P.x + P.w*0.5) - (this.x + this.w*0.5);
-            const py = (P.y + P.h*0.5) - (this.y + this.h*0.5);
-            const d = len(px,py);
-            const K = 30;
-            P.vx = (P.vx||0) + (px/d)*K;
-            P.vy = (P.vy||0) + (py/d)*K;
-          } catch(_){}
         }
 
         // Por seguridad, nunca salir del mapa (además de la colisión de Physics)
@@ -188,6 +169,10 @@
 
     ensureOnLists(e);
     try { W.Physics?.registerEntity?.(e); } catch(_){}
+    if (window.PuppetAPI){
+      const scale = (e.h || TILE) / 28;
+      PuppetAPI.attach(e, { rig: 'rat', z: 5, scale });
+    }
     return e;
   }
 

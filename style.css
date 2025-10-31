@@ -11,103 +11,103 @@
   
   /* === Sprites del juego (todas las de assets/images) === */
   /* --- UI / Personajes jugables --- */
-  --sprite-player-enrique: url("assets/images/enrique.png");
-  --sprite-player-roberto: url("assets/images/roberto.png");
-  --sprite-player-francesco: url("assets/images/francesco.png");
+  --sprite-player-enrique: url("./assets/images/enrique.png");
+  --sprite-player-roberto: url("./assets/images/roberto.png");
+  --sprite-player-francesco: url("./assets/images/francesco.png");
 
   /* --- Puertas / Ascensores --- */
-  --sprite-puerta-abierta: url("assets/images/puerta_abiertas.png");
-  --sprite-puerta-cerrada: url("assets/images/puerta_cerrada.png");
-  --sprite-ascensor-abierto: url("assets/images/ascensor_abierto.png");
-  --sprite-ascensor-cerrado: url("assets/images/ascensor_cerrado.png");
+  --sprite-puerta-abierta: url("./assets/images/puerta_abiertas.png");
+  --sprite-puerta-cerrada: url("./assets/images/puerta_cerrada.png");
+  --sprite-ascensor-abierto: url("./assets/images/ascensor_abierto.png");
+  --sprite-ascensor-cerrado: url("./assets/images/ascensor_cerrado.png");
 
   /* --- Carros --- */
-  --sprite-carro-medicinas: url("assets/images/carro_medicinas.png");
-  --sprite-carro-comida:    url("assets/images/carro_comida.png");
-  --sprite-carro-urgencias: url("assets/images/carro_urgencias.png");
+  --sprite-carro-medicinas: url("./assets/images/carro_medicinas.png");
+  --sprite-carro-comida:    url("./assets/images/carro_comida.png");
+  --sprite-carro-urgencias: url("./assets/images/carro_urgencias.png");
 
   /* --- Staff / NPC --- */
-  --sprite-celador:      url("assets/images/celador.png");
-  --sprite-supervisora:  url("assets/images/supervisora.png");
-  --sprite-tcae:         url("assets/images/TCAE.png");
-  --sprite-chica-limpieza: url("assets/images/chica_limpieza.png");
-  --sprite-enfermera-sexy: url("assets/images/enfermera_sexy.png");
-  --sprite-medico:       url("assets/images/medico.png");
-  --sprite-jefe-servicio:url("assets/images/jefe_servicio.png");
-  --sprite-familiar-molesto: url("assets/images/familiar_molesto.png");
+  --sprite-celador:      url("./assets/images/celador.png");
+  --sprite-supervisora:  url("./assets/images/supervisora.png");
+  --sprite-tcae:         url("./assets/images/TCAE.png");
+  --sprite-chica-limpieza: url("./assets/images/chica_limpieza.png");
+  --sprite-enfermera-sexy: url("./assets/images/enfermera_sexy.png");
+  --sprite-medico:       url("./assets/images/medico.png");
+  --sprite-jefe-servicio:url("./assets/images/jefe_servicio.png");
+  --sprite-familiar-molesto: url("./assets/images/familiar_molesto.png");
 
   /* --- Enemigos / Bichos --- */
-  --sprite-mosquito: url("assets/images/mosquito.png");
-  --sprite-raton:    url("assets/images/raton.png");
+  --sprite-mosquito: url("./assets/images/mosquito.png");
+  --sprite-raton:    url("./assets/images/raton.png");
 
   /* --- Pacientes --- */
-  --sprite-paciente1: url("assets/images/paciente1.png");
-  --sprite-paciente2: url("assets/images/paciente2.png");
-  --sprite-paciente3: url("assets/images/paciente3.png");
-  --sprite-paciente4: url("assets/images/paciente4.png");
-  --sprite-paciente5: url("assets/images/paciente5.png");
-  --sprite-paciente6: url("assets/images/paciente6.png");
-  --sprite-paciente7: url("assets/images/paciente7.png");
-  --sprite-paciente-furiosa: url("assets/images/paciente_furiosa.png");
+  --sprite-paciente1: url("./assets/images/paciente1.png");
+  --sprite-paciente2: url("./assets/images/paciente2.png");
+  --sprite-paciente3: url("./assets/images/paciente3.png");
+  --sprite-paciente4: url("./assets/images/paciente4.png");
+  --sprite-paciente5: url("./assets/images/paciente5.png");
+  --sprite-paciente6: url("./assets/images/paciente6.png");
+  --sprite-paciente7: url("./assets/images/paciente7.png");
+  --sprite-paciente-furiosa: url("./assets/images/paciente_furiosa.png");
 
   /* --- Ítems / consumibles --- */
-  --sprite-gotero-azul:  url("assets/images/gotero_azul.png");
-  --sprite-gotero-verde: url("assets/images/gotero_verde.png");
-  --sprite-gotero-rojo:  url("assets/images/gotero_rojo.png");
+  --sprite-gotero-azul:  url("./assets/images/gotero_azul.png");
+  --sprite-gotero-verde: url("./assets/images/gotero_verde.png");
+  --sprite-gotero-rojo:  url("./assets/images/gotero_rojo.png");
 
-  --sprite-jeringa-azul:  url("assets/images/jeringa_azul.png");
-  --sprite-jeringa-verde: url("assets/images/jeringa_verde.png");
-  --sprite-jeringa-roja:  url("assets/images/jeringa_roja.png");
+  --sprite-jeringa-azul:  url("./assets/images/jeringa_azul.png");
+  --sprite-jeringa-verde: url("./assets/images/jeringa_verde.png");
+  --sprite-jeringa-roja:  url("./assets/images/jeringa_roja.png");
 
-  --sprite-pastilla-analitica: url("assets/images/pastilla_analitica.png");
-  --sprite-pastilla-azul:      url("assets/images/pastilla_azul.png");
-  --sprite-pastilla-gaviscon:  url("assets/images/pastilla_gaviscon.png");
-  --sprite-pastilla-luzon:     url("assets/images/pastilla_luzon.png");
-  --sprite-pastilla-patoplast: url("assets/images/pastilla_patoplast.png");
-  --sprite-pastilla-tillalout: url("assets/images/pastilla_tillaout.png");
-  --sprite-pastilla-zenidina:  url("assets/images/pastilla_zenidina.png");
+  --sprite-pastilla-analitica: url("./assets/images/pastilla_analitica.png");
+  --sprite-pastilla-azul:      url("./assets/images/pastilla_azul.png");
+  --sprite-pastilla-gaviscon:  url("./assets/images/pastilla_gaviscon.png");
+  --sprite-pastilla-luzon:     url("./assets/images/pastilla_luzon.png");
+  --sprite-pastilla-patoplast: url("./assets/images/pastilla_patoplast.png");
+  --sprite-pastilla-tillalout: url("./assets/images/pastilla_tillaout.png");
+  --sprite-pastilla-zenidina:  url("./assets/images/pastilla_zenidina.png");
 
   /* --- Comidas / props (todas las que aparecen en la carpeta) --- */
-  --sprite-comida-brascada:   url("assets/images/comida_brascada.png");
-  --sprite-comida-calamares:  url("assets/images/comida_calamares.png");
-  --sprite-comida-cerveza:    url("assets/images/comida_cerveza.png");
-  --sprite-comida-copa-vino:  url("assets/images/comida_copa_de_vino.png");
-  --sprite-comida-cremaet:    url("assets/images/comida_cremaet.png");
-  --sprite-comida-figatell:   url("assets/images/comida_figatell.png");
-  --sprite-comida-sepia:      url("assets/images/comida_sepia_a_la_plancha.png");
+  --sprite-comida-brascada:   url("./assets/images/comida_brascada.png");
+  --sprite-comida-calamares:  url("./assets/images/comida_calamares.png");
+  --sprite-comida-cerveza:    url("./assets/images/comida_cerveza.png");
+  --sprite-comida-copa-vino:  url("./assets/images/comida_copa_de_vino.png");
+  --sprite-comida-cremaet:    url("./assets/images/comida_cremaet.png");
+  --sprite-comida-figatell:   url("./assets/images/comida_figatell.png");
+  --sprite-comida-sepia:      url("./assets/images/comida_sepia_a_la_plancha.png");
 
   /* --- Boss / varios --- */
-  --sprite-boss-nivel1: url("assets/images/boss_nivel1.png");
-  --sprite-boss-nivel2: url("assets/images/boss_nivel2.png");
-  --sprite-boss-nivel3: url("assets/images/boss_nivel3.png");
+  --sprite-boss-nivel1: url("./assets/images/boss_nivel1.png");
+  --sprite-boss-nivel2: url("./assets/images/boss_nivel2.png");
+  --sprite-boss-nivel3: url("./assets/images/boss_nivel3.png");
 
   /* --- UI / fondos / señalética --- */
-  --sprite-logo-grupo:   url("assets/images/logo_grupo.png");
-  --sprite-logo-juego:   url("assets/images/logo_juego.png");
-  --sprite-presenta:     url("assets/images/presenta.png");
-  --sprite-prohibido:    url("assets/images/prohibido.png");
-  --sprite-mano:         url("assets/images/mano.png");
-  --sprite-engranaje:    url("assets/images/engranaje.png");
-  --sprite-cronometro:   url("assets/images/cronometro.png");
-  --sprite-fuego:        url("assets/images/fuego.png");
-  --sprite-pared:        url("assets/images/pared.png");
-  --sprite-suelo:        url("assets/images/suelo.png");
-  --sprite-x:            url("assets/images/x.png");
-  --sprite-timbre-apagado:   url("assets/images/timbre_apagado.png");
-  --sprite-timbre-encendido: url("assets/images/timbre_encendido.png");
-  --sprite-telefono:         url("assets/images/telefono.png");
+  --sprite-logo-grupo:   url("./assets/images/logo_grupo.png");
+  --sprite-logo-juego:   url("./assets/images/logo_juego.png");
+  --sprite-presenta:     url("./assets/images/presenta.png");
+  --sprite-prohibido:    url("./assets/images/prohibido.png");
+  --sprite-mano:         url("./assets/images/mano.png");
+  --sprite-engranaje:    url("./assets/images/engranaje.png");
+  --sprite-cronometro:   url("./assets/images/cronometro.png");
+  --sprite-fuego:        url("./assets/images/fuego.png");
+  --sprite-pared:        url("./assets/images/pared.png");
+  --sprite-suelo:        url("./assets/images/suelo.png");
+  --sprite-x:            url("./assets/images/x.png");
+  --sprite-timbre-apagado:   url("./assets/images/timbre_apagado.png");
+  --sprite-timbre-encendido: url("./assets/images/timbre_encendido.png");
+  --sprite-telefono:         url("./assets/images/telefono.png");
 
   /* --- Fotos / pantallas (jpg y png) --- */
-  --sprite-main:            url("assets/images/main.jpg");
-  --sprite-ready:           url("assets/images/ready.jpg");
-  --sprite-gameover:        url("assets/images/gameover.jpg");
-  --sprite-foto-almuerzo:   url("assets/images/foto_almuerzo.png");
-  --sprite-foto-almuerzo2:  url("assets/images/foto_almuerzo2.png");
-  --sprite-foto-enrique-raquel: url("assets/images/foto_enrique&raquel.png");
-  --sprite-foto-grupo:      url("assets/images/foto_grupo.png");
-  --sprite-foto-il-divo-con-carino: url("assets/images/foto_il_divo_con_carino.png");
-  --sprite-foto-los3:       url("assets/images/foto_los3.png");
-  --sprite-foto-navidad:    url("assets/images/foto_navidad.png");
+  --sprite-main:            url("./assets/images/main.jpg");
+  --sprite-ready:           url("./assets/images/ready.jpg");
+  --sprite-gameover:        url("./assets/images/gameover.jpg");
+  --sprite-foto-almuerzo:   url("./assets/images/foto_almuerzo.png");
+  --sprite-foto-almuerzo2:  url("./assets/images/foto_almuerzo2.png");
+  --sprite-foto-enrique-raquel: url("./assets/images/foto_enrique&raquel.png");
+  --sprite-foto-grupo:      url("./assets/images/foto_grupo.png");
+  --sprite-foto-il-divo-con-carino: url("./assets/images/foto_il_divo_con_carino.png");
+  --sprite-foto-los3:       url("./assets/images/foto_los3.png");
+  --sprite-foto-navidad:    url("./assets/images/foto_navidad.png");
 }
 
 * { box-sizing: border-box; }

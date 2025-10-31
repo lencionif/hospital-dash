@@ -62,6 +62,11 @@
       G.doors = G.doors || [];
       G.doors.push(e);
 
+      if (window.PuppetAPI){
+        const scale = (e.h || TILE) / 32;
+        PuppetAPI.attach(e, { rig: 'door', z: 4, scale });
+      }
+
       return e;
     },
 

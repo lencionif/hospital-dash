@@ -122,6 +122,11 @@
     G.npcs = G.npcs || [];
     G.patients.push(e); G.npcs.push(e);
 
+    if (window.PuppetAPI){
+      const scale = (e.h || B.patientH) / 32;
+      PuppetAPI.attach(e, { rig: 'patient', z: 2, scale });
+    }
+
     // luz tenue en habitación (opcional)
     if (Array.isArray(G.roomLights)) {
       G.roomLights.push({ x:e.x+B.patientW*0.5, y:e.y+B.patientH*0.5, r:5*TILE, baseA:0.22 });
@@ -165,6 +170,11 @@
     };
     entities().push(pill);
     G.pills = G.pills || []; G.pills.push(pill);
+
+    if (window.PuppetAPI){
+      const scale = (pill.h || B.pillH) / 16;
+      PuppetAPI.attach(pill, { rig: 'pill', z: 6, scale });
+    }
     return pill;
   }
 
@@ -416,6 +426,10 @@
           name, skin:`pill_${name}`, targetId: p?.targetId || null
         };
         entities().push(pill); G.pills=(G.pills||[]).push?G.pills:(G.pills=[]); G.pills.push(pill);
+        if (window.PuppetAPI){
+          const scale = (pill.h || B.pillH) / 16;
+          PuppetAPI.attach(pill, { rig: 'pill', z: 6, scale });
+        }
         return pill;
       }
       return createPillForPatient(fakePat,'near');

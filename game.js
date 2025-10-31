@@ -1096,21 +1096,24 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     }
   }
 
-  function damagePlayer(src, amount=1){
+  function damagePlayer(src, amount=1, meta={}){
     const p = G.player;
-    const isRatHit = !!src && (src.kind === ENT.RAT || src.kindName === 'rat');
     if (!p) return;
-    if (!isRatHit && p.invuln > 0) return;
+    const attacker = meta?.attacker || src;
+    const invulnTime = Number.isFinite(meta?.invuln) ? Math.max(0, meta.invuln) : 1.0;
+    const bypass = meta?.bypassInvuln === true || meta?.tag === 'touch';
+    if (!bypass && p.invuln > 0) return;
     const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));
     const halvesAfter  = Math.max(0, halvesBefore - (amount|0));
     G.player.hp = Math.ceil(halvesAfter / 2);
     G.health     = halvesAfter;
-    p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
+    p.invuln = invulnTime;
+    p._touchInvuln = Math.max(p._touchInvuln || 0, invulnTime);
 
     // knockback desde 'src' hacia fuera
-    if (src){
-      const dx = (p.x + p.w/2) - (src.x + src.w/2);
-      const dy = (p.y + p.h/2) - (src.y + src.h/2);
+    if (attacker){
+      const dx = (p.x + p.w/2) - (attacker.x + attacker.w/2);
+      const dy = (p.y + p.h/2) - (attacker.y + attacker.h/2);
       const n = Math.hypot(dx,dy) || 1;
       p.vx += (dx/n) * 160;
       p.vy += (dy/n) * 160;
@@ -1329,10 +1332,10 @@ function updateEntities(dt){
     handleInput(dt);
     // sincroniza ángulo continuo con la niebla (si la API lo soporta)
     try { window.FogAPI?.setFacingAngle?.(G.player?.lookAngle || 0); } catch(_) {}
-    
+
     // alimenta al rig con el mismo ángulo (evita “héroe invertido”)
     if (G.player) G.player.facingAngle = G.player.lookAngle || 0;
-    
+
     // jugador
     const p = G.player;
     if (p){
@@ -1354,20 +1357,28 @@ function updateEntities(dt){
       if (sp>ms){ e.vx = e.vx*(ms/sp); e.vy = e.vy*(ms/sp); }
     }
 
-    // Puppet: alimentar estado de animación
-    if (G.player?.rig) { PuppetAPI.update(G.player.rig, dt); }  // el plugin deduce el estado del host
-
-    // enemigos
+    // enemigos / IA
     updateEntities(dt);
-    // ascensores
-    Entities?.Elevator?.update?.(dt);
 
     if (window.MouseNav && window._mouseNavInited) MouseNav.update(dt);
 
-    // reglas
-    gameplay(dt);
     // === paso de física (rebotes, empujes, aplastamientos, etc.)
     Physics.step(dt);
+
+    // Sistemas (puertas, ascensores, hazards)
+    Entities?.Door?.update?.(dt);
+    Entities?.Elevator?.update?.(dt);
+    window.HazardsAPI?.update?.(dt);
+
+    // reglas
+    gameplay(dt);
+
+    if (window.DamageAPI){
+      DamageAPI.update(dt, G.player);
+      DamageAPI.tickAttackers(dt, G.enemies || G.entities, G.player);
+    }
+
+    if (window.PuppetAPI) PuppetAPI.update(dt);
 
     updateEntityFlashlights();
 
@@ -1394,7 +1405,6 @@ function updateEntities(dt){
 
     // mundo
     drawTiles(ctx2d);
-    drawEntities(ctx2d);
 
     ctx2d.restore();
   }
@@ -1403,41 +1413,6 @@ function updateEntities(dt){
   function drawTiles(c2){
     Sprites.drawFloorAndWalls(c2, G);
   }
-
-function drawEntities(c2){
-  for (const e of G.entities){
-    if (!e || e.dead) continue;
-
-    // El jugador se pinta aparte con su rig (más nítido)
-    if (e === G.player || e.kind === ENT.PLAYER) continue;
-
-    // 1) Si la entidad tiene "muñeco" (rig), dibújalo
-    const rig = e._rig || e.rig;
-    if (rig && window.PuppetAPI && typeof PuppetAPI.draw === 'function'){
-      try { PuppetAPI.draw(rig, c2, camera); } catch(_){}
-      continue; // no dupliques con sprite
-    }
-
-    // 2) Si hay sprites, dibuja la sprite de la entidad
-    let dibujado = false;
-    try {
-      if (window.Sprites && typeof Sprites.drawEntity === 'function'){
-        Sprites.drawEntity(c2, e);
-        dibujado = true;
-      } else if (typeof e.spriteKey === 'string' && typeof window.Sprites?.draw === 'function'){
-        // camino alternativo si tu gestor de sprites usa draw(key, x, y, opts)
-        Sprites.draw(c2, e.spriteKey, e.x, e.y, { w: e.w, h: e.h });
-        dibujado = true;
-      }
-    } catch(_){ /* cae a fallback */ }
-
-    // 3) Fallback visible (rectángulo) si no hay sprites
-    if (!dibujado){
-      c2.fillStyle = e.color || '#a0a0a0';
-      c2.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
-    }
-  }
-}
 
   // Luz del héroe + fog-of-war interna (sin plugins)
   function drawLightingAndFog(){
@@ -1455,6 +1430,7 @@ function drawEntities(c2){
         // pinta mundo nítido; FogAPI hará su máscara en su propio canvas
         ctx.clearRect(0, 0, VIEW_W, VIEW_H);
         drawWorldTo(ctx);
+        if (window.PuppetAPI) PuppetAPI.draw(ctx, camera);
 
         // (B2) “fade lejano” sutil para realismo (puedes comentar si no lo quieres)
         if (G.player) {
@@ -1476,6 +1452,7 @@ function drawEntities(c2){
         // FogAPI desactivada por debug -> mapa completo sin niebla
         ctx.clearRect(0, 0, VIEW_W, VIEW_H);
         drawWorldTo(ctx);
+        if (window.PuppetAPI) PuppetAPI.draw(ctx, camera);
         return;
       }
     }
@@ -1489,6 +1466,7 @@ function drawEntities(c2){
 
     ctx.clearRect(0, 0, VIEW_W, VIEW_H);
     ctx.drawImage(blurCanvas, 0, 0);
+    if (window.PuppetAPI) PuppetAPI.draw(ctx, camera);
 
     const p = G.player;
     const px = (p.x + p.w/2 - camera.x) * camera.zoom + VIEW_W/2;
@@ -1500,6 +1478,55 @@ function drawEntities(c2){
     fog.addColorStop(1, 'rgba(0,0,0,0.95)');
     ctx.fillStyle = fog;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  }
+
+  const PUPPET_SUMMARY_TYPES = new Set(['PLAYER','RAT','MOSQUITO','PATIENT','PILL','DOOR','ELEVATOR','CART','HAZARD','BOSS']);
+
+  function labelForPuppetSummary(ent){
+    if (!ent) return null;
+    const kind = ent.kind;
+    if (kind === ENT.PLAYER) return 'PLAYER';
+    if (kind === ENT.RAT) return 'RAT';
+    if (kind === ENT.MOSQUITO) return 'MOSQUITO';
+    if (kind === ENT.PATIENT) return 'PATIENT';
+    if (kind === ENT.PILL) return 'PILL';
+    if (kind === ENT.DOOR) return 'DOOR';
+    if (kind === ENT.CART) return 'CART';
+    if (kind === ENT.BOSS) return 'BOSS';
+    const tag = (ent.kindName || ent.role || ent.type || ent.subtype || '').toString().toUpperCase();
+    if (tag) {
+      if (tag.includes('HAZARD')) return 'HAZARD';
+      if (tag.includes('ELEVATOR')) return 'ELEVATOR';
+      if (PUPPET_SUMMARY_TYPES.has(tag)) return tag;
+    }
+    if (typeof kind === 'string') {
+      const low = kind.toLowerCase();
+      if (low.includes('hazard')) return 'HAZARD';
+      if (low === 'elevator') return 'ELEVATOR';
+      const upper = kind.toUpperCase();
+      if (PUPPET_SUMMARY_TYPES.has(upper)) return upper;
+    }
+    return null;
+  }
+
+  function reportPuppetSummary(){
+    if ((window.__MAP_MODE || '').toLowerCase() !== 'debug') return;
+    const counts = new Map();
+    for (const ent of (G.entities || [])){
+      if (!ent || ent.dead) continue;
+      const label = labelForPuppetSummary(ent);
+      if (!label) continue;
+      const entry = counts.get(label) || { total:0, puppet:0 };
+      entry.total += 1;
+      if (ent._puppet || ent._rig) entry.puppet += 1;
+      counts.set(label, entry);
+    }
+    const ordered = Array.from(counts.keys()).sort();
+    for (const label of ordered){
+      const info = counts.get(label);
+      const status = info.puppet === info.total ? 'PUPPET_OK' : 'PUPPET_MISS';
+      console.log(`${status} ${label}: ${info.puppet}/${info.total}`);
+    }
   }
 
   // ------------------------------------------------------------
@@ -1514,10 +1541,6 @@ function drawEntities(c2){
 
     // composición: mundo borroso fuera de luz + mundo nítido en cono
     drawLightingAndFog();
-    // ⬇️ MUÑECO: encima del mundo, pero por DEBAJO de la niebla/luces
-    if (G.player?.rig){
-      PuppetAPI.draw(G.player.rig, ctx, camera);
-    }
 
     // Plugins que pintan en sus propios canvas (arriba del mundo)
     try { window.FogAPI?.render(camera, G); } catch(e){ console.warn('FogAPI.render', e); }
@@ -1784,19 +1807,7 @@ function drawEntities(c2){
 
 
 
-      // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
-      if (window.PuppetAPI && G.player){
-        const k = (window.selectedHeroKey || window.G?.selectedHero || 'enrique').toLowerCase();
-
-        G.player.rig = PuppetAPI.create({
-          host: G.player,
-          scale: (window.TILE_SIZE||32) / 32
-        });
-
-        // Cara frontal + cara de ESPALDA (si existe <hero>_back.png)
-        PuppetAPI.setHeroHead(G.player.rig, k);
-
-        // Reforzar rango de visión del héroe si FogAPI lo expone
+      if (G.player){
         try {
           if (typeof FogAPI.setPlayerVisionTiles === 'function' && G.player?._visionTiles){
             FogAPI.setPlayerVisionTiles(G.player._visionTiles);
@@ -1902,6 +1913,8 @@ function drawEntities(c2){
           hurtImpulse: 45,
           explodeImpulse: 170
         }).bindGame(G);
+
+    reportPuppetSummary();
 
     if (G.player && typeof G.player.hp === 'number') {
       G.healthMax = (G.player.hpMax|0) * 2;      // p.ej. Enrique: 5 corazones → 10 “halves”

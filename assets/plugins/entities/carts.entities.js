@@ -124,6 +124,11 @@
       if (!G.movers?.includes(e))   G.movers.push(e);
       if (!this._list.includes(e))  this._list.push(e);
 
+      if (window.PuppetAPI){
+        const scale = (e.h || H) / 32;
+        PuppetAPI.attach(e, { rig: 'cart', z: 5, scale });
+      }
+
       return e;
     },
 

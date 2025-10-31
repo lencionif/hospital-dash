@@ -154,6 +154,13 @@
     }
   }
 
+  function attachPuppet(e, heroKey){
+    if (!e || !window.PuppetAPI) return;
+    const skin = `${heroKey}.png`;
+    const scale = (e.h || TILE) / 32;
+    PuppetAPI.attach(e, { rig: 'biped', skin, z: 10, scale });
+  }
+
   // ===== Daño / curación ===========================================================
   function applyDamage(e, amount, source) {
     if (!e || e.dead) return;
@@ -190,6 +197,7 @@
       G.selectedHero = key;
       ensureOnArrays(e);
       attachFlashlight(e);
+      attachPuppet(e, key);
       try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}
       return e;
     },
@@ -202,6 +210,7 @@
       e.hp = 1; e.hpMax = 1;
       ensureOnArrays(e);
       attachFlashlight(e);
+      attachPuppet(e, key);
       return e;
     },
 

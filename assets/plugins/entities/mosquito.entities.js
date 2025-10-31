@@ -119,18 +119,6 @@
     update(dt) {
       this.t += dt;
 
-      // Daño al héroe (tick de contacto)
-      if (G.player && !G.player.dead) {
-        if (e.x < G.player.x + G.player.w && e.x + e.w > G.player.x &&
-            e.y < G.player.y + G.player.h && e.y + e.h > G.player.y) {
-          if (!e._hitCd || e._hitCd <= 0) {
-            G.health = Math.max(0, (G.health|0) - 1);
-            e._hitCd = 0.6; // 600 ms de invulnerabilidad por enemigo
-          }
-        }
-      }
-      if (e._hitCd > 0) e._hitCd -= dt;
-
       // 1) IA y daño por contacto
       for (const e of [...this.live]) {
         if (!e || e.dead) continue;
@@ -192,6 +180,8 @@
         t: 0,
         touchCD: 0,
         ai: { lastDirX: 0, lastDirY: 0 },
+        touchDamage: Math.max(0.5, (this.cfg.touchDamage != null ? this.cfg.touchDamage : 1) * 0.5),
+        touchCooldown: this.cfg.touchCooldown,
         ...payload
       };
 
@@ -211,6 +201,11 @@
 
       // Física
       if (window.Physics && Physics.registerEntity) Physics.registerEntity(e);
+
+      if (window.PuppetAPI){
+        const scale = (e.h || this.TILE*0.6) / 24;
+        PuppetAPI.attach(e, { rig: 'mosquito', z: 6, scale });
+      }
 
       return e;
     },
@@ -264,7 +259,6 @@
 
       // 6) Daño por contacto al jugador (con cooldown)
       if (this._nearAABB(e, p, 4) && e.touchCD <= 0) {
-        if (this.G.hurt) this.G.hurt(this.cfg.touchDamage, { source: e });
         e.touchCD = this.cfg.touchCooldown;
         const kb = 60;
         if (window.Physics && Physics.applyImpulse) Physics.applyImpulse(p, dirx * kb, diry * kb);

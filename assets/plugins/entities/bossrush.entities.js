@@ -192,6 +192,8 @@
       hp: 1,
       cured: false,
       dead: false,
+      touchDamage: 0.5,
+      touchCooldown: 1.0,
       // Dibujo fallback si no hay sprites
       draw(ctx) {
         ctx.save();
@@ -221,6 +223,10 @@
     G.boss = e;
     if (!G.entities.includes(e)) G.entities.push(e);
     if (!G.patients.includes(e)) G.patients.push(e);
+    if (window.PuppetAPI){
+      const scale = Math.max(1.5, (e.h || TILE) / 32);
+      PuppetAPI.attach(e, { rig: 'boss', z: 8, scale });
+    }
     return e;
   }
 

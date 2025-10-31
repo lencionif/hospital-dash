@@ -140,6 +140,11 @@
       ctx.restore();
     };
 
+    if (window.PuppetAPI){
+      const scale = (e.h || TILE) / 32;
+      PuppetAPI.attach(e, { rig: 'elevator', z: 4, scale });
+    }
+
     return e;
   }
 

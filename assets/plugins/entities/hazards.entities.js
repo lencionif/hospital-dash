@@ -264,6 +264,10 @@
     _register(e){
       this.G.entities.push(e);
       this.list.push(e);
+      if (window.PuppetAPI){
+        const scale = (e.h || this.TILE) / 32;
+        PuppetAPI.attach(e, { rig: 'hazard', z: 3, scale });
+      }
     },
     _destroy(hz){
       hz.dead = true;
@@ -284,8 +288,13 @@
     _dealDamage(e, halves, meta){
       const h = Math.max(1, Math.round(halves)); // mitades
       if (e===this.G.player){
-        if (this.G.hurt) this.G.hurt(h, meta);
-        else this.G.hearts = clamp((this.G.hearts||0) - h, 0, this.G.heartsMaxHalves||14);
+        if (window.DamageAPI){
+          DamageAPI.applyDamage(e, h, { attacker: meta?.source || 'hazard', source: meta?.source || 'hazard', invuln: meta?.invuln });
+        } else if (this.G.hurt) {
+          this.G.hurt(h, meta);
+        } else {
+          this.G.hearts = clamp((this.G.hearts||0) - h, 0, this.G.heartsMaxHalves||14);
+        }
       } else {
         // enemigos/npc básicos
         if (typeof e.takeDamage === 'function'){ e.takeDamage(h, meta); }
