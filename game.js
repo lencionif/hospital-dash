@@ -1405,6 +1405,7 @@ function updateEntities(dt){
 
     // mundo
     drawTiles(ctx2d);
+    drawLegacyEntities(ctx2d);
 
     ctx2d.restore();
   }
@@ -1412,6 +1413,20 @@ function updateEntities(dt){
   // Dibuja el suelo ajedrezado + paredes con SpriteManager
   function drawTiles(c2){
     Sprites.drawFloorAndWalls(c2, G);
+  }
+
+  // Mientras existan entidades sin Puppet rigs, dibújalas aquí
+  function drawLegacyEntities(c2){
+    if (!G || !Array.isArray(G.entities)) return;
+    for (const ent of G.entities){
+      if (!ent || ent.dead) continue;
+      if (ent._puppet || ent._rig) continue; // PuppetAPI se encargará de éstas
+      try {
+        Sprites.drawEntity(c2, ent);
+      } catch (err) {
+        console.warn('[drawLegacyEntities]', err);
+      }
+    }
   }
 
   // Luz del héroe + fog-of-war interna (sin plugins)
