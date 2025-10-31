@@ -247,6 +247,7 @@
       if (!Array.isArray(G.entities)) G.entities = [];
       G.entities.push(e);
       S.list.push(e);
+      window.MovementSystem?.register?.(e);
       _ensurePairId(e);
       _indexPair(e);
       return e;
