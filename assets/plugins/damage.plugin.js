@@ -71,7 +71,7 @@
       const newHealth = Math.max(0, base - 0.5);
       player.health = newHealth;
       if (typeof player.hp === 'number'){
-        player.hp = Math.max(0, Math.ceil(newHealth));
+        player.hp = Math.max(0, newHealth);
       }
       state.health = Math.max(0, Math.round(newHealth * 2));
       cooldownById.set(key, now + 1.0);
