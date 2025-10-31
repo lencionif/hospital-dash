@@ -1,248 +1,80 @@
-<!-- filename: index.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Il Divo: Hospital Dash!</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27><rect width=%2732%27 height=%2732%27 fill=%27%230d1117%27/><text x=%2750%25%27 y=%2756%25%27 dominant-baseline=%27middle%27 text-anchor=%27middle%27 font-family=%27Arial%27 font-size=%2720%27 fill=%27%23fff%27>HD</text></svg>">
-
-
-  <!-- Fuente arcade (con fallback local del sistema) -->
+  <title>Hospital Dash · Debug Map</title>
+  <link rel="stylesheet" href="./style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
-  <script>
-    // Registro global de clases/ayudas de entidades
-    window.Entities = {};
-  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230d1117'/><text x='16' y='21' text-anchor='middle' font-family='Arial' font-size='18' fill='%23fff'>HD</text></svg>">
 </head>
-<body class="intro-playing">
-  <div id="game-container" aria-label="Contenedor del juego">
-    <!-- Lienzo principal que dibuja TODO el juego -->
-    <canvas id="gameCanvas" width="960" height="540" aria-label="Lienzo del juego"></canvas>
-    <canvas id="fogCanvas"></canvas>
-    <canvas id="hudCanvas"></canvas>
-
-    <!-- START -->
-    <div id="start-screen" class="overlay hidden">
-      <div class="menu-box">
-        <h1>Il Divo: Hospital Dash!</h1>
-        <p class="subtitle">WASD para moverte · E para empujar/usar · ESC pausa · R reinicia</p>
-
-        <h2 class="section-title">Elige tu personaje</h2>
-
-        <!-- Grid de personajes -->
-        <div class="char-grid" role="listbox" aria-label="Selección de personaje">
-          <button class="char-card selected" role="option" aria-selected="true" data-hero="enrique" tabindex="0">
-            <div class="char-avatar char-enrique" aria-hidden="true"></div>
-            <div class="char-info">
-              <strong>Enrique</strong>
-              <span>Equilibrado (visión x1.0)</span>
-              <span>Velocidad 3.9 · Empuje 6.0</span>
-            </div>
-          </button>
-
-          <button class="char-card" role="option" aria-selected="false" data-hero="roberto" tabindex="0">
-            <div class="char-avatar char-roberto" aria-hidden="true"></div>
-            <div class="char-info">
-              <strong>Roberto</strong>
-              <span>Rápido (visión x1.0)</span>
-              <span>Velocidad 4.6 · Empuje 4.8</span>
-            </div>
-          </button>
-
-          <button class="char-card" role="option" aria-selected="false" data-hero="francesco" tabindex="0">
-            <div class="char-avatar char-francesco" aria-hidden="true"></div>
-            <div class="char-info">
-              <strong>Francesco</strong>
-              <span>Explorador (visión x1.25)</span>
-              <span>Velocidad 4.1 · Empuje 5.0</span>
-            </div>
-          </button>
-        </div>
-
-        <div class="options">
-          <label><input type="checkbox" id="opt-reduce-flash" checked /> Reducir destellos</label>
-          <label><input type="checkbox" id="opt-humor" /> Modo “Humor Suave”</label>
-          <button id="btn-3dacc" type="button">activa aceleración gráfica 3d</button>
-        </div>
-
-        <button id="start-button" class="primary">Empezar turno</button>
-        <p class="tip">Objetivo: atiende todos los <b>P</b> para abrir <b>D</b>, y acerca el <b>carro C</b> al jefe <b>X</b> (≤ 2 casillas).</p>
+<body>
+  <main>
+    <section id="game-wrapper">
+      <div id="game-container">
+        <canvas id="gameCanvas" width="960" height="540"></canvas>
+        <canvas id="hudCanvas" width="960" height="540"></canvas>
       </div>
-    </div>
+      <aside id="game-help">
+        <h1>Hospital Dash (debug)</h1>
+        <p>WASD o cursores para moverte · E/ESPACIO para interactuar · ESC pausa · R reinicia.</p>
+        <p>Atiende al paciente con la píldora correcta, abre la puerta de emergencia y lleva el carro de urgencias al jefe.</p>
+        <p class="debug-info">SPAWN_DEBUG está disponible en consola para activar/desactivar entidades (RAT, MOSQUITO, PATIENT, CART, DOOR, ELEVATOR, BOSS, PILL).</p>
+      </aside>
+    </section>
+  </main>
 
-    <!-- PAUSA -->
-    <div id="pause-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box">
-        <h2>PAUSA</h2>
-        <p>Pulsa <b>ESC</b> para continuar</p>
-      </div>
-    </div>
+  <script src="./assets/plugins/physics.plugin.js"></script>
+  <script src="./assets/plugins/lighting.plugin.js"></script>
+  <script src="./assets/plugins/skyweather.plugin.js"></script>
+  <script src="./assets/plugins/arrowguide.plugin.js"></script>
+  <script src="./assets/plugins/damage.plugin.js"></script>
+  <script src="./assets/plugins/puppet.plugin.js"></script>
+  <script src="./assets/plugins/audio.plugin.js"></script>
+  <script src="./assets/plugins/score.plugin.js"></script>
+  <script src="./assets/plugins/placement.plugin.js"></script>
+  <script src="./assets/plugins/mapgen.plugin.js"></script>
+  <script src="./assets/plugins/sprites.plugin.js"></script>
+  <script src="./assets/plugins/gameflow.plugin.js"></script>
 
-    <!-- NIVEL COMPLETADO -->
-    <div id="level-complete-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box">
-        <h2>¡NIVEL COMPLETADO!</h2>
-        <p>¡Has salvado el turno! 🎉</p>
-        <p>Pulsa <b>R</b> para jugar de nuevo.</p>
-      </div>
-    </div>
-
-    <!-- GAME OVER -->
-    <div id="game-over-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box">
-        <h2>GAME OVER</h2>
-        <p>El caos te ha superado 😵‍💫</p>
-        <p>Pulsa <b>R</b> para intentarlo de nuevo.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- JS (no modules para funcionar con file://) -->
-  <script src="assets/entities/heroes.entities.js"></script>
-  <script src="assets/entities/carts.entities.js"></script>
-  <script src="assets/entities/mosquito.entities.js"></script>
-  <script src="assets/entities/rats.entities.js"></script>
-  <script src="assets/entities/celador.entities.js"></script>
-  <script src="assets/entities/cleaner.entities.js"></script>
-  <script src="assets/entities/doors.entities.js"></script>
-  <script src="assets/entities/elevators.entities.js"></script>
-  <script src="assets/entities/enfermera_sexy.entities.js"></script>
-  <script src="assets/entities/jefe_servicio.entities.js"></script>
-  <script src="assets/entities/medico.entities.js"></script>
-  <script src="assets/entities/objects.entities.js"></script>
-  <script src="assets/entities/patients.entities.js"></script>
-  <script src="assets/entities/spawner.entities.js"></script>
-  <script src="assets/entities/supervisora.entities.js"></script>
-  <script src="assets/entities/tcae.entities.js"></script>
-  <script src="assets/entities/medico.entities.js"></script>
-  <script src="assets/entities/jefe_servicio.entities.js"></script>
-  <script src="assets/entities/familiar_molesto.entities.js"></script>
-  <script src="assets/entities/hazards.entities.js"></script>
-  <script src="assets/entities/bossrush.entities.js"></script>
-  <script src="assets/entities/guardia.entities.js"></script>
-  <script src="assets/entities/lights.entities.js"></script>
-  <!-- Plugins utilitarios -->
-  <script src="assets/apisPlugins/arrowguide.plugin.js"></script>
-  <script src="assets/apisPlugins/skyweather.plugin.js"></script>
-  <script src="assets/apisPlugins/puppet.plugin.js"></script>
-  <script src="assets/apisPlugins/lighting.plugin.js"></script>
-  <script src="assets/apisPlugins/mouse.control.api.js"></script>
-  <script src="assets/apisPlugins/furious.plugin.js"></script>
-  <script src="assets/apisPlugins/bells.plugin.js"></script>
-  <script src="assets/apisPlugins/gameflow.api.js"></script>
-  <script src="assets/apisPlugins/placement.api.js"></script>
-  <script src="assets/apisPlugins/presentation.api.js"></script>
-  <script src="assets/apisPlugins/music.api.js"></script>
-  <!--<script src="assets/apisPlugins/audio.api.js"></script>-->
-  <script src="assets/apisPlugins/score.api.js"></script>
-  <script src="assets/apisPlugins/physics.plugin.js"></script>
-  <script src="assets/apisPlugins/mapgen.plugin.js"></script>
-  <script src="assets/apisPlugins/dialog.plugin.js"></script>
-  <script src="assets/apisPlugins/hud.api.js"></script>
-  <!-- ⬇️ NUEVO: sprites unificado, SIEMPRE ANTES de game.js -->
-  <script src="assets/apisPlugins/sprites.plugin.js"></script>
+  <script src="./assets/plugins/entities/heroes.entities.js"></script>
+  <script src="./assets/plugins/entities/patients.entities.js"></script>
+  <script src="./assets/plugins/entities/rat.entities.js"></script>
+  <script src="./assets/plugins/entities/mosquito.entities.js"></script>
+  <script src="./assets/plugins/entities/doors.entities.js"></script>
+  <script src="./assets/plugins/entities/elevators.entities.js"></script>
+  <script src="./assets/plugins/entities/carts.entities.js"></script>
+  <script src="./assets/plugins/entities/hazards.entities.js"></script>
 
   <script id="sprites-manifest" type="application/json">
   [
-    "ascensor_abierto.png","ascensor_cerrado.png",
-    "boss_nivel1.png","boss_nivel2.png","boss_nivel3.png",
-    "carro_comida.png","carro_medicinas.png","carro_urgencias.png",
-    "celador.png","chica_limpieza.png","enfermera_sexy.png","medico.png",
-    "supervisora.png","TCAE.png","jefe_servicio.png","familiar_molesto.png",
-    "enrique.png","roberto.png","francesco.png",
-    "mosquito.png","raton.png",
-    "paciente1.png","paciente2.png","paciente3.png","paciente4.png",
-    "paciente5.png","paciente6.png","paciente7.png","paciente_furiosa.png",
-    "gotero_azul.png","gotero_verde.png","gotero_rojo.png",
-    "jeringa_azul.png","jeringa_verde.png","jeringa_roja.png",
-    "pastilla_analitica.png","pastilla_azul.png","pastilla_gaviscon.png",
-    "pastilla_luzon.png","pastilla_patoplast.png","pastilla_tillaout.png",
+    "suelo.png",
+    "pared.png",
+    "enrique.png",
+    "roberto.png",
+    "francesco.png",
+    "pastilla_analitica.png",
     "pastilla_zenidina.png",
-    "comida_brascada.png","comida_calamares.png","comida_cerveza.png",
-    "comida_copa_de_vino.png","comida_cremaet.png","comida_figatell.png",
-    "comida_sepia_a_la_plancha.png",
-    "prohibido.png","mano.png","engranaje.png","cronometro.png","fuego.png",
-    "x.png","timbre_apagado.png","timbre_encendido.png","telefono.png",
-    "guardia.png","spawner_enemigos.png","spawner_npc.png","spawner_carros.png",
-    "pared.png","suelo.png","charco.png",
-    "puerta_abiertas.png","puerta_cerrada.png",
-    "logo_grupo.png","logo_juego.png",
-    "main.jpg","ready.jpg","gameover.jpg",
-    "foto_almuerzo.png","foto_almuerzo2.png",
-    "foto_enrique&raquel.png","foto_grupo.png","foto_il_divo_con_carino.png",
-    "foto_los3.png","foto_navidad.png"
+    "pastilla_gaviscon.png",
+    "paciente1.png",
+    "paciente2.png",
+    "paciente3.png",
+    "paciente4.png",
+    "raton.png",
+    "mosquito.png",
+    "puerta_cerrada.png",
+    "puerta_abiertas.png",
+    "ascensor_cerrado.png",
+    "carro_urgencias.png",
+    "carro_medicinas.png",
+    "carro_comida.png",
+    "fuego.png",
+    "boss_nivel1.png"
   ]
   </script>
 
-
-  <!-- Motor central SIEMPRE el último -->
-  <script src="game.js"></script>
-
-<script>
-(function(){
-  // === Botón de "aceleración 3D" (gag) ===
-  const gags = [
-    "No existe ninguna aceleración 3D, es broma 😜",
-    "En serio: esto es 2D con mucho cariño.",
-    "¿Otra vez? No funciona. Deja de clicar.",
-    "Inicializando RTX... 0%... ERROR 418 (I’m a teapot).",
-    "Drivers no encontrados: humor.dll",
-    "Has desbloqueado: Botón Inútil Nivel 2.",
-    "Tip: Empuja el carro, no el botón.",
-    "Calculando polígonos... 0/∞",
-    "RTX OFF. Café ON.",
-    "Última: de verdad que no va 😉"
-  ];
-  let i = 0;
-  const btn = document.getElementById('btn-3dacc');
-  if (btn){
-    btn.addEventListener('click', () => {
-      const p = document.createElement('div');
-      p.className = 'sys-pop';
-      p.innerHTML = gags[i++ % gags.length] + ' <button class="close">Ok</button>';
-      document.body.appendChild(p);
-      const kill = () => p.remove();
-      p.querySelector('.close').addEventListener('click', kill);
-      setTimeout(kill, 3500);
-    });
-  }
-})();
-</script>
-
-<script>
-  window.addEventListener('load', () => { 
-    // ---- flujo normal (sin ?mini=1 ni ?map=mini|debug) ----
-    if (window.MusicAPI && MusicAPI.init) {
-      MusicAPI.init({ urls: { intro: 'assets/music/intro.ogg' } });
-    }
-    if (window.PresentationAPI && PresentationAPI.playIntroSequence) {
-      PresentationAPI.playIntroSequence();
-    }
-  });
-
-// Cuando la intro termina, aparece el start-screen y NOS ASEGURAMOS
-// de que nada quede por encima bloqueando clics.
-window.addEventListener('intro:complete', () => {
-  const ss = document.getElementById('start-screen');
-  if (ss){
-    ss.classList.remove('hidden','intro-disable-ui','intro-hide-ui');
-    ss.style.animation = 'pa2FadeIn .45s ease';
-    ss.style.pointerEvents = 'auto';
-    ss.style.opacity = '1';
-    document.querySelectorAll('#start-screen button').forEach(b => b.removeAttribute('disabled'));
-
-    // Al empezar el juego, elimina logo+halo (viven dentro del start-screen)
-    const killBrand = () => document.getElementById('brandWrap')?.remove();
-    document.getElementById('start-button')?.addEventListener('click', killBrand, { once:true });
-    window.addEventListener('game:start', killBrand, { once:true });
-  }
-  document.body.classList.remove('intro-playing');
-});
-</script>
-
+  <script src="./assets/plugins/game.js"></script>
 </body>
 </html>
