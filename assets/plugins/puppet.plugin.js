@@ -47,6 +47,17 @@
   }
 
   function update(rig, dt, hostState){
+    if (!rig) return;
+    if (rig.def) {
+      rig.t = (rig.t || 0) + dt;
+      rig.host = rig.entity || rig.host;
+      if (!rig.state) rig.state = {};
+      if (typeof rig.def.update === 'function') {
+        try { rig.def.update(dt, rig.state, rig.entity || rig.host, rig.puppet); } catch(_){}
+      }
+      return;
+    }
+
     rig.t += dt;
 
     // Si no nos pasan estado explícito, lo deducimos del host
@@ -86,7 +97,55 @@
   }
 
   const _ALL_RIGS = [];
+  const _REGISTRY = Object.create(null);
   const _pushRig = (r) => { if (r && !_ALL_RIGS.includes(r)) _ALL_RIGS.push(r); };
+
+  function registerRig(name, rigDef){
+    if (!name || typeof name !== 'string' || !rigDef) return;
+    _REGISTRY[name] = rigDef;
+  }
+
+  function _findRig(name){
+    if (!name) return null;
+    return _REGISTRY[name] || null;
+  }
+
+  function detach(entity){
+    if (!entity) return;
+    const rig = entity._rig || entity.rig;
+    if (!rig) return;
+    const idx = _ALL_RIGS.indexOf(rig);
+    if (idx >= 0) _ALL_RIGS.splice(idx, 1);
+    if (rig && typeof rig.onDetach === 'function') {
+      try { rig.onDetach(entity); } catch(_){}
+    }
+    if (entity._rig === rig) entity._rig = null;
+    if (entity.rig === rig) entity.rig = null;
+    if (entity.puppet && entity.puppet.rigInstance === rig) delete entity.puppet.rigInstance;
+  }
+
+  function attach(entity, puppet){
+    if (!entity || !puppet) return null;
+    detach(entity);
+    const rigDef = _findRig(puppet.rig);
+    if (!rigDef) return null;
+    const state = (typeof rigDef.create === 'function')
+      ? rigDef.create(entity, puppet)
+      : {};
+    const inst = {
+      def: rigDef,
+      state,
+      entity,
+      puppet,
+      host: entity,
+      t: 0,
+    };
+    entity._rig = inst;
+    entity.rig = inst;
+    puppet.rigInstance = inst;
+    _pushRig(inst);
+    return inst;
+  }
 
   function toggleDebug(){
     const on = !_ALL_RIGS._dbg;
@@ -116,7 +175,16 @@
   }
 
     function draw(rig, ctx, camera){
-    if (!rig || !rig.host || !ctx) return;
+    if (!rig || !ctx) return;
+    if (rig.def){
+      const host = rig.entity || rig.host;
+      if (!host) return;
+      if (typeof rig.def.draw === 'function') {
+        try { rig.def.draw(ctx, camera || {x:0,y:0,zoom:1}, rig.state || {}, host, rig.puppet); } catch(_){}
+      }
+      return;
+    }
+    if (!rig.host) return;
 
     const h = rig.host;
     const cam = camera || {x:0,y:0,zoom:1};
@@ -308,5 +376,5 @@
     }
 
   // API pública
-  window.PuppetAPI = { create, update, draw, setHeroHead, toggleDebug };
+  window.PuppetAPI = { create, update, draw, setHeroHead, toggleDebug, registerRig, attach, detach };
 })();

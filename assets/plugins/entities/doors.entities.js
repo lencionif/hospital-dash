@@ -56,6 +56,11 @@
         toggle(by){ return Doors.toggle(this, by); },
       };
 
+      if (window.PuppetAPI) {
+        e.puppet = { rig:'door', z:2 };
+        try { PuppetAPI.attach(e, e.puppet); } catch(_){}
+      }
+
       // empuja a listas
       G.entities = G.entities || [];
       G.entities.push(e);

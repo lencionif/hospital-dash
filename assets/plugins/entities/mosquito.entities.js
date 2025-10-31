@@ -119,18 +119,6 @@
     update(dt) {
       this.t += dt;
 
-      // Daño al héroe (tick de contacto)
-      if (G.player && !G.player.dead) {
-        if (e.x < G.player.x + G.player.w && e.x + e.w > G.player.x &&
-            e.y < G.player.y + G.player.h && e.y + e.h > G.player.y) {
-          if (!e._hitCd || e._hitCd <= 0) {
-            G.health = Math.max(0, (G.health|0) - 1);
-            e._hitCd = 0.6; // 600 ms de invulnerabilidad por enemigo
-          }
-        }
-      }
-      if (e._hitCd > 0) e._hitCd -= dt;
-
       // 1) IA y daño por contacto
       for (const e of [...this.live]) {
         if (!e || e.dead) continue;
@@ -194,6 +182,14 @@
         ai: { lastDirX: 0, lastDirY: 0 },
         ...payload
       };
+
+      if (window.PuppetAPI) {
+        e.puppet = { rig:'mosquito', z:4 };
+        try { PuppetAPI.attach(e, e.puppet); } catch(_){}
+      }
+
+      e.touchDamage = 0.5;
+      e.touchCooldown = 1.0;
 
       // Bucle de zumbido (si AudioAPI existe)
       if (window.AudioAPI) {
@@ -263,7 +259,7 @@
       }
 
       // 6) Daño por contacto al jugador (con cooldown)
-      if (this._nearAABB(e, p, 4) && e.touchCD <= 0) {
+      if (!window.DamageAPI && this._nearAABB(e, p, 4) && e.touchCD <= 0) {
         if (this.G.hurt) this.G.hurt(this.cfg.touchDamage, { source: e });
         e.touchCD = this.cfg.touchCooldown;
         const kb = 60;

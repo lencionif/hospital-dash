@@ -188,6 +188,10 @@
       const e = createPlayer(x, y, key); G.selectedHero = key; window.selectedHeroKey = key; e.spriteKey = key;
       window.G = window.G || {};
       G.selectedHero = key;
+      if (key === 'enrique' && window.PuppetAPI) {
+        e.puppet = { rig:'bipedEx', skin:'enrique.png', z:5, scale:1.05 };
+        try { PuppetAPI.attach(e, e.puppet); } catch(_){}
+      }
       ensureOnArrays(e);
       attachFlashlight(e);
       try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}

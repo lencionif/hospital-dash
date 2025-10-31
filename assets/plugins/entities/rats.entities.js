@@ -149,7 +149,7 @@
         this.vy = dirY * this.moveSpeed;
 
         // Daño por contacto: SIEMPRE que toque, con pequeño cooldown
-        if (this.biteCd <= 0 && P && aabbOverlap(this, P)) {
+        if (!window.DamageAPI && this.biteCd <= 0 && P && aabbOverlap(this, P)) {
           this.biteCd = 0.50;              // 0.5 s entre mordiscos
           if (typeof window.damagePlayer === 'function') {
             window.damagePlayer(this, this.biteUnits);   // ← la fuente es la RATA
@@ -185,6 +185,14 @@
         }
       }
     };
+
+    e.touchDamage = 0.5;
+    e.touchCooldown = 1.0;
+
+    if (window.PuppetAPI) {
+      e.puppet = { rig:'rat', z:3 };
+      try { PuppetAPI.attach(e, e.puppet); } catch(_){}
+    }
 
     ensureOnLists(e);
     try { W.Physics?.registerEntity?.(e); } catch(_){}

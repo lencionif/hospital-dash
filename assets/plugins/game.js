@@ -1354,20 +1354,37 @@ function updateEntities(dt){
       if (sp>ms){ e.vx = e.vx*(ms/sp); e.vy = e.vy*(ms/sp); }
     }
 
-    // Puppet: alimentar estado de animación
-    if (G.player?.rig) { PuppetAPI.update(G.player.rig, dt); }  // el plugin deduce el estado del host
-
-    // enemigos
+    // IA enemigos y NPCs
     updateEntities(dt);
-    // ascensores
-    Entities?.Elevator?.update?.(dt);
 
-    if (window.MouseNav && window._mouseNavInited) MouseNav.update(dt);
-
-    // reglas
-    gameplay(dt);
     // === paso de física (rebotes, empujes, aplastamientos, etc.)
     Physics.step(dt);
+
+    // Sistemas auxiliares
+    Entities?.Elevator?.update?.(dt);
+    if (window.MouseNav && window._mouseNavInited) MouseNav.update(dt);
+    gameplay(dt);
+
+    // Daño por contacto con enemigos
+    if (window.DamageAPI) {
+      DamageAPI.update(dt, G.player);
+      DamageAPI.tickAttackers(dt, G.entities);
+      for (const e of (G.entities || [])) {
+        if (!e || e.dead) continue;
+        const kind = e.kind;
+        const name = (e.kindName || '').toUpperCase();
+        if (
+          kind === 'RAT' || kind === 'MOSQUITO' ||
+          kind === ENT.RAT || kind === ENT.MOSQUITO ||
+          name === 'RAT' || name === 'MOSQUITO'
+        ) {
+          if (aabbOverlap(G.player, e)) DamageAPI.applyTouch(e, G.player);
+        }
+      }
+    }
+
+    // Puppet: alimentar estado de animación
+    if (G.player?.rig) { PuppetAPI.update(G.player.rig, dt); }  // el plugin deduce el estado del host
 
     updateEntityFlashlights();
 
@@ -1645,6 +1662,10 @@ function drawEntities(c2){
       }
       finalizeLevelBuildOnce();
       console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE, '→ ASCII forzado (sin generadores/siembra)');
+      if (window.__MAP_MODE === 'debug' && typeof window.auditPuppets === 'function') {
+        console.log('PUPPET_AUDIT start');
+        try { window.auditPuppets(G.entities || []); } catch(_){}
+      }
     } else {
       // ---------- Flujo procedural normal ----------
       let usadoGenerador = false;
@@ -1746,6 +1767,10 @@ function drawEntities(c2){
     console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
     // Mostrar u ocultar minimapa
     window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
+    if ((window.__MAP_MODE || 'debug') === 'debug' && typeof window.auditPuppets === 'function') {
+      console.log('PUPPET_AUDIT start');
+      try { window.auditPuppets(G.entities || []); } catch(_){}
+    }
   } else {
     // 2) Procedural normal (MapGen/MapGenAPI)
     let usadoGenerador = false;
@@ -1788,13 +1813,17 @@ function drawEntities(c2){
       if (window.PuppetAPI && G.player){
         const k = (window.selectedHeroKey || window.G?.selectedHero || 'enrique').toLowerCase();
 
-        G.player.rig = PuppetAPI.create({
-          host: G.player,
-          scale: (window.TILE_SIZE||32) / 32
-        });
-
-        // Cara frontal + cara de ESPALDA (si existe <hero>_back.png)
-        PuppetAPI.setHeroHead(G.player.rig, k);
+        if (G.player.puppet) {
+          if (!G.player.rig && typeof PuppetAPI.attach === 'function') {
+            try { PuppetAPI.attach(G.player, G.player.puppet); } catch(_){}
+          }
+        } else {
+          G.player.rig = PuppetAPI.create({
+            host: G.player,
+            scale: (window.TILE_SIZE||32) / 32
+          });
+          PuppetAPI.setHeroHead(G.player.rig, k);
+        }
 
         // Reforzar rango de visión del héroe si FogAPI lo expone
         try {
