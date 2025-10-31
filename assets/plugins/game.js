@@ -27,6 +27,16 @@
     BOSS: 9,
   };
 
+  function matchesKind(entity, key){
+    if (!entity) return false;
+    const target = String(key).toUpperCase();
+    if (typeof entity.kind === 'string' && entity.kind.toUpperCase() === target) return true;
+    if (typeof entity.kind === 'number' && ENT[target] === entity.kind) return true;
+    if (typeof entity.kindName === 'string' && entity.kindName.toUpperCase() === target) return true;
+    if (typeof entity.type === 'string' && entity.type.toUpperCase() === target) return true;
+    return false;
+  }
+
   const COLORS = {
     floor: '#111418',
     wall: '#31363f',
@@ -1149,13 +1159,31 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     return null;
   }
 
+  // Paso de IA específica por entidad hostil (antes de la física)
+  function runEntityAI(dt){
+    if (!Array.isArray(G.entities)) return;
+    const dbg = !!window.DEBUG_FORCE_ASCII;
+    for (const ent of G.entities){
+      if (!ent || ent.dead) continue;
+      try {
+        if (matchesKind(ent, 'RAT') && window.Rats?.ai){
+          window.Rats.ai(ent, G, dt);
+        } else if (matchesKind(ent, 'MOSQUITO') && window.Mosquitos?.ai){
+          window.Mosquitos.ai(ent, G, dt);
+        }
+      } catch (err){
+        if (dbg) console.warn('[AI] error', ent.kind || ent.kindName || ent, err);
+      }
+    }
+  }
+
   // Actualiza TODAS las entidades del juego: enemigos, NPC, carros, puertas, ascensores, etc.
   // - Llama al método update(dt) propio de cada entidad (IA y lógica de contacto).
   // - Gestiona movimiento y colisiones de forma uniforme.
   // - Ejecuta la lógica de respawn desde SpawnerManager (para enemigos, NPC y carros).
   // - Muestra logs de depuración en modo debug (?map=debug).
   // Actualiza TODAS las entidades (IA + física) evitando doble movimiento
-function updateEntities(dt){
+  function updateEntities(dt){
   const dbg = !!window.DEBUG_FORCE_ASCII;
   // sin lista, no hay nada que hacer
   if (!Array.isArray(G.entities)) return;
@@ -1202,6 +1230,21 @@ function updateEntities(dt){
     catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
   }
 }
+
+  function updateDoorEntities(dt){
+    if (!window.Doors?.update) return;
+    if (!Array.isArray(G.entities)) return;
+    const dbg = !!window.DEBUG_FORCE_ASCII;
+    for (const ent of G.entities){
+      if (!ent || ent.dead) continue;
+      if (!matchesKind(ent, 'DOOR')) continue;
+      try {
+        window.Doors.update(ent, G, dt);
+      } catch (err){
+        if (dbg) console.warn('[Doors] update error', err);
+      }
+    }
+  }
 
   // ------------------------------------------------------------
   // Reglas de juego base (pill→patient→door→boss with cart)
@@ -1324,6 +1367,7 @@ function updateEntities(dt){
     if (G.state !== 'PLAYING' || !G.player) return; // <-- evita tocar nada sin jugador
     G.time += dt;
     G.cycleSeconds += dt;
+    const dbg = !!window.DEBUG_FORCE_ASCII;
 
     // input
     handleInput(dt);
@@ -1354,10 +1398,8 @@ function updateEntities(dt){
       if (sp>ms){ e.vx = e.vx*(ms/sp); e.vy = e.vy*(ms/sp); }
     }
 
-    // Puppet: alimentar estado de animación
-    if (G.player?.rig) { PuppetAPI.update(G.player.rig, dt); }  // el plugin deduce el estado del host
-
     // enemigos
+    runEntityAI(dt);
     updateEntities(dt);
     // ascensores
     Entities?.Elevator?.update?.(dt);
@@ -1368,6 +1410,19 @@ function updateEntities(dt){
     gameplay(dt);
     // === paso de física (rebotes, empujes, aplastamientos, etc.)
     Physics.step(dt);
+
+    updateDoorEntities(dt);
+    if (window.Doors?.gameflow) {
+      try { Doors.gameflow(G); } catch(err){ if (dbg) console.warn('[Doors] gameflow error', err); }
+    }
+
+    if (window.DamageSystem?.update) {
+      try { DamageSystem.update(G, dt); } catch(err){ if (dbg) console.warn('[DamageSystem] update error', err); }
+    }
+
+    if (window.PuppetAPI?.updateAll) {
+      PuppetAPI.updateAll(G, dt);
+    }
 
     updateEntityFlashlights();
 
@@ -1411,12 +1466,7 @@ function drawEntities(c2){
     // El jugador se pinta aparte con su rig (más nítido)
     if (e === G.player || e.kind === ENT.PLAYER) continue;
 
-    // 1) Si la entidad tiene "muñeco" (rig), dibújalo
-    const rig = e._rig || e.rig;
-    if (rig && window.PuppetAPI && typeof PuppetAPI.draw === 'function'){
-      try { PuppetAPI.draw(rig, c2, camera); } catch(_){}
-      continue; // no dupliques con sprite
-    }
+    if (e.puppet && window.PuppetAPI) continue;
 
     // 2) Si hay sprites, dibuja la sprite de la entidad
     let dibujado = false;
@@ -1514,9 +1564,8 @@ function drawEntities(c2){
 
     // composición: mundo borroso fuera de luz + mundo nítido en cono
     drawLightingAndFog();
-    // ⬇️ MUÑECO: encima del mundo, pero por DEBAJO de la niebla/luces
-    if (G.player?.rig){
-      PuppetAPI.draw(G.player.rig, ctx, camera);
+    if (window.PuppetAPI?.drawAll){
+      PuppetAPI.drawAll(ctx, camera);
     }
 
     // Plugins que pintan en sus propios canvas (arriba del mundo)
@@ -1783,26 +1832,6 @@ function drawEntities(c2){
   }
 
 
-
-      // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
-      if (window.PuppetAPI && G.player){
-        const k = (window.selectedHeroKey || window.G?.selectedHero || 'enrique').toLowerCase();
-
-        G.player.rig = PuppetAPI.create({
-          host: G.player,
-          scale: (window.TILE_SIZE||32) / 32
-        });
-
-        // Cara frontal + cara de ESPALDA (si existe <hero>_back.png)
-        PuppetAPI.setHeroHead(G.player.rig, k);
-
-        // Reforzar rango de visión del héroe si FogAPI lo expone
-        try {
-          if (typeof FogAPI.setPlayerVisionTiles === 'function' && G.player?._visionTiles){
-            FogAPI.setPlayerVisionTiles(G.player._visionTiles);
-          }
-        } catch(_) {}
-      }
 
     window.SkyFX?.init?.({
     canvas,
