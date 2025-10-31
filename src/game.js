@@ -114,7 +114,7 @@
       }
       if (tag === 'hazard' && SPAWN_DEBUG.HAZARD){
         const h = HazardFactory.makeFire(x, y);
-        G.entities.push(h);
+        G.entities.push(h); G.enemies.push(h);
       }
       if (tag === 'door' && SPAWN_DEBUG.DOOR){
         const d = DoorFactory.makeDoor(x, y);
