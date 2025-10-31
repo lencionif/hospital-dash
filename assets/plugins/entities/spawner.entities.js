@@ -21,8 +21,7 @@
 
 (function (W) {
   'use strict';
-
-  const G = W.G || (W.G = {});
+  const getGame = () => (W.G || (W.G = {}));
   const TILE = (typeof W.TILE_SIZE === 'number' ? W.TILE_SIZE : (typeof W.TILE === 'number' ? W.TILE : 32));
   const nowSec = () => (W.performance && performance.now ? performance.now() / 1000 : Date.now() / 1000);
 
@@ -42,8 +41,9 @@
   function ensureSystemsAutoUpdate() {
     if (S.autoUpdateHooked) return;
     // Se engancha de forma suave a tu bucle si usas G.systems
-    if (G && Array.isArray(G.systems)) {
-      G.systems.push({ id: 'spawner_manager', update: (dt) => SpawnerManager.update(dt) });
+    const game = getGame();
+    if (game && Array.isArray(game.systems)) {
+      game.systems.push({ id: 'spawner_manager', update: (dt) => SpawnerManager.update(dt) });
       S.autoUpdateHooked = true;
     } else {
       // Fallback: pequeño ticker si no tienes systems (no interfiere si no hay juego corriendo)
@@ -71,7 +71,7 @@
     // Fallback con G.map (1 = muro)
     const tx1 = Math.floor(x / TILE), ty1 = Math.floor(y / TILE);
     const tx2 = Math.floor((x + w - 1) / TILE), ty2 = Math.floor((y + h - 1) / TILE);
-    const map = G.map || [];
+    const map = getGame().map || [];
     for (let ty = ty1; ty <= ty2; ty++) {
       for (let tx = tx1; tx <= tx2; tx++) {
         if (map[ty] && map[ty][tx] === 1) return true;
@@ -216,7 +216,8 @@
     if (ent) {
       decQueue(sp.queue, pickedSub);
       sp.nextAvailableAt = nowSec() + sp.cooldownSec;
-      if (G.entities && !G.entities.includes(ent)) G.entities.push(ent);
+      const game = getGame();
+      if (game.entities && !game.entities.includes(ent)) game.entities.push(ent);
       return true;
     } else {
       // Si falló el spawn, deja la cola como estaba y reintenta más tarde
