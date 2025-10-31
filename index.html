@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Il Divo: Hospital Dash!</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="./style.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27><rect width=%2732%27 height=%2732%27 fill=%27%230d1117%27/><text x=%2750%25%27 y=%2756%25%27 dominant-baseline=%27middle%27 text-anchor=%27middle%27 font-family=%27Arial%27 font-size=%2720%27 fill=%27%23fff%27>HD</text></svg>">
 
 
@@ -102,49 +102,52 @@
   </div>
 
   <!-- JS (no modules para funcionar con file://) -->
-  <script src="assets/entities/heroes.entities.js"></script>
-  <script src="assets/entities/carts.entities.js"></script>
-  <script src="assets/entities/mosquito.entities.js"></script>
-  <script src="assets/entities/rats.entities.js"></script>
-  <script src="assets/entities/celador.entities.js"></script>
-  <script src="assets/entities/cleaner.entities.js"></script>
-  <script src="assets/entities/doors.entities.js"></script>
-  <script src="assets/entities/elevators.entities.js"></script>
-  <script src="assets/entities/enfermera_sexy.entities.js"></script>
-  <script src="assets/entities/jefe_servicio.entities.js"></script>
-  <script src="assets/entities/medico.entities.js"></script>
-  <script src="assets/entities/objects.entities.js"></script>
-  <script src="assets/entities/patients.entities.js"></script>
-  <script src="assets/entities/spawner.entities.js"></script>
-  <script src="assets/entities/supervisora.entities.js"></script>
-  <script src="assets/entities/tcae.entities.js"></script>
-  <script src="assets/entities/medico.entities.js"></script>
-  <script src="assets/entities/jefe_servicio.entities.js"></script>
-  <script src="assets/entities/familiar_molesto.entities.js"></script>
-  <script src="assets/entities/hazards.entities.js"></script>
-  <script src="assets/entities/bossrush.entities.js"></script>
-  <script src="assets/entities/guardia.entities.js"></script>
-  <script src="assets/entities/lights.entities.js"></script>
-  <!-- Plugins utilitarios -->
-  <script src="assets/apisPlugins/arrowguide.plugin.js"></script>
-  <script src="assets/apisPlugins/skyweather.plugin.js"></script>
-  <script src="assets/apisPlugins/puppet.plugin.js"></script>
-  <script src="assets/apisPlugins/lighting.plugin.js"></script>
-  <script src="assets/apisPlugins/mouse.control.api.js"></script>
-  <script src="assets/apisPlugins/furious.plugin.js"></script>
-  <script src="assets/apisPlugins/bells.plugin.js"></script>
-  <script src="assets/apisPlugins/gameflow.api.js"></script>
-  <script src="assets/apisPlugins/placement.api.js"></script>
-  <script src="assets/apisPlugins/presentation.api.js"></script>
-  <script src="assets/apisPlugins/music.api.js"></script>
-  <!--<script src="assets/apisPlugins/audio.api.js"></script>-->
-  <script src="assets/apisPlugins/score.api.js"></script>
-  <script src="assets/apisPlugins/physics.plugin.js"></script>
-  <script src="assets/apisPlugins/mapgen.plugin.js"></script>
-  <script src="assets/apisPlugins/dialog.plugin.js"></script>
-  <script src="assets/apisPlugins/hud.api.js"></script>
-  <!-- ⬇️ NUEVO: sprites unificado, SIEMPRE ANTES de game.js -->
-  <script src="assets/apisPlugins/sprites.plugin.js"></script>
+  <script src="./assets/plugins/physics.plugin.js"></script>
+  <script src="./assets/plugins/lighting.plugin.js"></script>
+  <script src="./assets/plugins/skyweather.plugin.js"></script>
+  <script src="./assets/plugins/arrowguide.plugin.js"></script>
+
+  <script src="./assets/plugins/damage.plugin.js"></script>
+  <script src="./assets/plugins/puppet.plugin.js"></script>
+  <script src="./assets/plugins/puppet.rigs.plugin.js"></script>
+
+  <script src="./assets/plugins/audio.plugin.js"></script>
+  <script src="./assets/plugins/score.plugin.js"></script>
+  <script src="./assets/plugins/placement.plugin.js"></script>
+  <script src="./assets/plugins/mapgen.plugin.js"></script>
+  <script src="./assets/plugins/sprites.plugin.js"></script>
+  <script src="./assets/plugins/gameflow.plugin.js"></script>
+
+  <script src="./assets/plugins/presentation.plugin.js"></script>
+  <script src="./assets/plugins/mouse.control.plugin.js"></script>
+  <script src="./assets/plugins/furious.plugin.js"></script>
+  <script src="./assets/plugins/bells.plugin.js"></script>
+  <script src="./assets/plugins/dialog.plugin.js"></script>
+  <script src="./assets/plugins/hud.plugin.js"></script>
+  <script src="./assets/plugins/music.plugin.js"></script>
+
+  <!-- Entidades -->
+  <script src="./assets/plugins/entities/heroes.entities.js"></script>
+  <script src="./assets/plugins/entities/carts.entities.js"></script>
+  <script src="./assets/plugins/entities/mosquito.entities.js"></script>
+  <script src="./assets/plugins/entities/rats.entities.js"></script>
+  <script src="./assets/plugins/entities/celador.entities.js"></script>
+  <script src="./assets/plugins/entities/cleaner.entities.js"></script>
+  <script src="./assets/plugins/entities/doors.entities.js"></script>
+  <script src="./assets/plugins/entities/elevators.entities.js"></script>
+  <script src="./assets/plugins/entities/enfermera_sexy.entities.js"></script>
+  <script src="./assets/plugins/entities/jefe_servicio.entities.js"></script>
+  <script src="./assets/plugins/entities/medico.entities.js"></script>
+  <script src="./assets/plugins/entities/objects.entities.js"></script>
+  <script src="./assets/plugins/entities/patients.entities.js"></script>
+  <script src="./assets/plugins/entities/spawner.entities.js"></script>
+  <script src="./assets/plugins/entities/supervisora.entities.js"></script>
+  <script src="./assets/plugins/entities/tcae.entities.js"></script>
+  <script src="./assets/plugins/entities/familiar_molesto.entities.js"></script>
+  <script src="./assets/plugins/entities/hazards.entities.js"></script>
+  <script src="./assets/plugins/entities/bossrush.entities.js"></script>
+  <script src="./assets/plugins/entities/guardia.entities.js"></script>
+  <script src="./assets/plugins/entities/lights.entities.js"></script>
 
   <script id="sprites-manifest" type="application/json">
   [
@@ -180,7 +183,7 @@
 
 
   <!-- Motor central SIEMPRE el último -->
-  <script src="game.js"></script>
+  <script src="./assets/plugins/game.js"></script>
 
 <script>
 (function(){
@@ -217,7 +220,7 @@
   window.addEventListener('load', () => { 
     // ---- flujo normal (sin ?mini=1 ni ?map=mini|debug) ----
     if (window.MusicAPI && MusicAPI.init) {
-      MusicAPI.init({ urls: { intro: 'assets/music/intro.ogg' } });
+      MusicAPI.init({ urls: { intro: './assets/audio/intro.ogg' } });
     }
     if (window.PresentationAPI && PresentationAPI.playIntroSequence) {
       PresentationAPI.playIntroSequence();

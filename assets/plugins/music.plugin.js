@@ -19,7 +19,7 @@
     active: 'A',
     buffers: {},       // { key: AudioBuffer }
     htmlFallback: {},  // { key: HTMLAudioElement } si no hay WebAudio
-    urls: { intro: 'assets/music/intro.ogg' },          // + 'intro' para la música de la intro
+    urls: { intro: 'assets/audio/intro.ogg' },          // + 'intro' para la música de la intro
 // { level1, level2, level3, urgency, victory, gameover } (se pueden sobreescribir en init)
     currentLevelKey: null,
     isUrgency: false,
@@ -32,7 +32,7 @@
 
     /* ------------------------------- INIT ---------------------------------- */
     init(opts = {}) {
-      this.urls = Object.assign({ intro: 'assets/music/intro.ogg' }, opts.urls || {});
+      this.urls = Object.assign({ intro: 'assets/audio/intro.ogg' }, opts.urls || {});
       this.musicVol = clamp(+loadLS('musicVol', 0.9), 0, 1);
       this.sfxVol   = clamp(+loadLS('sfxVol',   1.0), 0, 1);
       this.muted    = loadLS('musicMuted', '0') === '1';

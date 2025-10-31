@@ -6,8 +6,7 @@
   const FRAME_NUMBERS = Array.from({length: 26}, (_, i) => i + 1);
   const LOGO_FRAME = 26; // ← viñeta del logo final (vuelo obligatorio)
   const BOOK_FRAMES = new Set([4,5,6,7,11,15,21]); // páginas de "libro": +tiempo
-  const IMG_WITH  = n => `assets/images/Intro/viñeta-${n}.png`;
-  const IMG_WOUT  = n => `assets/images/Intro/vineta-${n}.png`;
+  const IMG_PATH  = n => `./assets/images/Intro/vineta-${n}.png`;
 
 
   // --- estado
@@ -31,20 +30,12 @@
 
   // --- util: carga con fallback (con/sin tilde) + último recurso (logo_juego.png)
   function setSrc(n, cb){
-    const primary = IMG_WITH(n);
-    const fallback= IMG_WOUT(n);
-    let triedFallback = false;
+    const primary = IMG_PATH(n);
 
     img.onerror = () => {
-      if (!triedFallback) {                 // 1º intento: sin tilde
-        triedFallback = true;
-        img.src = fallback;
-        return;
-      }
-      // 2º intento: si es el logo final o ha fallado todo, usa el logo del juego
       img.onerror = null;
-      if (n === LOGO_FRAME) img.src = 'assets/images/logo_juego.png';
-      cb && cb(); // continúa aunque no cargue la imagen (no bloquea la animación)
+      if (n === LOGO_FRAME) img.src = './assets/images/logo_juego.png';
+      cb && cb();
     };
     img.onload  = () => cb && cb();
     img.src = primary;
