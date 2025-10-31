@@ -191,7 +191,7 @@
       ensureOnArrays(e);
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
-      window.PuppetAPI?.attach?.(e, { rig: 'biped', z: 3, scale: 1.0 });
+      window.PuppetAPI?.attach?.(e, { rig: `hero.${key}`, z: 0, scale: 1 });
       attachFlashlight(e);
       try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}
       return e;
@@ -206,7 +206,7 @@
       ensureOnArrays(e);
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
-      window.PuppetAPI?.attach?.(e, { rig: 'biped', z: 3, scale: 1.0 });
+      window.PuppetAPI?.attach?.(e, { rig: `hero.${key}`, z: 0, scale: 1 });
       attachFlashlight(e);
       return e;
     },

@@ -76,15 +76,17 @@
       // p: {x,y,color,intensity,radius,broken,type, _ascii:'L'|'l'}
       const base = colorByZone(p.x||0, p.y||0, p||{});
       const broken = !!(p && (p.broken || p._ascii === 'l' || p.char === 'l'));
+      const radius = p.radius || base.radius;
+      const intensity = (typeof p.intensity==='number'?p.intensity:base.intensity);
 
       this.x = (p.x|0)||0; this.y = (p.y|0)||0;
       this.w = 2; this.h = 2;
       this.kind = ENT.LIGHT || (ENT.LIGHT = 505);
       this._lightId = (W.LightingAPI && W.LightingAPI.addLight({
         x:this.x, y:this.y,
-        radius:  (p.radius || base.radius),
+        radius,
         color:   (p.color  || base.color),
-        intensity:(typeof p.intensity==='number'?p.intensity:base.intensity),
+        intensity,
         broken,
         type: p.type || 'room'
       })) || null;
@@ -93,6 +95,10 @@
       this.static = true;
       this.solid = false;
       this.dead  = false;
+
+      try {
+        window.PuppetAPI?.attach?.(this, { rig: 'light', z: 0, scale: 1, data: { radius, intensity, broken } });
+      } catch (_) {}
     }
     update(/*dt*/){}
     draw(/*ctx*/){}

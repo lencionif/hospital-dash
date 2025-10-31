@@ -140,6 +140,8 @@
       ctx.restore();
     };
 
+    try { window.PuppetAPI?.attach?.(e, { rig: 'elevator', z: 0, scale: 1 }); } catch (_) {}
+
     return e;
   }
 

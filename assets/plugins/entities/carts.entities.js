@@ -118,6 +118,13 @@
       e.onExplode = opts.onExplode || null;
       e.dead = false;
 
+      const rigName = (e.cartType === this.TYPES.ER)
+        ? 'cart.emergency'
+        : (e.cartType === this.TYPES.MED ? 'cart.meds' : 'cart.food');
+      try {
+        window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } });
+      } catch (_) {}
+
       // registro
       const G=getG();
       if (!G.entities?.includes(e)) G.entities.push(e);

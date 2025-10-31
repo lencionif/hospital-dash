@@ -13,7 +13,7 @@
   }
 
   function attachPuppet(ent){
-    try { window.PuppetAPI?.attach?.(ent, { rig: 'rat', z: 1, scale: 0.9 }); } catch (_) {}
+    try { window.PuppetAPI?.attach?.(ent, { rig: 'rat', z: 0, scale: 1 }); } catch (_) {}
   }
 
   function ensureKind(state){
