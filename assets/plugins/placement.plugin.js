@@ -1,4 +1,4 @@
-// filename: placement.api.js
+// filename: placement.plugin.js
 // Colocación de entidades sobre el mapa respetando zonas: sala de control, boss room, fuera de mapa.
 // Usa tiles walkables (map[y][x] !== 1). Evita spawn en cámara inicial si se indica.
 

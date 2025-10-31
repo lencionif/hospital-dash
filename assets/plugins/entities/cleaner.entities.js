@@ -1,4 +1,4 @@
-// filename: assets/entities/cleaner.entities.js
+// filename: assets/plugins/entities/cleaner.entities.js
 // NPC: Chica de la Limpieza + Charcos (suelo mojado) con IA mejorada
 // - Deja charcos al moverse y en “ráfagas de fregado”; se evaporan solos.
 // - Cualquier entidad encima de charco resbala (menos fricción + pequeño skid).

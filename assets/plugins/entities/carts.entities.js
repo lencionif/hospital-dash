@@ -1,7 +1,7 @@
 // filename: carts.entities.js
 // API de CARROS (Food / Med / ER) para “Il Divo: Hospital Dash!”
 // - Independiente y tolerante: no requiere spawner para poblar al inicio.
-// - Se integra con placement.api.js vía Entities.Cart.spawn(sub, x, y, p)
+// - Se integra con placement.plugin.js vía Entities.Cart.spawn(sub, x, y, p)
 // - Compat con physics.plugin.js (cartImpactDamage) poniendo kind===5.
 // - Fallbacks si faltan helpers del motor (isWallAt, moveWithCollisions, etc).
 
@@ -127,7 +127,7 @@
       return e;
     },
 
-    // wrapper de compat con placement.api.js y SpawnerAPI
+    // wrapper de compat con placement.plugin.js y SpawnerAPI
     spawn(sub, x, y, p){
       const type = (typeof sub==='string'? sub : (p?.type||'med')).toLowerCase();
       return this.create(type, x|0, y|0, p||{});
@@ -315,7 +315,7 @@
   }
 })();
 
-// Compat con placement.api.js → Entities.Cart.spawn(sub,x,y,p)
+// Compat con placement.plugin.js → Entities.Cart.spawn(sub,x,y,p)
 window.Entities = window.Entities || {};
 window.Entities.Cart = {
   spawn: (sub, x, y, p) => (window.CartsAPI?.spawn ? window.CartsAPI.spawn(sub, x, y, p) : null)

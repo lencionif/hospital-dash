@@ -6,7 +6,7 @@
 // Roberto:   linterna NARANJA, 3 corazones, +velocidad, visión media
 //
 // Mantiene compat con tu motor: usa window.G/ENT/TILE_SIZE, LightingAPI y FogAPI si existen.
-// Llamada de poblamiento: placement.api -> Entities.Hero.spawnPlayer(x,y,p)
+// Llamada de poblamiento: placement.plugin -> Entities.Hero.spawnPlayer(x,y,p)
 
 (function () {
   'use strict';
@@ -181,7 +181,7 @@
       return k;
     },
 
-    // Punto de entrada del poblamiento (lo llama placement.api)
+    // Punto de entrada del poblamiento (lo llama placement.plugin)
     // -> crea el jugador con la skin/stats adecuadas y lo inserta en G.entities
     spawnPlayer(x, y, p = {}) {
       const key = this.resolveKey(p);

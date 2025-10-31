@@ -4,7 +4,7 @@
 // - Entregar la pastilla correcta apaga el timbre, marca al paciente como atendido
 //   y deja de contar como “paciente normal” (cambia a kind=PATIENT_DONE).
 // - Si expira el timbre (random 5–10 min), el paciente se transforma en Paciente Furiosa.
-// - Se integra con placement.api.js a través de window.Entities.Patient.spawn.
+// - Se integra con placement.plugin.js a través de window.Entities.Patient.spawn.
 // - Incluye shims de Entities.Objects.spawnPill/spawnBell si no existen.
 // - Auto-hook opcional al bucle si G.systems está disponible.
 
@@ -395,7 +395,7 @@
   };
 
   // ==== Integraciones / shims ==============================================
-  // 1) placement.api.js llama a Entities.Patient.spawn(x,y,p) para "patient".
+  // 1) placement.plugin.js llama a Entities.Patient.spawn(x,y,p) para "patient".
   //    (y a Entities.Objects.spawnPill/spawnBell para "pill"/"bell")
   W.Entities = W.Entities || {};
   W.Entities.Patient = W.Entities.Patient || {
@@ -442,7 +442,7 @@
 
   // 3) Export simple
   W.PatientsAPI = PatientsAPI;
-  // --- Wrapper opcional para compatibilidad con placement.api.js ---
+  // --- Wrapper opcional para compatibilidad con placement.plugin.js ---
   window.Entities = window.Entities || {};
   window.Entities.Objects = window.Entities.Objects || {};
   if (!window.Entities.Objects.spawnPill){

@@ -4,7 +4,7 @@
 //  - Se instancian cerradas.
 //  - SOLO Jugador y NPCs pueden abrir/cerrar (sin apertura por impactos).
 //  - La Boss Door nace bloqueada y se abre automáticamente cuando no quedan pacientes normales.
-//  - Compatible con placement.api.js → Entities.Door.spawn(x,y,{ locked, isBoss })
+//  - Compatible con placement.plugin.js → Entities.Door.spawn(x,y,{ locked, isBoss })
 //  - Sprites: usa ENT.DOOR y la flag e.solid (cerrada) / !e.solid (abierta).
 
 (function (W) {
@@ -35,7 +35,7 @@
   const Doors = {
     _bossUnlocked: false,
 
-    // Crear puerta en coordenadas de MUNDO (px); placement.api.js ya te da px
+    // Crear puerta en coordenadas de MUNDO (px); placement.plugin.js ya te da px
     spawn(x, y, opts = {}) {
       const e = {
         kind: ENT.DOOR,

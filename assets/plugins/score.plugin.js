@@ -1,4 +1,4 @@
-/* filename: score.api.js
+/* filename: score.plugin.js
    Sistema de Puntuación — “Il Divo: Hospital Dash!”
    ----------------------------------------------------
    ✔ Suma puntos por:

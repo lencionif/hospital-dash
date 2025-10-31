@@ -1,4 +1,4 @@
-/* mouse.control.api.js  –  Click-to-move + usar/abrir + cursores.
+/* mouse.control.plugin.js  –  Click-to-move + usar/abrir + cursores.
    Requiere:
      - mapa en grid de colisiones (0 = libre, !=0 muro)
      - camera {x,y,zoom}

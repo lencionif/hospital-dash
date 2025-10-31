@@ -160,7 +160,7 @@
     return e;
   }
 
-  // Integración con placement.api.js (p.type==='light'/'boss_light')
+  // Integración con placement.plugin.js (p.type==='light'/'boss_light')
   W.Entities.spawnFromPlacement_Light = function(p){ return spawnLight(p.x|0, p.y|0, p); };
   W.Entities.spawnFromPlacement_BossLight = function(p){ return spawnBossLight(p.x|0, p.y|0, p); };
 

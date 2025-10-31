@@ -1,4 +1,4 @@
-// filename: assets/entities/jefe_servicio.entities.js
+// filename: assets/plugins/entities/jefe_servicio.entities.js
 // “Jefe de Servicio”: NPC único con acertijos (recompensas/castigos),
 // patrulla ligera y utilidades de compatibilidad con tu motor.
 // Integra con: Dialog, ScoreAPI, Physics, DoorsAPI, G.effects.
