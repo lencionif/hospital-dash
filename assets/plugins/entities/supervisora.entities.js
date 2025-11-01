@@ -69,6 +69,7 @@
         x: x|0, y: y|0, w: this.cfg.w, h: this.cfg.h,
         vx:0, vy:0, mass:this.cfg.mass, restitution:this.cfg.restitution, friction:this.cfg.friction,
         maxSpeed: this.cfg.maxSpeed, pushable: true, solid: true, dynamic: true,
+        skin: 'supervisora.png',
         ai: { roamAngle: this._rng()*Math.PI*2, roamTime: 0, pause: 0 }
       };
 
@@ -76,6 +77,7 @@
       const g = G();
       g.entities.push(e);
       g.npcs.push(e);
+      try { window.PuppetAPI?.attach?.(e, { rig: 'npc_supervisora', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
       this.list.push(e);
 
       // Arrancar temporizador de drop aleatorio

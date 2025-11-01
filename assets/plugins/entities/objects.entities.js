@@ -227,17 +227,31 @@
     it._remove = false;
     it.static = false;
     it.pushable = false;
-    const rigName = (() => {
-      const k = String(kind || '').toLowerCase();
-      if (k.startsWith('syringe-')) return `syringe.${k.split('-')[1]}`;
-      if (k.startsWith('drip-')) return `drip.${k.split('-')[1]}`;
-      if (k.startsWith('pill-')) return `pill.${k.split('-')[1]}`;
-      if (k === 'pill_final') return 'pill.final';
-      if (k === 'phone' || k === 'telefono') return 'phone';
-      return null;
-    })();
+    const k = String(kind || '').toLowerCase();
+    let rigName = null;
+    const rigData = {};
+    if (k.startsWith('syringe-')) {
+      rigName = 'syringe';
+      const color = k.split('-')[1] || '';
+      const map = { red: 'jeringa_roja.png', blue: 'jeringa_azul.png', green: 'jeringa_verde.png' };
+      rigData.skin = map[color] || `jeringa_${color}.png`;
+    } else if (k.startsWith('drip-')) {
+      rigName = 'drip';
+      const color = k.split('-')[1] || '';
+      const map = { red: 'gotero_rojo.png', blue: 'gotero_azul.png', green: 'gotero_verde.png' };
+      rigData.skin = map[color] || `gotero_${color}.png`;
+    } else if (k.startsWith('pill-')) {
+      rigName = 'pill';
+      const name = k.split('-')[1] || '';
+      rigData.skin = `pastilla_${name}.png`;
+    } else if (k === 'pill_final') {
+      rigName = 'pill';
+      rigData.skin = 'pastilla_final.png';
+    } else if (k === 'phone' || k === 'telefono') {
+      rigName = 'phone';
+    }
     if (rigName) {
-      try { window.PuppetAPI?.attach?.(it, { rig: rigName, z: 0, scale: 1 }); } catch (_) {}
+      try { window.PuppetAPI?.attach?.(it, { rig: rigName, z: 0, scale: 1, data: rigData }); } catch (_) {}
     }
     // Inserción al engine
     const g = G();

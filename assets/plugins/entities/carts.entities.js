@@ -119,8 +119,8 @@
       e.dead = false;
 
       const rigName = (e.cartType === this.TYPES.ER)
-        ? 'cart.emergency'
-        : (e.cartType === this.TYPES.MED ? 'cart.meds' : 'cart.food');
+        ? 'cart_emergency'
+        : (e.cartType === this.TYPES.MED ? 'cart_meds' : 'cart_food');
       try {
         window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } });
       } catch (_) {}

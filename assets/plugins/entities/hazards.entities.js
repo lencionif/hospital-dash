@@ -96,7 +96,7 @@
         solid:false, dynamic:false, pushable:false, dead:false
       };
       this._register(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'hazard.water', z: 0, scale: 1 }); } catch (_) {}
+      try { window.PuppetAPI?.attach?.(e, { rig: 'hazard_water', z: 0, scale: 1 }); } catch (_) {}
       return e;
     },
 
@@ -122,7 +122,7 @@
         });
       }
       this._register(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'hazard.fire', z: 0, scale: 1 }); } catch (_) {}
+      try { window.PuppetAPI?.attach?.(e, { rig: 'hazard_fire', z: 0, scale: 1 }); } catch (_) {}
       return e;
     },
 

@@ -200,12 +200,13 @@
       lastHeroSeenAt: 0,
       lastHeroPos: null,
       name: "Celador",
-      skin: "celador",
+      skin: "celador.png",
       light: b.lightColor,
       _lastSafeX: x, _lastSafeY: y
     };
     pushUnique(G.entities, e);
     pushUnique(G.npcs || (G.npcs=[]), e);
+    try { window.PuppetAPI?.attach?.(e, { rig: 'npc_celador', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
     return e;
   }
 

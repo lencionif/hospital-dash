@@ -12,7 +12,7 @@
   }
 
   function attachPuppet(ent){
-    try { window.PuppetAPI?.attach?.(ent, { rig: 'enemy_mosquito', z: 0, scale: 1 }); } catch (_) {}
+    try { window.PuppetAPI?.attach?.(ent, { rig: 'mosquito', z: 0, scale: 1 }); } catch (_) {}
   }
 
   function ensureKind(state){
