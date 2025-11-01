@@ -84,19 +84,38 @@
 
     <!-- NIVEL COMPLETADO -->
     <div id="level-complete-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box">
-        <h2>¡NIVEL COMPLETADO!</h2>
-        <p>¡Has salvado el turno! 🎉</p>
-        <p>Pulsa <b>R</b> para jugar de nuevo.</p>
+      <div class="menu-box scoreboard" role="dialog" aria-modal="true" aria-labelledby="scoreboard-title">
+        <header class="scoreboard-header">
+          <h2 id="scoreboard-title">¡Nivel completado!</h2>
+          <p id="scoreboard-subtitle">Resumen de puntuación</p>
+        </header>
+        <div class="scoreboard-body">
+          <div class="scoreboard-rows" id="scoreboard-rows" role="list"></div>
+        </div>
+        <div class="scoreboard-total" aria-live="polite">
+          <span>Total</span>
+          <strong id="scoreboard-total">0</strong>
+        </div>
+        <button id="scoreboard-continue" class="primary" type="button">Continuar</button>
+        <p class="tip">Pulsa <b>Enter</b> o haz clic para continuar.</p>
       </div>
     </div>
 
     <!-- GAME OVER -->
     <div id="game-over-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box">
-        <h2>GAME OVER</h2>
-        <p>El caos te ha superado 😵‍💫</p>
+      <div class="menu-box" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+        <h2 id="game-over-title">GAME OVER</h2>
+        <p class="game-over-message">El caos te ha superado 😵‍💫</p>
         <p>Pulsa <b>R</b> para intentarlo de nuevo.</p>
+      </div>
+    </div>
+
+    <!-- READY / LEVEL INTRO -->
+    <div id="ready-overlay" class="overlay hidden" aria-live="polite">
+      <div class="ready-box" role="dialog" aria-modal="true" aria-labelledby="ready-level">
+        <p id="ready-level" class="ready-level">Turno 1</p>
+        <div class="ready-count" id="ready-count">3</div>
+        <p id="ready-message" class="ready-message">¡Preparados!</p>
       </div>
     </div>
   </div>

@@ -1466,42 +1466,45 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // 1) Recoger píldora (ENT.PILL)
     if (!G.carry) {
       for (const e of [...G.entities]) {
-        if (e.kind !== ENT.PILL || e.dead) continue;
-        if (AABB(G.player, e)) {
-          // Vinculada ya en parseMap (targetName o patientName)
-          G.carry = { label: e.label, patientName: e.targetName };
-          // Quita la píldora del mundo
-          G.entities = G.entities.filter(x => x !== e);
-          G.movers   = G.movers.filter(x => x !== e);
-          break;
-        }
+        if (!e || e.dead || e.kind !== ENT.PILL) continue;
+        if (!AABB(G.player, e)) continue;
+        G.carry = {
+          label: e.label || 'Pastilla',
+          patientName: e.targetName || null,
+          pairName: e.pairName || null,
+          anagram: e.anagram || null
+        };
+        try { window.ArrowGuide?.setTargetByKeyName?.(G.carry.pairName); } catch (_) {}
+        G.entities = G.entities.filter(x => x !== e);
+        G.movers   = G.movers.filter(x => x !== e);
+        G.pills    = (G.pills || []).filter(x => x !== e);
+        break;
       }
     }
 
     // 2) Entregar al paciente correcto tocándolo (ENT.PATIENT)
     if (G.carry) {
       for (const pac of [...G.patients]) {
-        if (!pac || pac.dead || pac.delivered) continue;
-        const esCorrecto = (pac.name === G.carry.patientName);
-        if (esCorrecto && nearAABB(G.player, pac, 12)) {
-          pac.satisfied = true;
-          pac.delivered = true;
-          pac.pillSatisfied = true;
-          pac.attendedAndMatched = true;
-          pac.dead = true;
-          pac.solid = false;
-          pac.hidden = true;
-          pac.visible = false;
-          // Actualiza HUD
+        if (!pac || pac.dead || pac.attended) continue;
+        if (!nearAABB(G.player, pac, 12)) continue;
+        const matchesKey = G.carry.pairName && pac.keyName && pac.keyName === G.carry.pairName;
+        const matchesName = !G.carry.pairName && G.carry.patientName && pac.name === G.carry.patientName;
+        if (matchesKey || matchesName) {
+          window.PatientsAPI?.deliver?.(pac, null);
           G.carry = null;
-          G.delivered++;
-          window.GameFlowAPI?.notifyPatientDelivered?.(pac);
+          G.delivered = (G.delivered || 0) + 1;
+          const stats = G.stats || {};
+          if ((stats.remainingPatients || 0) === 0 && (stats.activeFuriosas || 0) === 0) {
+            try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
+          } else {
+            try { window.ArrowGuide?.clearTarget?.(); } catch (_) {}
+          }
+          break;
+        } else {
+          window.PatientsAPI?.wrongDelivery?.(pac);
           break;
         }
       }
-      // Limpia lista auxiliar pero conserva entidades para GameFlow
-      G.patients = G.patients.filter(p => p && !p.delivered);
-      G.npcs     = G.npcs.filter(n => n && !n.delivered);
     }
   }
 
@@ -1768,9 +1771,10 @@ function drawEntities(c2){
     // Marcador de click del MouseNav (anillo)
     if (window.MouseNav && window._mouseNavInited) { try { MouseNav.render(ctx, camera); } catch(e){} }
 
+    try { window.HUD?.drawWorldOverlays?.(ctx, camera, G); } catch(e){ console.warn('HUD.drawWorldOverlays', e); }
+
     // 1) Dibuja el HUD (esta función hace clearRect del HUD canvas)
     try { window.HUD && HUD.render(hudCtx, camera, G); } catch(e){ console.warn('HUD.render', e); }
-    try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
 
     // 2) Dibuja AHORA la flecha y overlays, para que el clear del HUD no las borre
@@ -2077,7 +2081,7 @@ function drawEntities(c2){
           G._gameOverShown = true;
           const pool = GAME_OVER_MESSAGES;
           const message = pool[Math.floor(Math.random() * pool.length)] || 'El caos te ha superado…';
-          const textNode = gameOverScreen?.querySelector('.menu-box p:nth-of-type(2)');
+          const textNode = gameOverScreen?.querySelector('.menu-box .game-over-message');
           if (textNode) textNode.textContent = message;
           try { window.PresentationAPI?.gameOver?.({ mode: 'under' }); }
           catch (err){ console.warn('[PresentationAPI] gameOver', err); }

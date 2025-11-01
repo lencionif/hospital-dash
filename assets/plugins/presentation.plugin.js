@@ -250,6 +250,306 @@ function finish(){
   window.dispatchEvent(new Event('intro:complete'));
 }
 
+  // —— helpers compartidos para overlays in-game ——
+  const SCOREBOARD_STATE = {
+    listeners: [],
+    rows: [],
+    overlay: null,
+    button: null,
+    totalEl: null,
+    totalTarget: 0,
+    running: false,
+    finished: false,
+    skip: false,
+    proceed: null
+  };
+
+  function addScoreboardListener(el, ev, fn, opts){
+    if (!el || typeof el.addEventListener !== 'function') return;
+    el.addEventListener(ev, fn, opts);
+    SCOREBOARD_STATE.listeners.push([el, ev, fn, opts]);
+  }
+
+  function clearScoreboardListeners(){
+    for (const [el, ev, fn, opts] of SCOREBOARD_STATE.listeners.splice(0)) {
+      try { el.removeEventListener(ev, fn, opts); } catch (_) {}
+    }
+  }
+
+  function formatPoints(n){
+    const value = Number(n) || 0;
+    return value.toLocaleString('es-ES');
+  }
+
+  const easeOutCubic = (t) => (1 - Math.pow(1 - t, 3));
+
+  function animateValue(el, target, onDone){
+    if (!el){ onDone && onDone(); return; }
+    if (SCOREBOARD_STATE.skip){
+      el.textContent = formatPoints(target);
+      onDone && onDone();
+      return;
+    }
+    const start = performance.now();
+    const duration = 520 + Math.min(780, Math.abs(Number(target) || 0) * 4);
+
+    function step(ts){
+      if (SCOREBOARD_STATE.skip){
+        el.textContent = formatPoints(target);
+        onDone && onDone();
+        return;
+      }
+      const t = Math.min(1, (ts - start) / duration);
+      const eased = easeOutCubic(t);
+      const value = Math.round((Number(target) || 0) * eased);
+      el.textContent = formatPoints(value);
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        onDone && onDone();
+      }
+    }
+
+    requestAnimationFrame(step);
+  }
+
+  function finishScoreboard(){
+    if (!SCOREBOARD_STATE.running) return;
+    SCOREBOARD_STATE.running = false;
+    SCOREBOARD_STATE.skip = false;
+    SCOREBOARD_STATE.finished = false;
+    clearScoreboardListeners();
+    if (SCOREBOARD_STATE.overlay){
+      SCOREBOARD_STATE.overlay.classList.add('hidden');
+      SCOREBOARD_STATE.overlay.classList.remove('scoreboard-ready');
+      SCOREBOARD_STATE.overlay.removeAttribute('data-scoreboard-level');
+    }
+    SCOREBOARD_STATE.rows.length = 0;
+    SCOREBOARD_STATE.overlay = null;
+    SCOREBOARD_STATE.button = null;
+    SCOREBOARD_STATE.totalEl = null;
+    SCOREBOARD_STATE.totalTarget = 0;
+    const proceed = SCOREBOARD_STATE.proceed;
+    SCOREBOARD_STATE.proceed = null;
+    proceed && proceed();
+  }
+
+  function skipScoreboard(){
+    if (!SCOREBOARD_STATE.running || SCOREBOARD_STATE.skip) return;
+    SCOREBOARD_STATE.skip = true;
+    for (const row of SCOREBOARD_STATE.rows){
+      if (!row) continue;
+      row.el?.classList.add('revealed');
+      if (row.valueEl) row.valueEl.textContent = formatPoints(row.points);
+    }
+    if (SCOREBOARD_STATE.totalEl){
+      SCOREBOARD_STATE.totalEl.textContent = formatPoints(SCOREBOARD_STATE.totalTarget || 0);
+    }
+    scoreboardComplete();
+  }
+
+  function scoreboardComplete(){
+    if (!SCOREBOARD_STATE.running || SCOREBOARD_STATE.finished) return;
+    SCOREBOARD_STATE.finished = true;
+    if (SCOREBOARD_STATE.overlay){
+      SCOREBOARD_STATE.overlay.classList.add('scoreboard-ready');
+    }
+    if (SCOREBOARD_STATE.button){
+      SCOREBOARD_STATE.button.disabled = false;
+      SCOREBOARD_STATE.button.focus?.();
+    }
+  }
+
+  function ensureReadyOverlay(){
+    return D.getElementById('ready-overlay');
+  }
+
+  function runLevelIntro(level, done){
+    const overlayReady = ensureReadyOverlay();
+    if (!overlayReady){ done && done(); return; }
+    const levelEl = overlayReady.querySelector('#ready-level');
+    const countEl = overlayReady.querySelector('#ready-count');
+    const msgEl   = overlayReady.querySelector('#ready-message');
+    if (levelEl) levelEl.textContent = `Turno ${level}`;
+    overlayReady.classList.remove('hidden');
+    overlayReady.classList.add('ready-visible');
+
+    const phases = [
+      { count: '3', message: '¡Preparados!' },
+      { count: '2', message: '¡Listos!' },
+      { count: '1', message: '¡Ya casi!' },
+      { count: '¡YA!', message: '¡A atender!' }
+    ];
+
+    let idx = 0;
+    function showPhase(){
+      const phase = phases[idx++];
+      if (!phase){ return finishIntro(); }
+      if (countEl){
+        countEl.textContent = phase.count;
+        countEl.classList.remove('animate');
+        void countEl.offsetWidth; // reflow para reiniciar animación
+        countEl.classList.add('animate');
+      }
+      if (msgEl) msgEl.textContent = phase.message;
+      const delay = idx === phases.length ? 720 : 560;
+      setTimeout(() => {
+        if (idx >= phases.length){
+          finishIntro();
+        } else {
+          showPhase();
+        }
+      }, delay);
+    }
+
+    function finishIntro(){
+      setTimeout(() => {
+        countEl?.classList.remove('animate');
+        overlayReady.classList.add('hidden');
+        overlayReady.classList.remove('ready-visible');
+        done && done();
+      }, 360);
+    }
+
+    showPhase();
+  }
+
+  function runScoreboard(level, data, proceed){
+    const overlay = D.getElementById('level-complete-screen');
+    const rowsWrap = overlay?.querySelector('#scoreboard-rows');
+    const totalEl = overlay?.querySelector('#scoreboard-total');
+    const button = overlay?.querySelector('#scoreboard-continue');
+    const title = overlay?.querySelector('#scoreboard-title');
+    const subtitle = overlay?.querySelector('#scoreboard-subtitle');
+    if (!overlay || !rowsWrap || !totalEl || !button){
+      proceed && proceed();
+      return;
+    }
+
+    overlay.classList.remove('hidden');
+    overlay.classList.remove('scoreboard-ready');
+    overlay.setAttribute('data-scoreboard-level', String(level));
+    if (title) title.textContent = `¡Nivel ${level} completado!`;
+    if (subtitle) subtitle.textContent = 'Desglose de puntuación';
+    button.disabled = true;
+    rowsWrap.innerHTML = '';
+    totalEl.textContent = '0';
+
+    const breakdown = Array.isArray(data?.breakdown) && data.breakdown.length
+      ? data.breakdown
+      : [{ label: 'Puntos del nivel', points: Number(data?.total || 0) }];
+
+    SCOREBOARD_STATE.listeners.length = 0;
+    SCOREBOARD_STATE.rows.length = 0;
+    SCOREBOARD_STATE.overlay = overlay;
+    SCOREBOARD_STATE.button = button;
+    SCOREBOARD_STATE.totalEl = totalEl;
+    SCOREBOARD_STATE.totalTarget = Number(data?.total);
+    if (!Number.isFinite(SCOREBOARD_STATE.totalTarget)){
+      SCOREBOARD_STATE.totalTarget = breakdown.reduce((acc, row) => acc + (Number(row.points) || 0), 0);
+    }
+    SCOREBOARD_STATE.running = true;
+    SCOREBOARD_STATE.finished = false;
+    SCOREBOARD_STATE.skip = false;
+    SCOREBOARD_STATE.proceed = proceed;
+
+    breakdown.forEach((entry, idx) => {
+      const row = {
+        label: entry?.label || entry?.reason || `Entrada ${idx + 1}`,
+        points: Number(entry?.points ?? entry?.pts ?? 0) || 0,
+        el: null,
+        valueEl: null
+      };
+      const node = D.createElement('div');
+      node.className = 'score-row';
+      node.setAttribute('role', 'listitem');
+      const labelEl = D.createElement('span');
+      labelEl.className = 'score-label';
+      labelEl.textContent = row.label;
+      const valueEl = D.createElement('span');
+      valueEl.className = 'score-value';
+      valueEl.textContent = '0';
+      node.appendChild(labelEl);
+      node.appendChild(valueEl);
+      rowsWrap.appendChild(node);
+      row.el = node;
+      row.valueEl = valueEl;
+      SCOREBOARD_STATE.rows.push(row);
+    });
+
+    let revealIndex = 0;
+
+    function revealNext(){
+      if (!SCOREBOARD_STATE.running) return;
+      if (revealIndex >= SCOREBOARD_STATE.rows.length){
+        animateValue(totalEl, SCOREBOARD_STATE.totalTarget || 0, scoreboardComplete);
+        return;
+      }
+      const row = SCOREBOARD_STATE.rows[revealIndex++];
+      if (row?.el){
+        row.el.classList.add('revealed');
+      }
+      animateValue(row?.valueEl, row?.points || 0, () => {
+        if (SCOREBOARD_STATE.skip) return;
+        revealNext();
+      });
+    }
+
+    revealNext();
+
+    const overlayClick = (ev) => {
+      if (!SCOREBOARD_STATE.running) return;
+      if (ev.target === overlay) {
+        ev.preventDefault();
+        if (!SCOREBOARD_STATE.finished) {
+          skipScoreboard();
+        } else {
+          finishScoreboard();
+        }
+      }
+    };
+
+    const keyHandler = (ev) => {
+      if (!SCOREBOARD_STATE.running) return;
+      const key = ev.key?.toLowerCase();
+      if (key === 'enter' || key === ' '){
+        ev.preventDefault();
+        if (!SCOREBOARD_STATE.finished) {
+          skipScoreboard();
+        } else {
+          finishScoreboard();
+        }
+      }
+      if (key === 'escape' && SCOREBOARD_STATE.finished){
+        ev.preventDefault();
+        finishScoreboard();
+      }
+    };
+
+    const buttonHandler = (ev) => {
+      ev.preventDefault();
+      if (!SCOREBOARD_STATE.finished){
+        skipScoreboard();
+      } else {
+        finishScoreboard();
+      }
+    };
+
+    addScoreboardListener(overlay, 'click', overlayClick);
+    addScoreboardListener(window, 'keydown', keyHandler, true);
+    addScoreboardListener(button, 'click', buttonHandler);
+  }
+
+  function animateGameOver(){
+    const overlay = D.getElementById('game-over-screen');
+    const box = overlay?.querySelector('.menu-box');
+    if (!overlay || !box) return;
+    overlay.classList.remove('hidden');
+    box.classList.remove('shake');
+    void box.offsetWidth; // reinicia animación CSS
+    box.classList.add('shake');
+  }
+
   // API pública
   W.PresentationAPI = Object.assign(W.PresentationAPI || {}, {
     playIntroSequence(){
@@ -257,6 +557,18 @@ function finish(){
       // intentamos arrancar inmediatamente (si el navegador bloquea audio,
       // la secuencia sigue pero quizá muteada; el usuario lo puede activar luego)
       start();
+    },
+
+    levelIntro(level, done){
+      runLevelIntro(level, done);
+    },
+
+    levelComplete(level, data, proceed){
+      runScoreboard(level, data, proceed);
+    },
+
+    gameOver(){
+      animateGameOver();
     }
   });
 

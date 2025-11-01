@@ -23,6 +23,27 @@
   const getG = () => (W.G || {});
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
+  const FloatingMessages = [];
+
+  function findEntityById(G, id) {
+    if (!id) return null;
+    if (typeof G?.byId === 'function') {
+      try { const e = G.byId(id); if (e) return e; } catch (_) {}
+    }
+    return (G?.entities || []).find(e => e && e.id === id) || null;
+  }
+
+  function toScreen(camera, canvas, worldX, worldY) {
+    const cam = camera || { x: 0, y: 0, zoom: 1 };
+    const zoom = cam.zoom || 1;
+    const cx = canvas ? canvas.width * 0.5 : 0;
+    const cy = canvas ? canvas.height * 0.5 : 0;
+    return {
+      x: (worldX - cam.x) * zoom + cx,
+      y: (worldY - cam.y) * zoom + cy
+    };
+  }
+
   // —— Lógica de “objetivo” (trasladada del motor) ——
   // Mantiene exactamente los casos especiales, carga de pastilla, apertura de puerta, etc.
   // Basado en drawHUD() actual del juego. 2
@@ -170,6 +191,94 @@
     return { px, lines };
   }
 
+  function drawNameTags(ctx, camera, G) {
+    if (!ctx || !G) return;
+    const canvas = ctx.canvas;
+    for (const pat of G.patients || []) {
+      if (!pat || pat.dead || pat.attended) continue;
+      const pos = toScreen(camera, canvas, pat.x + pat.w * 0.5, pat.y - (pat.nameTagYOffset || 18));
+      ctx.save();
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.strokeText(pat.displayName || pat.name || 'Paciente', pos.x, pos.y);
+      ctx.fillStyle = '#ffe27a';
+      ctx.fillText(pat.displayName || pat.name || 'Paciente', pos.x, pos.y);
+      ctx.restore();
+    }
+  }
+
+  function drawFloatingMessages(ctx, camera, G) {
+    if (!ctx) return;
+    const now = performance.now();
+    const canvas = ctx.canvas;
+    for (let i = FloatingMessages.length - 1; i >= 0; i--) {
+      const msg = FloatingMessages[i];
+      const life = (now - msg.created) / 1000;
+      if (life >= msg.dur) {
+        FloatingMessages.splice(i, 1);
+        continue;
+      }
+      const ent = findEntityById(G, msg.targetId) || msg.fallback;
+      if (!ent) { FloatingMessages.splice(i, 1); continue; }
+      const baseX = (ent.x || 0) + (ent.w || 0) * 0.5;
+      const baseY = (ent.y || 0) - (msg.offset || ent.nameTagYOffset || 18);
+      const rise = (msg.rise || 18) * (life / msg.dur);
+      const pos = toScreen(camera, canvas, baseX, baseY - rise);
+      const alpha = Math.max(0, 1 - (life / msg.dur));
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.strokeText(msg.text, pos.x, pos.y);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(msg.text, pos.x, pos.y);
+      ctx.restore();
+    }
+  }
+
+  function showFloatingMessage(entity, text, seconds = 1.8) {
+    if (!entity || !text) return;
+    FloatingMessages.push({
+      targetId: entity.id || null,
+      fallback: entity,
+      text: String(text),
+      created: performance.now(),
+      dur: Math.max(0.2, seconds),
+      offset: entity.nameTagYOffset || 18,
+      rise: 28
+    });
+  }
+
+  function drawPatientsCounterPanel(ctx, G) {
+    const stats = G?.stats || {};
+    const remaining = stats.remainingPatients || 0;
+    const total = stats.totalPatients || 0;
+    const furiosas = stats.activeFuriosas || 0;
+    const urgOpen = remaining === 0 && furiosas === 0;
+    const r = { x: 12, y: 12, w: 260, h: 64 };
+    ctx.save();
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = '#05070b';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = urgOpen ? '#2ecc71' : '#e67e22';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillStyle = '#e6edf3';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Pacientes restantes: ${remaining} / ${total}`, r.x + 12, r.y + 24);
+    ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : '#9aa6b1';
+    ctx.fillText(`Furiosas activas: ${furiosas}`, r.x + 12, r.y + 42);
+    ctx.fillStyle = urgOpen ? '#ffd166' : '#9aa6b1';
+    ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, r.x + 12, r.y + 60);
+    ctx.restore();
+  }
+
   // API pública
   const HUD = {
     position: S.position, // 'top' | 'bottom'
@@ -239,28 +348,37 @@
 
 
       ctx.fillStyle = THEME.text;
-      const timbres = `Timbres: ${G.timbresRest ?? 0}`;
-      ctx.fillText(timbres, lx, cy - 18);
-      lx += ctx.measureText(timbres).width + 16;
-
-      const entregas = `Entregas: ${G.delivered ?? 0}/1`;
-      ctx.fillText(entregas, lx, cy - 18);
-      lx += ctx.measureText(entregas).width + 16;
-
-      // Estado puerta (robusto: abierto si solid=false o flag open=true)
-      const doorOpen = !!(G.door && (G.door.open === true || G.door.solid === false));
-      ctx.fillStyle = doorOpen ? THEME.ok : THEME.warn;
-      const urg = `Urgencias: ${doorOpen ? 'ABIERTA' : 'CERRADA'}`;
+      const stats = G.stats || {};
+      const remaining = stats.remainingPatients || 0;
+      const total = stats.totalPatients || 0;
+      const furiosas = stats.activeFuriosas || 0;
+      const urgOpen = remaining === 0 && furiosas === 0;
+      ctx.fillStyle = THEME.text;
+      ctx.textAlign = 'left';
+      const pacLine = `Pacientes: ${remaining}/${total}`;
+      ctx.fillText(pacLine, lx, cy - 18);
+      lx += ctx.measureText(pacLine).width + 16;
+      ctx.fillStyle = furiosas > 0 ? THEME.warn : THEME.text;
+      const furLine = `Furiosas: ${furiosas}`;
+      ctx.fillText(furLine, lx, cy - 18);
+      lx += ctx.measureText(furLine).width + 16;
+      ctx.fillStyle = urgOpen ? THEME.ok : THEME.warn;
+      const urg = `Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`;
       ctx.fillText(urg, lx, cy - 18);
 
       // Info de lo que llevas (si aplica)
       if (G.carry) {
         ctx.fillStyle = THEME.text;
         const c1 = `Llevas: ${G.carry.label || '—'}`;
-        const c2 = `→ Para: ${G.carry.patientName || '—'}`;
+        const c2 = `→ Para: ${G.carry.patientName || G.carry.pairName || '—'}`;
         const heartsBlockW = 22*maxHearts + 14;
         ctx.fillText(c1, leftX + heartsBlockW, cy + 2);
-        ctx.fillText(c2, leftX + heartsBlockW + ctx.measureText(c1).width + 14, cy + 2);
+        const anagram = G.carry.anagram ? `Pista: ${G.carry.anagram}` : '';
+        const carryOffset = leftX + heartsBlockW + ctx.measureText(c1).width + 14;
+        ctx.fillText(c2, carryOffset, cy + 2);
+        if (anagram) {
+          ctx.fillText(anagram, carryOffset + ctx.measureText(c2).width + 14, cy + 2);
+        }
       }
 
       // ——— C: Objetivo (fit 2 líneas + auto-shrink) ———
@@ -288,9 +406,18 @@
       ctx.fillStyle = THEME.text;
       ctx.fillText(`Puntos: ${G.score ?? 0}`, rightX, cy);
 
+      drawPatientsCounterPanel(ctx, G);
+
       ctx.restore();
     }
   };
+
+  HUD.drawWorldOverlays = function(ctx, camera, G) {
+    drawNameTags(ctx, camera, G);
+    drawFloatingMessages(ctx, camera, G);
+  };
+
+  HUD.showFloatingMessage = showFloatingMessage;
 
   W.HUD = HUD;
   // Inicializa con posición por defecto (móvil abajo / PC arriba)
