@@ -59,6 +59,7 @@
     running: false,
     victory: false,
     gameOver: false,
+    urgenciasOpen: false,
     // Opciones
     opts: {
       zoomToBossMs: 1500,
@@ -92,8 +93,16 @@
       S.gameOver = false;
       hideOverlay(DOM.complete);
       hideOverlay(DOM.gameover);
+      const G = S.G || window.G || {};
+      G.stats = G.stats || {};
+      G.stats.totalPatients = 0;
+      G.stats.remainingPatients = 0;
+      G.stats.activeFuriosas = 0;
+      G.stats.furiosasNeutralized = 0;
+      G.__placementsApplied = false;
       // Asegurar estado de puerta y niebla acorde al inicio
       lockBossDoor();
+      syncUrgenciasFromStats();
       if (W.FogAPI && typeof W.FogAPI.reset === 'function') W.FogAPI.reset();
     },
 
@@ -141,6 +150,7 @@
       // Sumar y revisar progreso
       S.deliveredPatients = Math.min(S.totalPatients, S.deliveredPatients + 1);
       S.allDelivered = (S.deliveredPatients >= S.totalPatients && S.totalPatients > 0);
+      syncUrgenciasFromStats();
     },
 
     notifyBossFinalDelivered() {
@@ -149,6 +159,10 @@
 
     notifyHeroDeath() {
       triggerGameOver();
+    },
+
+    notifyPatientCountersChanged() {
+      syncUrgenciasFromStats();
     },
 
     // Avance de nivel / fin de juego
@@ -204,6 +218,11 @@
     S.boss = null;
     S.bossDoor = null;
     S.emergencyCart = null;
+    S.urgenciasOpen = false;
+    const G = S.G || window.G || {};
+    if (G) {
+      G.__placementsApplied = false;
+    }
     autoScanReferences();
     recountPatients();
     lockBossDoor();
@@ -236,13 +255,14 @@
 
   function recountPatients() {
     const G = S.G;
-    if (!G || !Array.isArray(G.entities)) return;
-    const patients = G.entities.filter(e =>
-      e.kind === ENT.PATIENT && !e.isBoss && !e.special && !e.excluded
-    );
-    S.totalPatients = patients.length;
-    S.deliveredPatients = patients.reduce((acc, p) => acc + ((p.delivered || p.pillSatisfied || p.attendedAndMatched) ? 1 : 0), 0);
-    S.allDelivered = (S.deliveredPatients >= S.totalPatients && S.totalPatients > 0);
+    if (!G) return;
+    const stats = G.stats || {};
+    const total = stats.totalPatients || 0;
+    const remaining = stats.remainingPatients || 0;
+    const furiosas = stats.activeFuriosas || 0;
+    S.totalPatients = total;
+    S.deliveredPatients = Math.max(0, total - remaining);
+    S.allDelivered = (remaining === 0 && furiosas === 0);
   }
 
   // Puerta del boss: cerrar al inicio, abrir en progreso
@@ -256,6 +276,7 @@
   function openBossDoor() {
     if (S.bossDoorOpened) return;
     S.bossDoorOpened = true;
+    S.urgenciasOpen = true;
     if (S.bossDoor) {
       S.bossDoor.open = true;
       S.bossDoor.solid = false;
@@ -280,6 +301,27 @@
       S.zoomPhase = 0;
       S.zoomTimer = 0;
       S._camSnap = snapshotCamera();
+    }
+  }
+
+  function syncUrgenciasFromStats() {
+    const G = S.G || window.G || {};
+    const stats = G.stats || {};
+    const ready = (stats.remainingPatients || 0) === 0 && (stats.activeFuriosas || 0) === 0;
+    if (ready) {
+      openBossDoor();
+      try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
+    } else {
+      if (S.bossDoor) {
+        S.bossDoor.open = false;
+        S.bossDoor.solid = true;
+        if (S.bossDoor.spriteKey) S.bossDoor.spriteKey = '--sprite-door-closed';
+      }
+      S.bossDoorOpened = false;
+      S.urgenciasOpen = false;
+    }
+    if (typeof G.onUrgenciasStateChanged === 'function') {
+      try { G.onUrgenciasStateChanged(ready); } catch (e) { console.warn('onUrgenciasStateChanged', e); }
     }
   }
 
@@ -349,16 +391,16 @@
   // Seguimiento de pacientes
   function trackPatientsProgress() {
     const G = S.G;
-    if (!G || !Array.isArray(G.entities)) return;
-    let total = 0, delivered = 0;
-    for (const e of G.entities) {
-      if (e.kind !== ENT.PATIENT || e.isBoss || e.special || e.excluded) continue;
-      total++;
-      if (e.delivered || e.pillSatisfied || e.attendedAndMatched) delivered++;
-    }
+    if (!G) return;
+    const stats = G.stats || {};
+    const total = stats.totalPatients || 0;
+    const remaining = stats.remainingPatients || 0;
+    const furiosas = stats.activeFuriosas || 0;
+    const delivered = Math.max(0, total - remaining);
+    const ready = remaining === 0 && furiosas === 0;
     S.totalPatients = total;
     S.deliveredPatients = delivered;
-    S.allDelivered = (delivered >= total && total > 0);
+    S.allDelivered = ready;
   }
 
   // Spawn de la pastilla final junto al boss cuando el carro de urgencias está cerca

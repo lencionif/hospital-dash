@@ -74,6 +74,7 @@
       // limpia luz y set
       if (e._lightId && window.LightingAPI){ try{ LightingAPI.removeLight?.(e._lightId); }catch(_){ } }
       this.live.delete(e);
+      try { window.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
     },
 
     // ---------- Internos ----------
@@ -154,6 +155,7 @@
       this.live.delete(e);
       if (window.AudioAPI) AudioAPI.play('furious_die', { at:{x:e.x,y:e.y}, volume:1.0 });
       if (this.G.addScore) this.G.addScore(150);
+      try { window.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
     },
 
     _hitWall(nx, ny, w, h){

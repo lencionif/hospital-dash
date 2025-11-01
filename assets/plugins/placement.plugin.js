@@ -286,21 +286,18 @@
       placeBatch(G, 'CLEANER', plan.cleaners||2, {constraints:cons});
       placeBatch(G, 'RAT', plan.rats||1, {constraints:cons});
       placeBatch(G, 'MOSQUITO', plan.mosquitos||1, {constraints:cons});
-      // Pacientes encamados con nombres/pastillas cómicos
-      const funny = [
-        ['Dolores De Barriga','barrigaliv-500'],
-        ['Agueda Tos','antitussin-12'],
-        ['Esteban Do','ibuprex-400'],
-        ['Lola Njar','antiflam-600'],
-        ['Paco Picores','antihist-10'],
-        ['Ana Femia','antipy-1g'],
-        ['Rita Titis','gastrocalm-20']
-      ];
-      const nP = Math.max(1, plan.patients||7);
-      for(let i=0;i<nP;i++){
-        const t = findFreeTile(G, cons); if(!t) break;
-        const e = W.NPC?.create('PATIENT', t.tx*TILE+4, t.ty*TILE+4, { name: funny[i%funny.length][0], pillId: funny[i%funny.length][1] });
-        if (e) G.entities.push(e);
+      // Pacientes encamados con nombres cómicos y pastilla enlazada
+      const totalPatients = Math.max(0, Math.min(35, plan.patients || 7));
+      for (let i = 0; i < totalPatients; i++) {
+        const spot = findFreeTile(G, cons);
+        if (!spot) break;
+        const px = spot.tx * TILE + TILE * 0.1;
+        const py = spot.ty * TILE + TILE * 0.1;
+        const patient = W.Entities?.Patient?.spawn?.(px, py, {}) || null;
+        if (patient) {
+          ensureOnLists(patient);
+          try { W.PatientsAPI?.createPillForPatient?.(patient, 'near'); } catch (_) {}
+        }
       }
       // Boss inmóvil en su sala
       if (plan.boss?.roomRect){
@@ -322,6 +319,11 @@
 
 window.applyPlacementsFromMapgen = function(arr){
   const W = window, G = W.G || (W.G = {});
+  if (G.__placementsApplied === true) {
+    console.warn('applyPlacementsFromMapgen: SKIP duplicate invocation');
+    return { skipped: true, reason: 'duplicate' };
+  }
+  G.__placementsApplied = true;
   // KILL-SWITCH (instancia SIEMPRE si viene autorizado desde parseMap ASCII)
   const __allowAscii = (G && G.__allowASCIIPlacements === true);
   // Solo saltamos si NO es ASCII y además alguien lo ha deshabilitado explícitamente
@@ -659,6 +661,7 @@ function ensureOnLists(e){
         pushables: after.pushables-before.pushables
       }}); } catch(_) {}
   }
+  try { window.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
 };
 
 // === Hotkeys debug ===
