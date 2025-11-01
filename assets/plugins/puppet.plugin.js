@@ -26,6 +26,7 @@
       z: opts.z ?? 0,
       zscale: opts.zscale ?? 1,
       data: opts.data || {},
+      state: null,
       time: 0
     };
     entity.puppet = puppet;
@@ -52,13 +53,44 @@
     return { x:0, y:0, w, h, zoom:1 };
   }
 
+  function ensureRigState(puppet){
+    if (!puppet) return null;
+    const rig = rigs.get(puppet.rigName);
+    if (!rig) return null;
+    if (!puppet.state){
+      if (typeof rig.create === 'function'){
+        try {
+          puppet.state = rig.create(puppet.entity) || {};
+        } catch (err){
+          console.warn('[PuppetAPI] rig.create', puppet.rigName, err);
+          puppet.state = {};
+        }
+      } else if (puppet.data && typeof puppet.data === 'object'){
+        puppet.state = puppet.data;
+      } else {
+        puppet.state = {};
+      }
+    }
+    return puppet.state;
+  }
+
   function updateAll(state, dt){
     sortPuppets();
     for (const puppet of puppets){
       puppet.time += dt;
       const rig = rigs.get(puppet.rigName);
-      if (rig?.update){
-        try { rig.update(puppet, state, dt); } catch (err) { console.warn('[PuppetAPI] rig.update', err); }
+      if (!rig) continue;
+      const rigState = ensureRigState(puppet);
+      if (typeof rig.update === 'function'){
+        try {
+          if (typeof rig.create === 'function' && rig.update.length >= 3){
+            rig.update(rigState, puppet.entity, dt);
+          } else {
+            rig.update(puppet, state, dt);
+          }
+        } catch (err) {
+          console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
+        }
       }
     }
   }
@@ -77,7 +109,15 @@
     const rig = rigs.get(puppet.rigName);
     if (!rig || typeof rig.draw !== 'function') return;
     try {
-      rig.draw(ctx, cam || ensureCamera(ctx), puppet.entity, puppet.time);
+      const state = ensureRigState(puppet);
+      const camera = cam || ensureCamera(ctx);
+      if (typeof rig.create === 'function'){
+        rig.draw(ctx, camera, puppet.entity, state, puppet.time);
+      } else if (rig.draw.length >= 4){
+        rig.draw(ctx, camera, puppet.entity, puppet.time);
+      } else {
+        rig.draw(ctx, camera, puppet.entity);
+      }
     } catch (err) {
       console.warn('[PuppetAPI] rig.draw', err);
     }
@@ -87,8 +127,18 @@
     if (!puppet) return;
     puppet.time += dt;
     const rig = rigs.get(puppet.rigName);
-    if (rig?.update){
-      try { rig.update(puppet, state, dt); } catch (err) { console.warn('[PuppetAPI] rig.update', err); }
+    if (!rig) return;
+    const rigState = ensureRigState(puppet);
+    if (typeof rig.update === 'function'){
+      try {
+        if (typeof rig.create === 'function' && rig.update.length >= 3){
+          rig.update(rigState, puppet.entity, dt);
+        } else {
+          rig.update(puppet, state, dt);
+        }
+      } catch (err) {
+        console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
+      }
     }
   }
 
