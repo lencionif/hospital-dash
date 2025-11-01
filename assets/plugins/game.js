@@ -62,7 +62,7 @@
       playerFriction: 0.86,
       restitution: 0.65,
       pushImpulse: 340,
-      maxSpeedPlayer: 165,
+      maxSpeedPlayer: 240,
       maxSpeedObject: 360
     },
     enemies: {
@@ -410,6 +410,13 @@
 
   // Cámara
   const camera = { x: 0, y: 0, zoom: 0.45 }; // ⬅️ arranca ya alejado
+  G.camera = camera;
+
+  try {
+    window.GameFlowAPI?.init?.(G, { cartBossTiles: 2.0 });
+  } catch (err) {
+    console.warn('[GameFlow] init error:', err);
+  }
 
   // RNG simple (semilla fija por demo)
   function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
@@ -454,12 +461,18 @@ function __onKeyDown__(e){
     if (k === 'r'){
       if (G.state === 'GAMEOVER' || G.state === 'COMPLETE'){
         e.preventDefault();
-        try { PresentationAPI.levelIntro(G.level || 1, () => startGame()); }
-        catch(_){ startGame(); }
+        startGame(G.level || 1);
         return;
-      }else{
+      } else {
         window.camera.zoom = clamp(window.camera.zoom + 0.1, 0.6, 2.5);
       }
+    }
+    if (code === 'Space' || k === ' '){
+      if (G.state === 'PLAYING'){
+        e.preventDefault();
+        window.__toggleMinimapMode?.();
+      }
+      return;
     }
     if (k === 'f1'){ e.preventDefault(); metrics.style.display = (metrics.style.display === 'none' ? 'block' : 'none'); }
     if (k === 'escape'){ togglePause(); }
@@ -669,8 +682,8 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       p.mass     = (p.mass     != null) ? p.mass     : 1.00;
       p.rest     = (p.rest     != null) ? p.rest     : 0.10;
       p.mu       = (p.mu       != null) ? p.mu       : 0.12;
-      p.maxSpeed = (p.maxSpeed != null) ? p.maxSpeed : (BALANCE.physics.maxSpeedPlayer || 165);
-      p.accel    = (p.accel    != null) ? p.accel    : 800;
+      p.maxSpeed = (p.maxSpeed != null) ? p.maxSpeed : (BALANCE.physics.maxSpeedPlayer || 240);
+      p.accel    = (p.accel    != null) ? p.accel    : 1000;
       p.pushForce= (p.pushForce!= null) ? p.pushForce: FORCE_PLAYER;
       p.facing   = p.facing || 'S';
 
@@ -694,6 +707,8 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     p.facing = 'S';
     p.pushAnimT = 0;
     p.skin = key;
+    p.maxSpeed = 240;
+    p.accel = 1000;
 
     // === Giro más sensible por defecto ===
     p.turnSpeed = 4.5;
@@ -720,7 +735,6 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.entities.push(e);
     G.enemies.push(e);
     return e;
-    if (window.Physics && typeof Physics.registerEntity === 'function') Physics.registerEntity(e);
   }
 
   function loadLevelWithMapGen(level=1) {
@@ -1355,10 +1369,9 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     }
 
     if (G.health <= 0){
-      G.state = 'GAMEOVER';
-      gameOverScreen.classList.remove('hidden');
-      // Muestra la viñeta animada "GAME OVER" (debajo o encima según zIndex)
-      PresentationAPI.gameOver({ mode: 'under' }); // 'under' = deja ver tu texto de "El caos te ha superado"
+      G.health = 0;
+      setGameState('GAMEOVER');
+      window.GameFlowAPI?.notifyHeroDeath?.();
     }
   }
 
@@ -1468,58 +1481,27 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // 2) Entregar al paciente correcto tocándolo (ENT.PATIENT)
     if (G.carry) {
       for (const pac of [...G.patients]) {
-        if (pac.dead) continue;
+        if (!pac || pac.dead || pac.delivered) continue;
         const esCorrecto = (pac.name === G.carry.patientName);
         if (esCorrecto && nearAABB(G.player, pac, 12)) {
           pac.satisfied = true;
+          pac.delivered = true;
+          pac.pillSatisfied = true;
+          pac.attendedAndMatched = true;
           pac.dead = true;
           pac.solid = false;
-          // Elimina paciente del mundo
-          G.entities = G.entities.filter(e => e !== pac);
-          G.patients = G.patients.filter(e => e !== pac);
-          G.npcs     = G.npcs.filter(e => e !== pac);
+          pac.hidden = true;
+          pac.visible = false;
           // Actualiza HUD
           G.carry = null;
           G.delivered++;
+          window.GameFlowAPI?.notifyPatientDelivered?.(pac);
           break;
         }
       }
-    }
-
-    // 3) Abrir puerta si ya no quedan pacientes
-    if (G.door && G.patients.length === 0) {
-      G.door.color = COLORS.doorOpen;
-      G.door.solid = false;
-      G.door.open = true;
-    }
-
-    // 4) Victoria: carro de urgencias cerca del boss con puerta abierta
-    if (G.door && G.door.color===COLORS.doorOpen && G.cart && G.boss){
-      const d = Math.hypot(G.cart.x-G.boss.x, G.cart.y-G.boss.y);
-      if (d < TILE*2.2){
-        G.state = 'COMPLETE';
-        levelCompleteScreen.classList.remove('hidden');
-
-        // Desglose + total (animado estilo Metal Slug) y botón "Ir al siguiente turno"
-        const breakdown = buildLevelBreakdown();
-        const total = (window.ScoreAPI && typeof ScoreAPI.getTotals === 'function')
-          ? (ScoreAPI.getTotals().total || 0)
-          : breakdown.reduce((a, r) => a + (r.points|0), 0);
-
-        // Muestra la tarjeta "¡Nivel X completado!" con lista animada y botón
-        PresentationAPI.levelComplete((window.G?.level || 1), { breakdown, total }, () => {
-          // <<<< AQUÍ LO QUE YA USABAS PARA PASAR DE NIVEL >>>>
-          // Si ya tienes una función nextLevel(), úsala:
-          if (typeof nextLevel === 'function') { nextLevel(); return; }
-          // Fallback sencillito: reinicia el turno actual
-          if (typeof startGame === 'function') { startGame(); }
-        });
-
-        PresentationAPI.levelComplete(G.level || 1, { breakdown, total }, () => {
-          // pasa al siguiente nivel
-          nextLevel(); // o GameFlowAPI.nextLevel() si lo usas
-        });
-      }
+      // Limpia lista auxiliar pero conserva entidades para GameFlow
+      G.patients = G.patients.filter(p => p && !p.delivered);
+      G.npcs     = G.npcs.filter(n => n && !n.delivered);
     }
   }
 
@@ -1565,7 +1547,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   function update(dt){
     window.SkyFX?.update?.(dt);
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
-    if (G.state !== 'PLAYING' || !G.player) return; // <-- evita tocar nada sin jugador
+    const isPlaying = (G.state === 'PLAYING');
+    if (isPlaying) {
+      try { window.GameFlowAPI?.update?.(dt); } catch(err){ console.warn('[GameFlow] update error:', err); }
+    }
+    applyStateVisuals();
+    if (!isPlaying || !G.player) return; // <-- evita tocar nada sin jugador
     G.time += dt;
     G.cycleSeconds += dt;
     const dbg = !!window.DEBUG_FORCE_ASCII;
@@ -1687,7 +1674,7 @@ function drawEntities(c2){
     // 3) Fallback visible (rectángulo) si no hay sprites
     if (!dibujado){
       c2.fillStyle = e.color || '#a0a0a0';
-      c2.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
+      c2.fillRect(e.x, e.y, e.w, e.h);
     }
   }
 }
@@ -1863,158 +1850,56 @@ function drawEntities(c2){
   // ------------------------------------------------------------
   // Control de estado
   // ------------------------------------------------------------
-  function startGame(){
-    G.state = 'PLAYING';
-    // si hay minimapa de debug, muéstralo ahora (no en el menú)
-    window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
-    startScreen.classList.add('hidden');
-    pausedScreen.classList.add('hidden');
-    levelCompleteScreen.classList.add('hidden');
-    gameOverScreen.classList.add('hidden');
-    // mostrar mini-mapa solo en juego
-    try { window.__toggleMinimap?.(true); } catch(_){}
+  const GAME_OVER_MESSAGES = [
+    'El caos te ha superado…',
+    'Los pasillos del hospital necesitan refuerzos.',
+    'La guardia sigue sin héroe. ¡Inténtalo de nuevo!'
+  ];
 
+  let lastUIState = null;
 
-    // Reset de estado base
-    G.time = 0; G.score = 0; G.health = 6; G.delivered = 0; G.timbresRest = 1;
-    G.carry = null;
-    G._placementsFinalized = false; 
+  function buildLevelForCurrentMode(levelNumber){
+    const level = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
+    G._placementsFinalized = false;
+    G.mapgenPlacements = [];
+    G.mapAreas = null;
 
-    // Flag global (lo usará placement.api.js para NO sembrar)
-    window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
     G.flags = G.flags || {};
-    G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
+    G.flags.DEBUG_FORCE_ASCII = !!window.DEBUG_FORCE_ASCII;
 
-    // Si fuerzas ASCII → NO LLAMAR a NINGÚN generador/siembra
-    if (DEBUG_FORCE_ASCII) {
+    if (window.DEBUG_FORCE_ASCII){
       ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
       parseMap(ASCII_MAP);
-
-      // Permite instanciación de placements derivados del ASCII, pero SIN algoritmos
-      G.__allowASCIIPlacements = true;
-      if (typeof window.applyPlacementsFromMapgen === 'function') {
-        window.applyPlacementsFromMapgen(G.__asciiPlacements || G.mapgenPlacements || []);
-      }
-      finalizeLevelBuildOnce();
-      console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE, '→ ASCII forzado (sin generadores/siembra)');
-    } else {
-      // ---------- Flujo procedural normal ----------
-      let usadoGenerador = false;
-      try {
-        if (window.MapGen && typeof MapGen.generate === 'function') {
-          if (typeof MapGen.init === 'function') MapGen.init(G);
-          usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
-        }
-      } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
-
-      if (!usadoGenerador) {
+      if (typeof window.applyPlacementsFromMapgen === 'function'){
         try {
-          if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-            const res = MapGenAPI.generate(G.level || 1, {
-              seed: G.seed || Date.now(),
-              place: false,
-              defs: null,
-              width:  window.DEBUG_MINIMAP ? 128 : undefined,
-              height: window.DEBUG_MINIMAP ? 128 : undefined
-            });
-            ASCII_MAP = (res.ascii || '').trim().split('\n');
-            G.mapgenPlacements = res.placements || [];
-            G.mapAreas = res.areas || null;
-            parseMap(ASCII_MAP);
-            finalizeLevelBuildOnce();
-            usadoGenerador = true;
-            console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
-          }
-        } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
-      }
-
-      if (!usadoGenerador) {
-        parseMap(ASCII_MAP);
-        finalizeLevelBuildOnce();
-        console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
-      }
-    }
-
-    // 1) Generador "nuevo" (MapGen con callbacks y colocación directa)
-    if (!window.DEBUG_FORCE_ASCII) { let usadoGenerador = false;
-    try {
-      if (window.MapGen && typeof MapGen.generate === 'function') {
-        // Vincula el estado del juego al plugin (si lo necesita)
-        if (typeof MapGen.init === 'function') MapGen.init(G);
-
-        // Crea el nivel entero (coloca entidades vía callbacks)
-        usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
-      }
-    } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
-
-    // 2) Generador "API simple" (MapGenAPI → devuelve ASCII)
-    if (!usadoGenerador) {
-      try {
-        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-          const mini = /[?&]mini=1/.test(location.search) || window.DEBUG_SMALLMAP === true;
-          const res = MapGenAPI.generate(G.level || 1, {
-            seed: G.seed || Date.now(),
-            place: false,       // dejamos que lo coloque parseMap
-            defs: null,         // auto
-            // ↓↓↓ Forzamos mapa pequeño cuando mini=1 en la URL o flag global
-            width:  mini ? 128 : undefined,
-            height: mini ? 128 : undefined
-          });
-          ASCII_MAP = (res.ascii || '').trim().split('\n');   // ⚠️ requiere que sea 'let'
-          G.mapgenPlacements = res.placements || [];
-          G.mapAreas = res.areas || null;
-
-          parseMap(ASCII_MAP);
-          finalizeLevelBuildOnce();
-          usadoGenerador = true;
+          window.applyPlacementsFromMapgen(G.__asciiPlacements || G.mapgenPlacements || []);
+        } catch (err){
+          console.warn('[applyPlacementsFromMapgen] ASCII', err);
         }
-      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
-    }
-
-    // 3) Fallback: usa el ASCII por defecto si no hubo generador
-    if (!usadoGenerador) {
-      parseMap(ASCII_MAP);
-      finalizeLevelBuildOnce();
-    }
-  } // ← cierra el if (!window.DEBUG_FORCE_ASCII) que encapsula el bloque duplicado
-    // --- Selección de mapa por URL ---
-    // ?map=debug  -> fuerza ASCII grande (DEFAULT_ASCII_MAP)
-    // ?map=mini   -> fuerza ASCII pequeño (DEBUG_ASCII_MINI)
-    // ?mini=1     -> sigue usando MapGen/MapGenAPI pero en tamaño reducido
-  const __qs      = new URLSearchParams(location.search);
-  window.__MAP_MODE = (__qs.get('map') || '').toLowerCase();
-
-  if (window.DEBUG_FORCE_ASCII) {
-    // 1) Forzar ASCII sin llamar a generadores ni auto-siembra
-    ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
-    parseMap(ASCII_MAP);
-
-    // Autoriza instanciación de placements derivados del ASCII sin algoritmo
-    G.__allowASCIIPlacements = true;
-    if (typeof window.applyPlacementsFromMapgen === 'function') {
-      window.applyPlacementsFromMapgen(G.__asciiPlacements || []);
-    }
-    finalizeLevelBuildOnce();
-    console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
-    // Mostrar u ocultar minimapa
-    window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
-  } else {
-    // 2) Procedural normal (MapGen/MapGenAPI)
-    let usadoGenerador = false;
-    try {
-      if (window.MapGen && typeof MapGen.generate === 'function') {
-        if (typeof MapGen.init === 'function') MapGen.init(G);
-        usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
       }
-    } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
-    if (!usadoGenerador) {
+      finalizeLevelBuildOnce();
+      console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
+      return;
+    }
+
+    let usedGenerator = false;
+    try {
+      if (window.MapGen && typeof MapGen.generate === 'function'){
+        if (typeof MapGen.init === 'function') MapGen.init(G);
+        usedGenerator = !!loadLevelWithMapGen(level);
+      }
+    } catch (err){
+      console.warn('[MapGen] init/generate falló:', err);
+    }
+
+    if (!usedGenerator){
       try {
-        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-          const res = MapGenAPI.generate(G.level || 1, {
+        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function'){
+          const res = MapGenAPI.generate(level, {
             seed: G.seed || Date.now(),
             place: false,
             defs: null,
-            width:  window.DEBUG_MINIMAP ? 128 : undefined,
+            width: window.DEBUG_MINIMAP ? 128 : undefined,
             height: window.DEBUG_MINIMAP ? 128 : undefined
           });
           ASCII_MAP = (res.ascii || '').trim().split('\n');
@@ -2022,63 +1907,63 @@ function drawEntities(c2){
           G.mapAreas = res.areas || null;
           parseMap(ASCII_MAP);
           finalizeLevelBuildOnce();
-          usadoGenerador = true;
+          usedGenerator = true;
           console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
         }
-      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
+      } catch (err){
+        console.warn('[MapGenAPI] generate falló:', err);
+      }
     }
-    if (!usadoGenerador) {
+
+    if (!usedGenerator){
+      ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       parseMap(ASCII_MAP);
       finalizeLevelBuildOnce();
       console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
     }
   }
 
+  function configureLevelSystems(){
+    try {
+      window.SkyFX?.init?.({
+        canvas,
+        getCamera: () => camera,
+        getMapAABB: () => ({ x:0, y:0, w:G.mapW * TILE_SIZE, h:G.mapH * TILE_SIZE }),
+        worldToScreen: (x,y) => ({
+          x: (x - camera.x) * camera.zoom + VIEW_W * 0.5,
+          y: (y - camera.y) * camera.zoom + VIEW_H * 0.5
+        })
+      });
+    } catch (err){
+      console.warn('[SkyFX] init error', err);
+    }
 
-
-    window.SkyFX?.init?.({
-    canvas,
-    getCamera: () => camera,
-    getMapAABB: () => ({ x:0, y:0, w:G.mapW*TILE_SIZE, h:G.mapH*TILE_SIZE }),
-    worldToScreen: (x,y) => ({
-      x: (x - camera.x) * camera.zoom + VIEW_W*0.5,
-      y: (y - camera.y) * camera.zoom + VIEW_H*0.5
-    })
-  });
-
-    // === Mouse click-to-move (activar mover con ratón) ===
-    if (window.MouseNav && !window._mouseNavInited) {
+    if (window.MouseNav && !window._mouseNavInited){
       MouseNav.init({
         canvas: document.getElementById('gameCanvas'),
-        camera,          // usa la cámara real del juego
-        TILE,            // tamaño de tile (32)
-        getMap:      () => G.map,                   // tu grid 0/1
+        camera,
+        TILE,
+        getMap:      () => G.map,
         getEntities: () => G.entities,
         getPlayer:   () => G.player,
         isWalkable:  (tx,ty) => !!(G.map[ty] && G.map[ty][tx] === 0)
       });
-      window._mouseNavInited = true; // evita crear múltiples listeners si reinicias nivel
+      window._mouseNavInited = true;
     }
 
-    // --- Parche para que MouseNav reconozca DOOR/CART con kind numérico ---
-    if (window.MouseNav) {
-      // 1) Qué consideras interactuable en tu juego
+    if (window.MouseNav){
       const isInteractuable = (ent) => {
         if (!ent) return false;
-        if (ent.kind === ENT.DOOR) return true;      // puertas
-        if (ent.pushable === true) return true;      // carros/camas empujables
+        if (ent.kind === ENT.DOOR) return true;
+        if (ent.pushable === true) return true;
         return false;
       };
-
-      // 2) Conectar el detector interno de MouseNav con lo anterior (sin romper nada)
-      const _orig = MouseNav._isInteractable?.bind(MouseNav);
-      MouseNav._isInteractable = (ent) => isInteractuable(ent) || (_orig ? _orig(ent) : false);
-
-      // 3) Acción al llegar: abrir puerta / empujar carro
+      const original = MouseNav._isInteractable?.bind(MouseNav);
+      MouseNav._isInteractable = (ent) => isInteractuable(ent) || (original ? original(ent) : false);
       MouseNav._performUse = (player, target) => {
         if (!target) return;
-        if (target.kind === ENT.DOOR) {
-          if (window.Doors?.toggle) {
+        if (target.kind === ENT.DOOR){
+          if (window.Doors?.toggle){
             window.Doors.toggle(target);
           } else {
             target.solid = !target.solid;
@@ -2087,17 +1972,186 @@ function drawEntities(c2){
           }
           return;
         }
-        if (target.pushable === true) {
+        if (target.pushable === true){
           const dx = (target.x + target.w*0.5) - (player.x + player.w*0.5);
           const dy = (target.y + target.h*0.5) - (player.y + player.h*0.5);
           const L  = Math.hypot(dx,dy) || 1;
-          const F  = (player.pushForce || FORCE_PLAYER);       // misma fuerza que tecla E
-          const scale = 1 / Math.max(1, (target.mass || 1) * 0.5); // más pesado → menos empuje
+          const F  = (player.pushForce || FORCE_PLAYER);
+          const scale = 1 / Math.max(1, (target.mass || 1) * 0.5);
           target.vx += (dx/L) * F * scale;
           target.vy += (dy/L) * F * scale;
         }
       };
     }
+
+    try {
+      SkyFX.init({
+        canvas: document.getElementById('gameCanvas'),
+        getCamera: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom }),
+        getMapAABB: () => ({ x: 0, y: 0, w: G.mapW * TILE_SIZE, h: G.mapH * TILE_SIZE }),
+        worldToScreen: (x,y) => ({
+          x: (x - camera.x) * camera.zoom + VIEW_W * 0.5,
+          y: (y - camera.y) * camera.zoom + VIEW_H * 0.5
+        })
+      });
+      SkyFX.setLevel(G.level);
+    } catch (err){
+      console.warn('[SkyFX] reinit error', err);
+    }
+
+    initSpawnersForLevel();
+
+    try {
+      Physics.init({
+        restitution: 0.12,
+        friction: 0.045,
+        slideFriction: 0.020,
+        crushImpulse: 110,
+        hurtImpulse: 45,
+        explodeImpulse: 170
+      }).bindGame(G);
+    } catch (err){
+      console.warn('[Physics] init error', err);
+    }
+
+    if (G.player && typeof G.player.hp === 'number') {
+      G.healthMax = (G.player.hpMax|0) * 2;
+      G.health    = Math.min(G.healthMax, (G.player.hp|0) * 2);
+    }
+  }
+
+  function setGameState(next){
+    if (G.state === next){
+      applyStateVisuals(true);
+      return;
+    }
+    G.state = next;
+    applyStateVisuals(true);
+  }
+
+  function applyStateVisuals(force = false){
+    if (!force && lastUIState === G.state) return;
+    lastUIState = G.state;
+
+    switch (G.state){
+      case 'READY': {
+        window.__toggleMinimap?.(false);
+        startScreen.classList.add('hidden');
+        pausedScreen.classList.add('hidden');
+        levelCompleteScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        if (!G._readySequenceActive){
+          G._readySequenceActive = true;
+          const beginPlay = () => {
+            G._readySequenceActive = false;
+            setGameState('PLAYING');
+          };
+          if (window.PresentationAPI?.levelIntro){
+            try {
+              PresentationAPI.levelIntro(G.level || 1, beginPlay);
+            } catch (err){
+              console.warn('[PresentationAPI] levelIntro', err);
+              beginPlay();
+            }
+          } else {
+            beginPlay();
+          }
+        }
+        break;
+      }
+      case 'PLAYING': {
+        startScreen.classList.add('hidden');
+        pausedScreen.classList.add('hidden');
+        levelCompleteScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        window.__toggleMinimap?.(true);
+        G._gameOverShown = false;
+        G._levelCompleteShown = false;
+        break;
+      }
+      case 'GAMEOVER': {
+        window.__toggleMinimap?.(false);
+        levelCompleteScreen.classList.add('hidden');
+        gameOverScreen.classList.remove('hidden');
+        if (!G._gameOverShown){
+          G._gameOverShown = true;
+          const pool = GAME_OVER_MESSAGES;
+          const message = pool[Math.floor(Math.random() * pool.length)] || 'El caos te ha superado…';
+          const textNode = gameOverScreen?.querySelector('.menu-box p:nth-of-type(2)');
+          if (textNode) textNode.textContent = message;
+          try { window.PresentationAPI?.gameOver?.({ mode: 'under' }); }
+          catch (err){ console.warn('[PresentationAPI] gameOver', err); }
+        }
+        break;
+      }
+      case 'COMPLETE': {
+        window.__toggleMinimap?.(false);
+        gameOverScreen.classList.add('hidden');
+        levelCompleteScreen.classList.remove('hidden');
+        if (!G._levelCompleteShown){
+          G._levelCompleteShown = true;
+          const breakdown = buildLevelBreakdown();
+          const total = (window.ScoreAPI && typeof ScoreAPI.getTotals === 'function')
+            ? (ScoreAPI.getTotals().total || 0)
+            : breakdown.reduce((acc, row) => acc + (row.points|0), 0);
+          const proceed = () => {
+            const advanced = window.GameFlowAPI?.nextLevel?.();
+            if (advanced === false) return;
+            if (!advanced) startGame((G.level || 1) + 1);
+          };
+          if (window.PresentationAPI?.levelComplete){
+            try {
+              PresentationAPI.levelComplete(G.level || 1, { breakdown, total }, proceed);
+            } catch (err){
+              console.warn('[PresentationAPI] levelComplete', err);
+              proceed();
+            }
+          } else {
+            proceed();
+          }
+        }
+        break;
+      }
+      default: {
+        window.__toggleMinimap?.(false);
+        break;
+      }
+    }
+  }
+
+  function startGame(levelNumber){
+    const targetLevel = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
+    const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
+    G.level = targetLevel;
+
+    startScreen.classList.add('hidden');
+    pausedScreen.classList.add('hidden');
+    levelCompleteScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+
+    window.__toggleMinimap?.(false);
+
+    G.time = 0;
+    G.cycleSeconds = 0;
+    if (!wasRestart) G.score = 0;
+    G.delivered = 0;
+    G.timbresRest = 1;
+    G.carry = null;
+    G._readySequenceActive = false;
+    G._gameOverShown = false;
+    G._levelCompleteShown = false;
+
+    buildLevelForCurrentMode(targetLevel);
+    configureLevelSystems();
+
+    try {
+      window.GameFlowAPI?.startLevel?.(targetLevel);
+    } catch (err){
+      console.warn('[GameFlow] startLevel error:', err);
+    }
+
+    setGameState('READY');
+  }
 
     //Init Audio
     /*
@@ -2170,6 +2224,10 @@ function drawEntities(c2){
   })();
 // ==== DEBUG MINI-MAP OVERLAY =================================================
 (function(){
+  window.__toggleMinimap = window.__toggleMinimap || function(){};
+  window.__setMinimapMode = window.__setMinimapMode || function(){ return 'small'; };
+  window.__toggleMinimapMode = window.__toggleMinimapMode || function(){ return 'small'; };
+
   // Actívalo con ?mini=1 o definiendo window.DEBUG_MINIMAP = true en consola
   const enabled = /[?&]mini=1/.test(location.search) || window.DEBUG_MINIMAP === true;
   if (!enabled) return;
@@ -2177,27 +2235,90 @@ function drawEntities(c2){
   const TILE = window.TILE_SIZE || window.TILE || 32;
   const VIEW_W = window.VIEW_W || 1024;
   const VIEW_H = window.VIEW_H || 768;
+  const SMALL_SIZE = 224;
+
+  let minimapMode = 'small';
+  let minimapVisible = false;
 
   let mm = document.getElementById('minimap');
   if (!mm) {
     mm = document.createElement('canvas');
     mm.id = 'minimap';
-    mm.width = 256; mm.height = 256;
     mm.style.position = 'fixed';
-    mm.style.right = '8px';
-    mm.style.bottom = '8px';                // ⬅ abajo-derecha
-    mm.style.zIndex = '48';                 // bajo HUD/overlays
-    mm.style.background = 'transparent';    // sin opacidad
-    mm.style.pointerEvents = 'none';        // no bloquea UI
     mm.style.imageRendering = 'pixelated';
+    mm.style.pointerEvents = 'auto';
+    mm.style.cursor = 'pointer';
     document.body.appendChild(mm);
-
-    // oculto por defecto si no estás jugando
-    mm.style.display = (window.G?.state === 'PLAYING') ? 'block' : 'none';
-    // helper global para mostrar/ocultar
-    window.__toggleMinimap = (on) => { mm.style.display = on ? 'block' : 'none'; };
   }
   const mctx = mm.getContext('2d');
+
+  function applyMode(){
+    if (minimapMode === 'big'){
+      const w = Math.max(256, Math.floor(window.innerWidth || VIEW_W));
+      const h = Math.max(256, Math.floor(window.innerHeight || VIEW_H));
+      mm.width = w;
+      mm.height = h;
+      mm.style.left = '0';
+      mm.style.top = '0';
+      mm.style.right = '';
+      mm.style.bottom = '';
+      mm.style.width = '100vw';
+      mm.style.height = '100vh';
+      mm.style.zIndex = '200';
+      mm.style.background = 'rgba(8,10,16,0.85)';
+      mm.style.borderRadius = '0';
+      mm.style.boxShadow = 'none';
+    } else {
+      mm.width = SMALL_SIZE;
+      mm.height = SMALL_SIZE;
+      mm.style.right = '12px';
+      mm.style.bottom = '12px';
+      mm.style.left = '';
+      mm.style.top = '';
+      mm.style.width = `${SMALL_SIZE}px`;
+      mm.style.height = `${SMALL_SIZE}px`;
+      mm.style.zIndex = '48';
+      mm.style.background = 'rgba(12,16,24,0.72)';
+      mm.style.borderRadius = '12px';
+      mm.style.boxShadow = '0 8px 24px rgba(0,0,0,0.45)';
+    }
+  }
+
+  function updateVisibility(){
+    mm.style.display = minimapVisible ? 'block' : 'none';
+  }
+
+  window.__setMinimapMode = (mode) => {
+    const next = mode === 'big' ? 'big' : 'small';
+    if (minimapMode !== next){
+      minimapMode = next;
+      applyMode();
+    }
+    return minimapMode;
+  };
+  window.__toggleMinimapMode = () => {
+    const next = minimapMode === 'big' ? 'small' : 'big';
+    window.__setMinimapMode(next);
+    return minimapMode;
+  };
+  window.__toggleMinimap = (on) => {
+    minimapVisible = !!on;
+    updateVisibility();
+  };
+
+  minimapMode = window.__setMinimapMode(window.__initialMinimapMode || 'small');
+  minimapVisible = (window.G?.state === 'PLAYING');
+  updateVisibility();
+
+  mm.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    window.__toggleMinimapMode();
+  });
+  mm.addEventListener('mousedown', (ev) => ev.stopPropagation());
+  window.addEventListener('resize', () => {
+    if (minimapMode === 'big') applyMode();
+  });
 
   function colorFor(ent){
     const ENT = window.ENT || {};
@@ -2215,6 +2336,7 @@ function drawEntities(c2){
   function drawMinimap(){
     const G = window.G;
     if (!G || !G.map || !G.mapW || !G.mapH) { requestAnimationFrame(drawMinimap); return; }
+    if (!minimapVisible) { requestAnimationFrame(drawMinimap); return; }
 
     const w = G.mapW, h = G.mapH;
     const sx = mm.width  / w;
