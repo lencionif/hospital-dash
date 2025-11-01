@@ -87,6 +87,7 @@
   function pushEntity(e) {
     (G.entities ||= []).push(e);
     (G.npcs ||= []).push(e);
+    try { window.PuppetAPI?.attach?.(e, { rig: 'npc_familiar_molesto', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
     return e;
   }
 
@@ -310,6 +311,7 @@
       vx: 0, vy: 0,
       solid: true, pushable: false,
       spriteKey: CFG.skin,
+      skin: `${CFG.skin}.png`,
       color: CFG.color,
       // IA
       ai: {

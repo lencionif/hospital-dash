@@ -163,6 +163,7 @@
         pushable: true,
         color: '#ffb347',
         sprite: CFG.sprite,
+        skin: 'jefe_servicio.png',
         ai: {
           state: 'patrol',
           pause: 0,
@@ -178,6 +179,7 @@
       G.npcs = G.npcs || [];
       G.entities.push(e);
       G.npcs.push(e);
+      try { window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
 
       // Registrar en física si existe
       if (W.Physics && Physics.registerEntity) Physics.registerEntity(e);

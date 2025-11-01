@@ -86,7 +86,7 @@
         id: 'MED' + Math.random().toString(36).slice(2),
         x, y, w: this.TILE * 0.9, h: this.TILE * 0.9,
         vx: 0, vy: 0, color: '#5ac6ff',
-        skin: 'medico', dynamic: true, solid: true, pushable: true
+        skin: 'medico.png', dynamic: true, solid: true, pushable: true
       };
       this.registerMedicEntity(e);
       return e;
@@ -103,11 +103,15 @@
       medicEnt.ai = { i: 0, pause: 0 };
       medicEnt.lastRiddleAt = -999;
 
+      medicEnt.skin = medicEnt.skin || 'medico.png';
+
       this.G.entities.push(medicEnt);
       this.G.npcs.push(medicEnt);
       this.medics.push({ e: medicEnt, tHold: 0 });
 
       if (window.Physics?.registerEntity) Physics.registerEntity(medicEnt);
+
+      try { window.PuppetAPI?.attach?.(medicEnt, { rig: 'npc_medico', z: 0, scale: 1, data: { skin: medicEnt.skin } }); } catch (_) {}
     },
 
     // Garantiza al menos 1 médico (fallback)

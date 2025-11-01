@@ -206,6 +206,7 @@
       lightColor: B.lightColor,
       // visual
       spriteKey: "chica_limpieza",
+      skin: 'chica_limpieza.png',
       // timers IA
       nextTurnAt: performance.now() + B.turnEveryMs * (0.5 + 0.8*rng()),
       nextDropAt: performance.now() + BAL().wet.dropEveryMs * (0.5 + 0.8*rng()),
@@ -225,6 +226,7 @@
 
     (G.entities || (G.entities=[])).push(e);
     cleaners.push(e);
+    try { window.PuppetAPI?.attach?.(e, { rig: 'npc_chica_limpieza', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
     return e;
   }
 

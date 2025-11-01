@@ -179,7 +179,7 @@
       ? W.makeRect(x, y, TILE*0.9, TILE*0.9, ENT.GUARD, '#2b5bd7', false, true, { mass:1.2, rest:0.08, mu:0.12 })
       : { x,y,w:TILE*0.9, h:TILE*0.9, kind:ENT.GUARD, color:'#2b5bd7', vx:0,vy:0, solid:true, static:false, mass:1.2 };
 
-    e.skin   = opts.skin || 'guardia';
+    e.skin   = (opts.skin || 'guardia.png');
     e.role   = 'guardia';
     e.isNPC  = true;                 // para puertas: canOperateDoor(actor)
     e.speed  = opts.speed || 70;     // px/s
@@ -196,6 +196,7 @@
     // Registro
     G.entities = G.entities || []; pushUnique(G.entities, e);
     G.npcs     = G.npcs || [];     pushUnique(G.npcs, e);
+    try { window.PuppetAPI?.attach?.(e, { rig: 'npc_guardia', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
 
     return e;
   }

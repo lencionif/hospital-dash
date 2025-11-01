@@ -29,6 +29,16 @@
     G._patientsByKey = G._patientsByKey || new Map();
   }
 
+  const PILL_SKINS = [
+    'pastilla_analitica.png',
+    'pastilla_azul.png',
+    'pastilla_gaviscon.png',
+    'pastilla_luzon.png',
+    'pastilla_patoplast.png',
+    'pastilla_tillaout.png',
+    'pastilla_zenidina.png'
+  ];
+
   function isBlockedRect(x, y, w, h) {
     const map = G.map || [];
     if (!map.length) return false;
@@ -111,6 +121,9 @@
     const identity = opts.identity || nextIdentity();
     const stats = ensureStats();
 
+    const variantIndex = (identity.index != null ? identity.index : stats.totalPatients || 0);
+    const skinName = opts.skin || `paciente${(variantIndex % 7) + 1}.png`;
+
     const patient = {
       id: opts.id || `PAT_${Math.random().toString(36).slice(2, 9)}`,
       kind: ENT.PATIENT,
@@ -131,12 +144,12 @@
       identitySeed: identity.seed,
       identityIndex: identity.index,
       spriteKey: opts.spriteKey || 'patient',
-      skin: opts.skin || 'patient',
+      skin: skinName,
       bellId: null,
       ringing: false
     };
 
-    try { W.PuppetAPI?.attach?.(patient, { rig: 'patient.std', z: 0, scale: 1, data: { skin: patient.skin } }); } catch (_) {}
+    try { W.PuppetAPI?.attach?.(patient, { rig: 'patient_bed', z: 0, scale: 1, data: { skin: patient.skin } }); } catch (_) {}
 
     addEntity(patient);
     registerPatient(patient);
@@ -177,6 +190,8 @@
         }
       }
     }
+    const pillSkin = PILL_SKINS[(patient.identityIndex ?? 0) % PILL_SKINS.length];
+
     const pill = {
       id: `PILL_${Math.random().toString(36).slice(2, 9)}`,
       kind: ENT.PILL,
@@ -190,9 +205,10 @@
       pairName: patient.keyName,
       targetName: patient.displayName,
       anagram: patient.anagram,
-      spriteKey: 'pill.generic'
+      spriteKey: 'pill.generic',
+      skin: pillSkin
     };
-    try { W.PuppetAPI?.attach?.(pill, { rig: 'pill.generic', z: 0, scale: 1 }); } catch (_) {}
+    try { W.PuppetAPI?.attach?.(pill, { rig: 'pill', z: 0, scale: 1, data: { skin: pill.skin } }); } catch (_) {}
     addEntity(pill);
     if (!G.pills.includes(pill)) G.pills.push(pill);
     return pill;
@@ -271,10 +287,12 @@
         solid: true,
         vx: 0,
         vy: 0,
-        color: '#ff5d6c'
+        color: '#ff5d6c',
+        skin: 'paciente_furiosa.png'
       };
       addEntity(furiosa);
     }
+    try { W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: furiosa.skin } }); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
     return furiosa;
   }

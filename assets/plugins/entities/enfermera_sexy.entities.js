@@ -172,6 +172,7 @@
       vx: 0, vy: 0,
       spriteKey: 'nurse_sexy',
       color: '#ff6aa2',
+      skin: 'enfermera_sexy.png',
       pushable: false,
       mass: 1.0, rest: 0.10, mu: 0.12,
       // IA
@@ -510,6 +511,7 @@
     spawn(x,y,props={}){
       const e = create(x,y,props);
       ensureOnArrays(e);
+      try { window.PuppetAPI?.attach?.(e, { rig: 'npc_enfermera_sexy', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
       attachLight(e);
       return e;
     },

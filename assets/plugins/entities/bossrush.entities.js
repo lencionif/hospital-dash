@@ -217,10 +217,15 @@
         BossPhase.tick(dt, this);
       }
     };
+    const rig = (subtype === 'psiquiatrica') ? 'boss3_pyro' : (subtype === 'jefa_limpieza' ? 'boss2_fainted' : 'boss1_bed');
+    if (!e.skin) {
+      e.skin = (subtype === 'psiquiatrica') ? 'boss_nivel3.png' : (subtype === 'jefa_limpieza' ? 'boss_nivel2.png' : 'boss_nivel1.png');
+    }
     // Asegura presencia global
     G.boss = e;
     if (!G.entities.includes(e)) G.entities.push(e);
     if (!G.patients.includes(e)) G.patients.push(e);
+    try { W.PuppetAPI?.attach?.(e, { rig, z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
     return e;
   }
 
