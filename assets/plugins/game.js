@@ -1547,9 +1547,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   function update(dt){
     window.SkyFX?.update?.(dt);
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
-    try { window.GameFlowAPI?.update?.(dt); } catch(err){ console.warn('[GameFlow] update error:', err); }
+    const isPlaying = (G.state === 'PLAYING');
+    if (isPlaying) {
+      try { window.GameFlowAPI?.update?.(dt); } catch(err){ console.warn('[GameFlow] update error:', err); }
+    }
     applyStateVisuals();
-    if (G.state !== 'PLAYING' || !G.player) return; // <-- evita tocar nada sin jugador
+    if (!isPlaying || !G.player) return; // <-- evita tocar nada sin jugador
     G.time += dt;
     G.cycleSeconds += dt;
     const dbg = !!window.DEBUG_FORCE_ASCII;
