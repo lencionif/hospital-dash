@@ -10,6 +10,21 @@
   // ------------------------------------------------------------
   // Parámetros globales y utilidades
   // ------------------------------------------------------------
+  const SEARCH_PARAMS = new URLSearchParams(location.search || '');
+  const DEBUG_MAP_MODE = /(?:\?|&)map=debug\b/i.test(location.search || '');
+  const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
+
+  function logThrough(level, ...args){
+    const logger = window.LOG;
+    if (logger && typeof logger[level] === 'function') {
+      try { logger[level](...args); return; }
+      catch (err){ console.warn('[LOG proxy]', err); }
+    }
+    const fallback = (level === 'error') ? console.error
+      : (level === 'warn') ? console.warn : console.log;
+    fallback(...args);
+  }
+
   const TILE = 32;
   const VIEW_W = 960;
   const VIEW_H = 540;
@@ -406,11 +421,43 @@
       }
     });
   })();
+
+  function ensureHeroSelected(){
+    let key = (window.selectedHeroKey || '').toLowerCase();
+    if (!key){
+      const first = document.querySelector('#start-screen .char-card.selected')
+        || document.querySelector('#start-screen .char-card[data-hero]');
+      key = (first?.dataset?.hero || 'enrique').toLowerCase();
+    }
+    if (!key) key = 'enrique';
+    window.selectedHeroKey = key;
+    window.G = window.G || {};
+    window.G.selectedHero = key;
+    return key;
+  }
   const metrics = document.getElementById('metricsOverlay') || document.createElement('pre'); // por si no existe
 
   // Cámara
   const camera = { x: 0, y: 0, zoom: 0.45 }; // ⬅️ arranca ya alejado
   G.camera = camera;
+
+  function worldToScreenBasic(worldX, worldY, cam = camera, viewportWidth = VIEW_W, viewportHeight = VIEW_H) {
+    const ref = cam || camera;
+    const zoom = Number(ref?.zoom) || 1;
+    return {
+      x: (worldX - (ref?.x || 0)) * zoom + viewportWidth * 0.5,
+      y: (worldY - (ref?.y || 0)) * zoom + viewportHeight * 0.5,
+    };
+  }
+
+  function bridgeToScreen(a, b, c, d) {
+    if (typeof a === 'number') {
+      return worldToScreenBasic(a, b, c, d);
+    }
+    return worldToScreenBasic(c, d, a, b?.width ?? VIEW_W, b?.height ?? VIEW_H);
+  }
+
+  let invalidZoomLogged = false;
 
   try {
     window.GameFlowAPI?.init?.(G, { cartBossTiles: 2.0 });
@@ -734,6 +781,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     e.static = false;
     G.entities.push(e);
     G.enemies.push(e);
+    window.LOG?.event?.('SPAWN', { kind: 'MOSQUITO', id: e.id || null, x: e.x, y: e.y });
     return e;
   }
 
@@ -1701,8 +1749,12 @@ function drawEntities(c2){
 
         // (B2) “fade lejano” sutil para realismo (puedes comentar si no lo quieres)
         if (G.player) {
-          const px = (G.player.x + G.player.w*0.5 - camera.x) * camera.zoom + VIEW_W*0.5;
-          const py = (G.player.y + G.player.h*0.5 - camera.y) * camera.zoom + VIEW_H*0.5;
+          const pos = worldToScreenBasic(
+            G.player.x + G.player.w * 0.5,
+            G.player.y + G.player.h * 0.5
+          );
+          const px = pos.x;
+          const py = pos.y;
           const R  = Math.max(VIEW_W, VIEW_H) * 0.55;
           const g  = ctx.createRadialGradient(px, py, R*0.40, px, py, R);
           g.addColorStop(0.00, 'rgba(0,0,0,0)');     // cerca: nítido
@@ -1734,8 +1786,9 @@ function drawEntities(c2){
     ctx.drawImage(blurCanvas, 0, 0);
 
     const p = G.player;
-    const px = (p.x + p.w/2 - camera.x) * camera.zoom + VIEW_W/2;
-    const py = (p.y + p.h/2 - camera.y) * camera.zoom + VIEW_H/2;
+    const pos = worldToScreenBasic(p.x + p.w / 2, p.y + p.h / 2);
+    const px = pos.x;
+    const py = pos.y;
     const R  = TILE * 6.5 * camera.zoom;
 
     const fog = ctx.createRadialGradient(px, py, R*0.65, px, py, R*1.30);
@@ -1789,6 +1842,17 @@ function drawEntities(c2){
   let frames = 0, dtAcc=0, msFrame=0, FPS=60;
 
   function loop(now){
+    if (!Number.isFinite(camera.zoom) || camera.zoom <= 0){
+      if (!invalidZoomLogged){
+        logThrough('error', '[camera] zoom inválido, reajustando', { zoom: camera.zoom });
+        window.LOG?.event('CAMERA', { issue: 'invalid-zoom', zoom: camera.zoom });
+        invalidZoomLogged = true;
+      }
+      camera.zoom = 1;
+    } else if (invalidZoomLogged) {
+      invalidZoomLogged = false;
+    }
+
     const delta = (now - lastT)/1000; lastT = now;
     acc += Math.min(delta, 0.05);
     while (acc >= DT){
@@ -1802,6 +1866,11 @@ function drawEntities(c2){
       }
     }
     draw();
+    if (window.LOG?.counter){
+      const fpsVal = Number.isFinite(FPS) && FPS > 0 ? Number(FPS.toFixed(1)) : 0;
+      window.LOG.counter('fps', fpsVal);
+      window.LOG.counter('entities', Array.isArray(G.entities) ? G.entities.length : 0);
+    }
     requestAnimationFrame(loop);
   }
 
@@ -1864,7 +1933,10 @@ function drawEntities(c2){
 
   function buildLevelForCurrentMode(levelNumber){
     const level = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
+    G.debugMap = DEBUG_MAP_MODE;
+    G._placementMode = DEBUG_MAP_MODE ? 'debug' : 'normal';
     G._placementsFinalized = false;
+    G._hasPlaced = false;
     G.mapgenPlacements = [];
     G.mapAreas = null;
 
@@ -2030,6 +2102,7 @@ function drawEntities(c2){
       return;
     }
     G.state = next;
+    window.LOG?.event?.('STATE', { state: next, level: G.level || null });
     applyStateVisuals(true);
   }
 
@@ -2127,6 +2200,21 @@ function drawEntities(c2){
     const targetLevel = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
     const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
     G.level = targetLevel;
+    G.debugMap = DEBUG_MAP_MODE;
+    G._hasPlaced = false;
+    G.__placementsApplied = false;
+
+    const heroKey = ensureHeroSelected();
+    if (heroKey) {
+      G.selectedHero = heroKey;
+    }
+
+    logThrough('info', '[startGame] preparando turno', {
+      level: targetLevel,
+      debug: DEBUG_MAP_MODE,
+      restart: wasRestart,
+    });
+    window.LOG?.event('LEVEL_START', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
 
     startScreen.classList.add('hidden');
     pausedScreen.classList.add('hidden');
@@ -2155,52 +2243,9 @@ function drawEntities(c2){
     }
 
     setGameState('READY');
-  }
-
-    //Init Audio
-    /*
-    AudioAPI.init({
-      urls: {
-        // deja los defaults o sobreescribe aquí tus rutas reales
-        // ui_click: 'assets/sfx/ui_click.ogg', ...
-      },
-      vol: { master: 1, sfx: 0.95, ui: 1, ambient: 0.7, env: 0.9 },
-      maxDistance: 520,
-      minDistance: 48
-    });*/
-    // Compat: si alguien usa "Lighting", apunta al nuevo API
-    window.Lighting = window.LightingAPI || window.Lighting || null;
-    SkyFX.init({
-      canvas: document.getElementById('gameCanvas'),
-      getCamera: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom }),
-      getMapAABB: () => ({ x: 0, y: 0, w: G.mapW * TILE_SIZE, h: G.mapH * TILE_SIZE }),
-      worldToScreen: (x,y) => ({
-        x: (x - camera.x) * camera.zoom + VIEW_W * 0.5,
-        y: (y - camera.y) * camera.zoom + VIEW_H * 0.5
-      }),
-      // AUDIO: siempre funciones
-      //onStartRain: () => { try{ AudioFX?.loop('rain', true); }catch(e){} },
-      //onStopRain : () => { try{ AudioFX?.stop('rain'); }catch(e){} },
-      //onThunder  : () => { try{ AudioFX?.play('thunder'); }catch(e){} }
-    });
-    SkyFX.setLevel(G.level);   // ya estaba inicializado arriba
-
-    // Spawners del nivel (solo una vez por arranque)
-    initSpawnersForLevel();
-    // === Física: vincular entidades del nivel ===
-    Physics.init({
-          restitution: 0.12,          // tope global de rebote (bajo)
-          friction: 0.045,            // rozamiento estándar (menos desliz)
-          slideFriction: 0.020,       // mojado resbala pero no “hielo”
-          crushImpulse: 110,
-          hurtImpulse: 45,
-          explodeImpulse: 170
-        }).bindGame(G);
-
-    if (G.player && typeof G.player.hp === 'number') {
-      G.healthMax = (G.player.hpMax|0) * 2;      // p.ej. Enrique: 5 corazones → 10 “halves”
-      G.health    = Math.min(G.healthMax, (G.player.hp|0) * 2);
-    }
+    window.dispatchEvent(new CustomEvent('game:start', {
+      detail: { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart }
+    }));
   }
 
 
@@ -2209,21 +2254,64 @@ function drawEntities(c2){
     else if (G.state==='PAUSED'){ G.state='PLAYING'; pausedScreen.classList.add('hidden'); }
   }
 
-  document.getElementById('start-button')?.addEventListener('click', () => {
-    // Dejar libre el manejador de click y ejecutar el arranque en el próximo frame
-    requestAnimationFrame(() => startGame());
-  });
-  document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
-  document.getElementById('restartBtn')?.addEventListener('click', startGame);
+  function attachUIHandlers(){
+    if (attachUIHandlers._done) return;
+    attachUIHandlers._done = true;
+    const startBtn = document.getElementById('start-button');
+    if (startBtn){
+      startBtn.addEventListener('click', () => {
+        ensureHeroSelected();
+        requestAnimationFrame(() => startGame());
+      });
+    }
+    document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
+    document.getElementById('restartBtn')?.addEventListener('click', () => startGame());
+  }
 
-  // Arranque
-  requestAnimationFrame(loop);
+  function runBootstrapDiagnostics(){
+    const missing = [];
+    if (!window.G) missing.push('G');
+    if (!window.PuppetAPI) missing.push('PuppetAPI');
+    if (!window.Entities) missing.push('Entities');
+    if (typeof window.toScreen !== 'function') missing.push('toScreen');
+    if (missing.length){
+      logThrough('error', '[bootstrap] dependencias ausentes', { missing });
+      window.LOG?.event('BOOT_CHECK', { ok: false, missing });
+    } else {
+      logThrough('info', '[bootstrap] dependencias OK', { debug: DEBUG_MAP_MODE, diag: DIAG_MODE });
+      window.LOG?.event('BOOT_CHECK', { ok: true, debug: DEBUG_MAP_MODE, diag: DIAG_MODE });
+    }
+  }
+
+  function bootstrapGame(){
+    attachUIHandlers();
+    if (window.LOG?.init){
+      window.LOG.init({ buffer: 2000, uiHotkey: 'F10', verbose: DIAG_MODE, level: DIAG_MODE ? 'debug' : 'info' });
+      if (DIAG_MODE) window.LOG.level = 'debug';
+      if (DIAG_MODE) window.LOG.debug?.('[diag] modo diagnóstico activo');
+    }
+    requestAnimationFrame(loop);
+    if (DEBUG_MAP_MODE){
+      ensureHeroSelected();
+      window.LOG?.debug?.('[autostart] map=debug → start automático');
+      requestAnimationFrame(() => startGame());
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrapGame, { once: true });
+  } else {
+    bootstrapGame();
+  }
+  window.addEventListener('load', runBootstrapDiagnostics, { once: true });
 
   // Exponer algunas APIs esperadas por otros plugins/sistemas
   window.TILE_SIZE = TILE;
   window.ENT = ENT;                 // para plugins/sprites
   window.G = G;
   window.camera = camera;
+  window.toScreen = bridgeToScreen;
+  window.startGame = startGame;
   window.damagePlayer = damagePlayer; // ⬅️ EXponer daño del héroe para las ratas
   })();
 // ==== DEBUG MINI-MAP OVERLAY =================================================

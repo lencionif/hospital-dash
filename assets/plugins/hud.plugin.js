@@ -34,6 +34,12 @@
   }
 
   function toScreen(camera, canvas, worldX, worldY) {
+    if (typeof window.toScreen === 'function') {
+      try {
+        const res = window.toScreen(camera, canvas, worldX, worldY);
+        if (res && typeof res.x === 'number' && typeof res.y === 'number') return res;
+      } catch (_) {}
+    }
     const cam = camera || { x: 0, y: 0, zoom: 1 };
     const zoom = cam.zoom || 1;
     const cx = canvas ? canvas.width * 0.5 : 0;

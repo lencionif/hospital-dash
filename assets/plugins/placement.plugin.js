@@ -116,8 +116,30 @@
     };
   })();
   'use strict';
+  const DEBUG_MAP = /(?:\?|&)map=debug\b/i.test(location.search || '');
   const TILE = (typeof W.TILE_SIZE!=='undefined')? W.TILE_SIZE : (W.TILE||32);
   const ENT  = (W.ENT || {});
+
+  function shouldRunPlacement(mode){
+    const g = window.G || (window.G = {});
+    const activeMode = g._placementMode || (g.debugMap ? 'debug' : 'normal');
+    const requested = mode || activeMode || (DEBUG_MAP ? 'debug' : 'normal');
+    if (activeMode && mode && activeMode !== mode){
+      window.LOG?.debug?.('[placement] salto por modo activo', { requested: mode, active: activeMode });
+      return false;
+    }
+    if (g._hasPlaced){
+      window.LOG?.warn?.('[placement] intento duplicado', { mode: requested });
+      return false;
+    }
+    return true;
+  }
+
+  function finalizePlacement(mode){
+    const g = window.G || (window.G = {});
+    g._hasPlaced = true;
+    if (mode) g._placementMode = mode;
+  }
 
   //Helpers
   function isWalkable(map, tx,ty){
@@ -278,6 +300,9 @@
     // constraints example:
     // { avoidRects:[controlRoomRect, bossRoomRect], minDistFrom:{x:spawnTx,y:spawnTy,d:15} }
     placeEntities(G, plan){
+      if (!shouldRunPlacement('normal')) {
+        return;
+      }
       // plan: { patients:7, pills:8, rats:1, mosquitos:1, cleaners:1, supervisor:1, family:1, doctor:1, boss:{roomRect, type:'a'} }
       const cons = plan.constraints || {};
       placeBatch(G, 'DOCTOR', plan.doctor||1, {constraints:cons});
@@ -306,6 +331,7 @@
         const e = W.NPC?.create('BOSS', tx*TILE+6, ty*TILE+6, { bossType: plan.boss.type||'a' });
         if (e) G.entities.push(e);
       }
+      finalizePlacement('normal');
     }
   };
 
@@ -319,8 +345,13 @@
 
 window.applyPlacementsFromMapgen = function(arr){
   const W = window, G = W.G || (W.G = {});
+  const mode = (G.debugMap === true) ? 'debug' : 'normal';
+  if (!shouldRunPlacement(mode)) {
+    return { skipped: true, reason: 'guard' };
+  }
   if (G.__placementsApplied === true) {
     console.warn('applyPlacementsFromMapgen: SKIP duplicate invocation');
+    finalizePlacement(mode);
     return { skipped: true, reason: 'duplicate' };
   }
   G.__placementsApplied = true;
@@ -399,6 +430,7 @@ function ensureOnLists(e){
     try { console.log('%cTRY','color:#aaa', p, '→', x, y); } catch(_) {}
   }
   function logOk(kind,x,y,e){
+    window.LOG?.event?.('SPAWN', { kind, x, y, id: e?.id || null });
     if (!__LOG_ON__) return;
     try { console.log('%cOK','color:#2aa198', kind,'@',x,y,e); } catch(_) {}
   }
@@ -649,6 +681,7 @@ function ensureOnLists(e){
     }
   });
 
+  finalizePlacement(mode);
   const after = count();
   if (__LOG_ON__) {
     try {   console.log('%cPLACEMENT_SUMMARY','background:#222;color:#fff;padding:2px 6px',
