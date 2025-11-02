@@ -121,52 +121,58 @@
   </div>
 
   <!-- JS (no modules para funcionar con file://) -->
-  <script src="./assets/plugins/physics.plugin.js"></script>
-  <script src="./assets/plugins/lighting.plugin.js"></script>
-  <script src="./assets/plugins/skyweather.plugin.js"></script>
-  <script src="./assets/plugins/arrowguide.plugin.js"></script>
+  <!-- Helpers primero -->
+  <script defer src="./assets/plugins/physics.plugin.js"></script>
+  <script defer src="./assets/plugins/lighting.plugin.js"></script>
+  <script defer src="./assets/plugins/skyweather.plugin.js"></script>
+  <script defer src="./assets/plugins/arrowguide.plugin.js"></script>
+  <script defer src="./assets/plugins/damage.plugin.js"></script>
+  <script defer src="./assets/plugins/audio.plugin.js"></script>
+  <script defer src="./assets/plugins/score.plugin.js"></script>
+  <script defer src="./assets/plugins/sprites.plugin.js"></script>
+  <script defer src="./assets/plugins/gameflow.plugin.js"></script>
+  <script defer src="./assets/plugins/presentation.plugin.js"></script>
+  <script defer src="./assets/plugins/music.plugin.js"></script>
+  <script defer src="./assets/plugins/mouse.control.plugin.js"></script>
+  <script defer src="./assets/plugins/furious.plugin.js"></script>
+  <script defer src="./assets/plugins/bells.plugin.js"></script>
+  <script defer src="./assets/plugins/dialog.plugin.js"></script>
 
-  <script src="./assets/plugins/damage.plugin.js"></script>
-  <script src="./assets/plugins/puppet.plugin.js"></script>
-  <script src="./assets/plugins/puppet.rigs.plugin.js"></script>
+  <!-- Núcleo del juego -->
+  <script defer src="./assets/plugins/game.js"></script>
 
-  <script src="./assets/plugins/audio.plugin.js"></script>
-  <script src="./assets/plugins/score.plugin.js"></script>
-  <script src="./assets/plugins/placement.plugin.js"></script>
-  <script src="./assets/plugins/mapgen.plugin.js"></script>
-  <script src="./assets/plugins/sprites.plugin.js"></script>
-  <script src="./assets/plugins/gameflow.plugin.js"></script>
-
-  <script src="./assets/plugins/presentation.plugin.js"></script>
-  <script src="./assets/plugins/mouse.control.plugin.js"></script>
-  <script src="./assets/plugins/furious.plugin.js"></script>
-  <script src="./assets/plugins/bells.plugin.js"></script>
-  <script src="./assets/plugins/dialog.plugin.js"></script>
-  <script src="./assets/plugins/hud.plugin.js"></script>
-  <script src="./assets/plugins/music.plugin.js"></script>
+  <!-- Plugins de gameplay y render tras el núcleo -->
+  <script defer src="./assets/plugins/placement.plugin.js"></script>
+  <script defer src="./assets/plugins/mapgen.plugin.js"></script>
+  <script defer src="./assets/plugins/puppet.plugin.js"></script>
+  <script defer src="./assets/plugins/puppet.rigs.plugin.js"></script>
+  <script defer src="./assets/plugins/hud.plugin.js"></script>
 
   <!-- Entidades -->
-  <script src="./assets/plugins/entities/heroes.entities.js"></script>
-  <script src="./assets/plugins/entities/carts.entities.js"></script>
-  <script src="./assets/plugins/entities/mosquito.entities.js"></script>
-  <script src="./assets/plugins/entities/rats.entities.js"></script>
-  <script src="./assets/plugins/entities/celador.entities.js"></script>
-  <script src="./assets/plugins/entities/cleaner.entities.js"></script>
-  <script src="./assets/plugins/entities/doors.entities.js"></script>
-  <script src="./assets/plugins/entities/elevators.entities.js"></script>
-  <script src="./assets/plugins/entities/enfermera_sexy.entities.js"></script>
-  <script src="./assets/plugins/entities/jefe_servicio.entities.js"></script>
-  <script src="./assets/plugins/entities/medico.entities.js"></script>
-  <script src="./assets/plugins/entities/objects.entities.js"></script>
-  <script src="./assets/plugins/entities/patients.entities.js"></script>
-  <script src="./assets/plugins/entities/spawner.entities.js"></script>
-  <script src="./assets/plugins/entities/supervisora.entities.js"></script>
-  <script src="./assets/plugins/entities/tcae.entities.js"></script>
-  <script src="./assets/plugins/entities/familiar_molesto.entities.js"></script>
-  <script src="./assets/plugins/entities/hazards.entities.js"></script>
-  <script src="./assets/plugins/entities/bossrush.entities.js"></script>
-  <script src="./assets/plugins/entities/guardia.entities.js"></script>
-  <script src="./assets/plugins/entities/lights.entities.js"></script>
+  <script defer src="./assets/plugins/entities/heroes.entities.js"></script>
+  <script defer src="./assets/plugins/entities/carts.entities.js"></script>
+  <script defer src="./assets/plugins/entities/mosquito.entities.js"></script>
+  <script defer src="./assets/plugins/entities/rats.entities.js"></script>
+  <script defer src="./assets/plugins/entities/celador.entities.js"></script>
+  <script defer src="./assets/plugins/entities/cleaner.entities.js"></script>
+  <script defer src="./assets/plugins/entities/doors.entities.js"></script>
+  <script defer src="./assets/plugins/entities/elevators.entities.js"></script>
+  <script defer src="./assets/plugins/entities/enfermera_sexy.entities.js"></script>
+  <script defer src="./assets/plugins/entities/jefe_servicio.entities.js"></script>
+  <script defer src="./assets/plugins/entities/medico.entities.js"></script>
+  <script defer src="./assets/plugins/entities/objects.entities.js"></script>
+  <script defer src="./assets/plugins/entities/patients.entities.js"></script>
+  <script defer src="./assets/plugins/entities/spawner.entities.js"></script>
+  <script defer src="./assets/plugins/entities/supervisora.entities.js"></script>
+  <script defer src="./assets/plugins/entities/tcae.entities.js"></script>
+  <script defer src="./assets/plugins/entities/familiar_molesto.entities.js"></script>
+  <script defer src="./assets/plugins/entities/hazards.entities.js"></script>
+  <script defer src="./assets/plugins/entities/bossrush.entities.js"></script>
+  <script defer src="./assets/plugins/entities/guardia.entities.js"></script>
+  <script defer src="./assets/plugins/entities/lights.entities.js"></script>
+
+  <!-- Diagnóstico -->
+  <script defer src="./assets/apisPlugins/logs.plugin.js"></script>
 
   <script id="sprites-manifest" type="application/json">
   [
@@ -199,11 +205,6 @@
     "foto_los3.png","foto_navidad.png"
   ]
   </script>
-
-
-  <!-- Motor central SIEMPRE el último -->
-  <script src="./assets/plugins/game.js"></script>
-
 <script>
 (function(){
   // === Botón de "aceleración 3D" (gag) ===

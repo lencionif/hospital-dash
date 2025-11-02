@@ -81,6 +81,11 @@
       } else {
         player.invuln = 1.0;
       }
+      window.LOG?.event?.('HIT', {
+        attacker: ent.id || key,
+        target: player.id || 'PLAYER',
+        amount: 0.5,
+      });
 
       if (window.DEBUG_FORCE_ASCII){
         console.log('[Damage] hit by', ent.kindName || ent.kind || key, 'hp=', player.health.toFixed(2));
