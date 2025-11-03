@@ -282,6 +282,10 @@
 
       if (this.dead) return;
 
+      this._igniteTimer = Math.max(0, (this._igniteTimer || 0) - dt);
+      const prevX = this.x;
+      const prevY = this.y;
+
       // Micro-wander (poco movimiento)
       this.wanderCooldown -= dt;
       if (this.wanderCooldown <= 0) {
@@ -308,7 +312,14 @@
         const fx = c.x + Math.cos(ang) * rad;
         const fy = c.y + Math.sin(ang) * rad;
         spawnFire(fx, fy, { ttl: 6000, dps: 0.5 });
+        this._igniteTimer = 0.8;
       }
+
+      const dx = this.x - prevX;
+      const dy = this.y - prevY;
+      const dtSafe = Math.max(1e-3, dt);
+      this.vx = dx / dtSafe;
+      this.vy = dy / dtSafe;
     };
 
     return e;

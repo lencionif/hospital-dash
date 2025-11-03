@@ -81,6 +81,20 @@
       } else {
         player.invuln = 1.0;
       }
+
+      if (ent && typeof ent.x === 'number'){
+        const px = (player.x || 0) + (player.w || 0) * 0.5;
+        const py = (player.y || 0) + (player.h || 0) * 0.5;
+        const ex = (ent.x || 0) + (ent.w || 0) * 0.5;
+        const ey = (ent.y || 0) + (ent.h || 0) * 0.5;
+        const dx = px - ex;
+        const dy = py - ey;
+        const len = Math.hypot(dx, dy) || 1;
+        const force = 140;
+        player.vx = (player.vx || 0) + (dx / len) * force;
+        player.vy = (player.vy || 0) + (dy / len) * force;
+      }
+
       window.LOG?.event?.('HIT', {
         attacker: ent.id || key,
         target: player.id || 'PLAYER',

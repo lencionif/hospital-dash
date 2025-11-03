@@ -3,19 +3,19 @@
 
   // === Config/tema por defecto ===
   const THEME = {
-    bg:    '#0b0d10',
-    text:  '#e6edf3',
-    ok:    '#2ecc71',
-    warn:  '#e67e22',
-    accent:'#f6c44f',
+    bg:    'rgba(0,0,0,0.65)',
+    text:  '#ffffff',
+    ok:    '#19c37d',
+    warn:  '#ffd166',
+    accent:'#19c37d',
     stroke:'#ff5a6b',
   };
 
   const S = {
     position: (('ontouchstart' in window) ? 'bottom' : 'top'), // móvil: abajo; PC: arriba
-    height: 68,
-    pad: 12,
-    font: '14px monospace',
+    height: 104,
+    pad: 16,
+    font: '15px "IBM Plex Mono", monospace',
   };
 
   // Helpers
@@ -303,116 +303,109 @@
     render(ctx, _camera, Gref){
       const G = Gref || getG();
       if (!ctx || !G) return;
-      const Wc = ctx.canvas.width, Hc = ctx.canvas.height;
-      const y0 = (S.position === 'top') ? 0 : (Hc - S.height);
+      const canvas = ctx.canvas;
+      const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      const cssW = canvas.clientWidth || canvas.width || 0;
+      const cssH = canvas.clientHeight || canvas.height || 0;
+      if (canvas.__hudDpr !== dpr){
+        canvas.__hudDpr = dpr;
+        canvas.width = Math.max(1, Math.round(cssW * dpr));
+        canvas.height = Math.max(1, Math.round(cssH * dpr));
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
 
-      // Limpiar y fondo de barra
-      ctx.clearRect(0, 0, Wc, Hc);
+      const panelWidth = Math.min(cssW - S.pad * 2, 480);
+      const panelHeight = S.height;
+      const panelX = S.pad;
+      const panelY = (S.position === 'top') ? S.pad : Math.max(S.pad, cssH - panelHeight - S.pad);
+
       ctx.save();
       ctx.fillStyle = THEME.bg;
-      ctx.globalAlpha = 0.72;
-      ctx.fillRect(0, y0, Wc, S.height);
-      ctx.globalAlpha = 1;
+      ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+      ctx.strokeStyle = '#19c37d';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1);
 
-      // Tipografía
-      ctx.font = S.font;
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = THEME.text;
-
-      // Layout simple: [L] hearts + stats | [C] objetivo | [R] score
-      const leftX  = S.pad;
-      const midX   = Wc * 0.35;
-      const rightX = Wc - S.pad;
-      const cy     = y0 + (S.height / 2);
-      // ——— L: Vida + stats (latido fuerte) ———
       const halves = Number(G.health || 0);
       const maxHearts = Math.max(1, ((G.healthMax | 0) ? (G.healthMax | 0) / 2 : (G.player?.hpMax || 3)));
       const healthRatio = Math.max(0, Math.min(1, (maxHearts > 0 ? halves / (maxHearts * 2) : 1)));
-
-      // Tiempo base (usa el reloj del juego si existe)
       const tNow = (G.time != null) ? G.time : (performance.now() / 1000);
+      const bps = 1.2 + (3.0 * (1 - healthRatio));
+      const phase = (tNow * bps) % 1;
+      const p1 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.06) / 0.12)), 3.2);
+      const p2 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.38) / 0.18)), 3.0);
+      const pulse = Math.min(1, p1 * 1.0 + p2 * 0.85);
+      const amp = 0.16 + 0.28 * (1 - healthRatio);
+      const squash = 0.10 + 0.24 * (1 - healthRatio);
+      const scaleX = 1 + amp * pulse;
+      const scaleY = 1 - squash * pulse;
+      const glow = 0.25 + 0.65 * pulse;
 
-      // Velocidad del pulso: con poca vida va MUCHO más rápido
-      const bps = 1.2 + (3.0 * (1 - healthRatio)); // 1.2 .. 4.2 latidos/seg
+      const heartsX = panelX + 18;
+      const heartsY = panelY + 18;
+      drawHearts(ctx, heartsX, heartsY, halves, maxHearts, scaleX, scaleY, glow);
 
-      // Patrón “lub-dub”: dos golpes por ciclo (uno corto y otro un pelín más largo)
-      const phase = (tNow * bps) % 1;             // 0..1
-      const p1 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.06) / 0.12)), 3.2); // golpe 1
-      const p2 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.38) / 0.18)), 3.0); // golpe 2
-      const pulse = Math.min(1, p1 * 1.0 + p2 * 0.85); // mezcla
-
-      // Amplitud y squash: con poca vida se exageran
-      const amp    = 0.16 + 0.28 * (1 - healthRatio); // 16% .. 44% de crecimiento horizontal
-      const squash = 0.10 + 0.24 * (1 - healthRatio); // 10% .. 34% de “aplastado” vertical
-
-      const scaleX = 1 + amp * pulse;   // ensancha
-      const scaleY = 1 - squash * pulse; // aplasta (efecto cartoon)
-      const glow   = 0.25 + 0.65 * pulse; // 0.25..0.90 → halo muy visible en el pico
-
-      drawHearts(ctx, leftX, cy - 14, halves, maxHearts, scaleX, scaleY, glow);
-      let lx = leftX + 22*maxHearts + 14;
-
-
-      ctx.fillStyle = THEME.text;
       const stats = G.stats || {};
       const remaining = stats.remainingPatients || 0;
       const total = stats.totalPatients || 0;
       const furiosas = stats.activeFuriosas || 0;
       const urgOpen = remaining === 0 && furiosas === 0;
-      ctx.fillStyle = THEME.text;
-      ctx.textAlign = 'left';
-      const pacLine = `Pacientes: ${remaining}/${total}`;
-      ctx.fillText(pacLine, lx, cy - 18);
-      lx += ctx.measureText(pacLine).width + 16;
-      ctx.fillStyle = furiosas > 0 ? THEME.warn : THEME.text;
-      const furLine = `Furiosas: ${furiosas}`;
-      ctx.fillText(furLine, lx, cy - 18);
-      lx += ctx.measureText(furLine).width + 16;
-      ctx.fillStyle = urgOpen ? THEME.ok : THEME.warn;
-      const urg = `Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`;
-      ctx.fillText(urg, lx, cy - 18);
 
-      // Info de lo que llevas (si aplica)
-      if (G.carry) {
+      const statsX = heartsX + 22 * maxHearts + 20;
+      const statsY = panelY + 20;
+      ctx.font = S.font;
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = THEME.text;
+      const pacLine = `Pacientes: ${remaining}/${total}`;
+      ctx.fillText(pacLine, statsX, statsY);
+      let cursor = statsX + ctx.measureText(pacLine).width + 16;
+      ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : THEME.text;
+      const furLine = `Furiosas: ${furiosas}`;
+      ctx.fillText(furLine, cursor, statsY);
+      cursor += ctx.measureText(furLine).width + 16;
+      ctx.fillStyle = urgOpen ? THEME.ok : THEME.warn;
+      ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, cursor, statsY);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = THEME.text;
+      ctx.fillText(`Puntos: ${G.score ?? 0}`, panelX + panelWidth - 18, statsY);
+      ctx.textAlign = 'left';
+
+      const infoWidth = panelX + panelWidth - statsX - 24;
+      let infoY = statsY + 24;
+      if (infoWidth > 40 && G.carry){
         ctx.fillStyle = THEME.text;
-        const c1 = `Llevas: ${G.carry.label || '—'}`;
-        const c2 = `→ Para: ${G.carry.patientName || G.carry.pairName || '—'}`;
-        const heartsBlockW = 22*maxHearts + 14;
-        ctx.fillText(c1, leftX + heartsBlockW, cy + 2);
-        const anagram = G.carry.anagram ? `Pista: ${G.carry.anagram}` : '';
-        const carryOffset = leftX + heartsBlockW + ctx.measureText(c1).width + 14;
-        ctx.fillText(c2, carryOffset, cy + 2);
-        if (anagram) {
-          ctx.fillText(anagram, carryOffset + ctx.measureText(c2).width + 14, cy + 2);
+        const c1 = ellipsize(ctx, `Llevas: ${G.carry.label || '—'}`, infoWidth);
+        ctx.fillText(c1, statsX, infoY);
+        infoY += 18;
+        const c2 = ellipsize(ctx, `→ Para: ${G.carry.patientName || G.carry.pairName || '—'}`, infoWidth);
+        ctx.fillText(c2, statsX, infoY);
+        infoY += 18;
+        if (G.carry.anagram){
+          ctx.fillStyle = '#9fb0cc';
+          ctx.fillText(ellipsize(ctx, `Pista: ${G.carry.anagram}`, infoWidth), statsX, infoY);
+          ctx.fillStyle = THEME.text;
+          infoY += 18;
         }
       }
 
-      // ——— C: Objetivo (fit 2 líneas + auto-shrink) ———
       const objetivoRaw = computeObjective(G);
-      const midWidth = Wc * 0.50;       // más ancho para el centro
-      ctx.textAlign = 'center';
-      ctx.fillStyle = THEME.accent;
-
+      const objectiveWidth = panelWidth - 36;
       const basePx = parseInt(S.font, 10) || 14;
-      const { px, lines } = fitAndWrap(ctx, basePx, objetivoRaw, midWidth, 2, 11);
-
-      const oldFont = ctx.font;
+      const { px, lines } = fitAndWrap(ctx, basePx, objetivoRaw, objectiveWidth, 2, 12);
       ctx.font = `${px}px monospace`;
-      if (lines.length <= 1) {
-        ctx.fillText(lines[0] || objetivoRaw, Wc * 0.50, cy);
+      ctx.fillStyle = THEME.accent;
+      ctx.textAlign = 'center';
+      const objectiveX = panelX + panelWidth * 0.5;
+      const objectiveTop = panelY + panelHeight - (lines.length > 1 ? px * 2 + 6 : px + 8);
+      if (lines.length <= 1){
+        ctx.fillText(lines[0] || objetivoRaw, objectiveX, objectiveTop);
       } else {
-        ctx.fillText(lines[0], Wc * 0.50, cy - 10);
-        ctx.fillText(lines[1], Wc * 0.50, cy + 10);
+        ctx.fillText(lines[0], objectiveX, objectiveTop);
+        ctx.fillText(lines[1], objectiveX, objectiveTop + px + 6);
       }
-      ctx.font = oldFont;
-
-
-      // ——— R: Score ———
-      ctx.textAlign = 'right';
-      ctx.fillStyle = THEME.text;
-      ctx.fillText(`Puntos: ${G.score ?? 0}`, rightX, cy);
-
-      drawPatientsCounterPanel(ctx, G);
 
       ctx.restore();
     }
