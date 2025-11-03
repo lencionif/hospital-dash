@@ -247,11 +247,7 @@
       hideOverlay(DOM.complete);
       hideOverlay(DOM.gameover);
       const G = S.G || window.G || {};
-      G.stats = G.stats || {};
-      G.stats.totalPatients = 0;
-      G.stats.remainingPatients = 0;
-      G.stats.activeFuriosas = 0;
-      G.stats.furiosasNeutralized = 0;
+      resetGlobalStats(G);
       G.__placementsApplied = false;
       // Asegurar estado de puerta y niebla acorde al inicio
       lockBossDoor();
@@ -372,6 +368,15 @@
     }
   };
 
+  function resetGlobalStats(G) {
+    if (!G) return;
+    const stats = G.stats || (G.stats = {});
+    stats.totalPatients = 0;
+    stats.remainingPatients = 0;
+    stats.activeFuriosas = 0;
+    stats.furiosasNeutralized = 0;
+  }
+
   // Estado interno por nivel
   function resetLevelState() {
     hideReadyOverlayImmediate();
@@ -396,6 +401,7 @@
     const G = S.G || window.G || {};
     if (G) {
       G.__placementsApplied = false;
+      resetGlobalStats(G);
     }
     autoScanReferences();
     recountPatients();
