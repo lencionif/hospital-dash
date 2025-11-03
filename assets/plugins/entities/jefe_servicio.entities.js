@@ -179,7 +179,13 @@
       G.npcs = G.npcs || [];
       G.entities.push(e);
       G.npcs.push(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
+      try {
+        const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })
+          || window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } });
+        e.rigOk = e.rigOk === true || !!puppet;
+      } catch (_) {
+        e.rigOk = e.rigOk === true;
+      }
 
       // Registrar en física si existe
       if (W.Physics && Physics.registerEntity) Physics.registerEntity(e);
@@ -269,18 +275,26 @@
     },
 
     _openRiddleDialog(e, player, riddle) {
+      const setTalking = (active) => {
+        if (e) e.isTalking = !!active;
+        if (player) player.isTalking = !!active;
+      };
+      setTalking(true);
+
       const onChoice = (index) => {
         if (index === riddle.correctIndex) {
-          // RECOMPENSA
           applyTimedEffect(player, riddle.reward || {});
-          // Puntuación extra si está ScoreAPI
           if (W.ScoreAPI && typeof ScoreAPI.add === 'function') {
             ScoreAPI.add(riddle.reward?.points || 100);
           }
         } else {
-          // CASTIGO
           applyTimedEffect(player, riddle.penalty || {});
         }
+      };
+
+      const finish = (idx) => {
+        setTalking(false);
+        onChoice(idx);
       };
 
       // Si hay sistema de diálogos, úsalo; si no, aplica directos
@@ -291,12 +305,13 @@
           text: riddle.text,
           options: riddle.options,
           correctIndex: riddle.correctIndex,
-          onAnswer: (optIndex) => onChoice(optIndex)
+          onAnswer: (optIndex) => finish(optIndex),
+          onClose: () => setTalking(false)
         });
       } else {
         // Fallback sin UI: 50% acierto
         const fakeIndex = Math.random() < 0.5 ? riddle.correctIndex : 0;
-        onChoice(fakeIndex);
+        finish(fakeIndex);
       }
     }
   };

@@ -193,7 +193,9 @@
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
       e.skin = `${key}.png`;
-      window.PuppetAPI?.attach?.(e, { rig: `hero_${key}`, z: 0, scale: 1, data: { skin: `${key}.png` } });
+      const puppet = window.Puppet?.bind?.(e, `hero_${key}`, { z: 0, scale: 1, data: { skin: `${key}.png` } })
+        || window.PuppetAPI?.attach?.(e, { rig: `hero_${key}`, z: 0, scale: 1, data: { skin: `${key}.png` } });
+      e.rigOk = e.rigOk === true || !!puppet;
       attachFlashlight(e);
       try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}
       return e;
@@ -209,7 +211,9 @@
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
       e.skin = `${key}.png`;
-      window.PuppetAPI?.attach?.(e, { rig: `hero_${key}`, z: 0, scale: 1, data: { skin: `${key}.png` } });
+      const puppet = window.Puppet?.bind?.(e, `hero_${key}`, { z: 0, scale: 1, data: { skin: `${key}.png` } })
+        || window.PuppetAPI?.attach?.(e, { rig: `hero_${key}`, z: 0, scale: 1, data: { skin: `${key}.png` } });
+      e.rigOk = e.rigOk === true || !!puppet;
       attachFlashlight(e);
       return e;
     },

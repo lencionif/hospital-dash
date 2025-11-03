@@ -251,7 +251,13 @@
       rigName = 'phone';
     }
     if (rigName) {
-      try { window.PuppetAPI?.attach?.(it, { rig: rigName, z: 0, scale: 1, data: rigData }); } catch (_) {}
+      try {
+        const puppet = window.Puppet?.bind?.(it, rigName, { z: 0, scale: 1, data: rigData })
+          || window.PuppetAPI?.attach?.(it, { rig: rigName, z: 0, scale: 1, data: rigData });
+        it.rigOk = it.rigOk === true || !!puppet;
+      } catch (_) {
+        it.rigOk = it.rigOk === true;
+      }
     }
     // Inserción al engine
     const g = G();

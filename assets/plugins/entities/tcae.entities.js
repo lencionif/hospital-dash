@@ -236,7 +236,13 @@
       interact(by){ return TCAE.toggleFollowNearest(by); }
     };
     (G.entities||(G.entities=[])).push(t);
-    try { window.PuppetAPI?.attach?.(t, { rig: 'npc_tcae', z: 0, scale: 1, data: { skin: t.skin } }); } catch (_) {}
+    try {
+      const puppet = window.Puppet?.bind?.(t, 'npc_tcae', { z: 0, scale: 1, data: { skin: t.skin } })
+        || window.PuppetAPI?.attach?.(t, { rig: 'npc_tcae', z: 0, scale: 1, data: { skin: t.skin } });
+      t.rigOk = t.rigOk === true || !!puppet;
+    } catch (_) {
+      t.rigOk = t.rigOk === true;
+    }
     return t;
   }
 

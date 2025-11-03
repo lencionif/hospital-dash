@@ -140,7 +140,13 @@
       ctx.restore();
     };
 
-    try { window.PuppetAPI?.attach?.(e, { rig: 'elevator', z: 0, scale: 1 }); } catch (_) {}
+    try {
+      const puppet = window.Puppet?.bind?.(e, 'elevator', { z: 0, scale: 1 })
+        || window.PuppetAPI?.attach?.(e, { rig: 'elevator', z: 0, scale: 1 });
+      e.rigOk = e.rigOk === true || !!puppet;
+    } catch (_) {
+      e.rigOk = e.rigOk === true;
+    }
 
     return e;
   }

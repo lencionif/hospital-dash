@@ -511,7 +511,13 @@
     spawn(x,y,props={}){
       const e = create(x,y,props);
       ensureOnArrays(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'npc_enfermera_sexy', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
+      try {
+        const puppet = window.Puppet?.bind?.(e, 'npc_enfermera_sexy', { z: 0, scale: 1, data: { skin: e.skin } })
+          || window.PuppetAPI?.attach?.(e, { rig: 'npc_enfermera_sexy', z: 0, scale: 1, data: { skin: e.skin } });
+        e.rigOk = e.rigOk === true || !!puppet;
+      } catch (_) {
+        e.rigOk = e.rigOk === true;
+      }
       attachLight(e);
       return e;
     },

@@ -96,7 +96,13 @@
         solid:false, dynamic:false, pushable:false, dead:false
       };
       this._register(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'hazard_water', z: 0, scale: 1 }); } catch (_) {}
+      try {
+        const puppet = window.Puppet?.bind?.(e, 'hazard_water', { z: 0, scale: 1 })
+          || window.PuppetAPI?.attach?.(e, { rig: 'hazard_water', z: 0, scale: 1 });
+        e.rigOk = e.rigOk === true || !!puppet;
+      } catch (_) {
+        e.rigOk = e.rigOk === true;
+      }
       return e;
     },
 
@@ -122,7 +128,13 @@
         });
       }
       this._register(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'hazard_fire', z: 0, scale: 1 }); } catch (_) {}
+      try {
+        const puppet = window.Puppet?.bind?.(e, 'hazard_fire', { z: 0, scale: 1 })
+          || window.PuppetAPI?.attach?.(e, { rig: 'hazard_fire', z: 0, scale: 1 });
+        e.rigOk = e.rigOk === true || !!puppet;
+      } catch (_) {
+        e.rigOk = e.rigOk === true;
+      }
       return e;
     },
 

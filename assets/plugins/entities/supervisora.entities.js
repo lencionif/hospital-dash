@@ -77,7 +77,13 @@
       const g = G();
       g.entities.push(e);
       g.npcs.push(e);
-      try { window.PuppetAPI?.attach?.(e, { rig: 'npc_supervisora', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
+      try {
+      const puppet = window.Puppet?.bind?.(e, 'npc_supervisora', { z: 0, scale: 1, data: { skin: e.skin } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_supervisora', z: 0, scale: 1, data: { skin: e.skin } });
+      e.rigOk = e.rigOk === true || !!puppet;
+    } catch (_) {
+      e.rigOk = e.rigOk === true;
+    }
       this.list.push(e);
 
       // Arrancar temporizador de drop aleatorio

@@ -502,6 +502,11 @@ function __onKeyDown__(e){
     keys[k] = true;
     __preventNavKeys__(k, e);
 
+    if (window.GameFlowAPI?.isReadyOverlayActive?.()) {
+      e.preventDefault();
+      return;
+    }
+
     // === Atajos comunes ===
     if (k === '0'){ e.preventDefault(); fitCameraToMap(); }
     if (k === 'q'){ window.camera.zoom = clamp(window.camera.zoom - 0.1, 0.6, 2.5); }
@@ -1340,6 +1345,20 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   function doAction() {
     const p = G.player;
     if (!p) return;
+    if (G.state !== 'PLAYING') return;
+    if (window.GameFlowAPI?.isReadyOverlayActive?.()) return;
+
+    if (Array.isArray(G.onInteract)) {
+      for (const fn of [...G.onInteract]) {
+        try {
+          if (typeof fn === 'function' && fn(p)) {
+            return;
+          }
+        } catch (err) {
+          console.warn('[Interact] handler error', err);
+        }
+      }
+    }
 
     const talkRange = TILE * 1.2;
     if (Array.isArray(G.npcs) && window.DialogAPI?.open){
@@ -2127,15 +2146,19 @@ function drawEntities(c2){
             G._readySequenceActive = false;
             setGameState('PLAYING');
           };
+          const triggerReady = () => {
+            const played = window.GameFlowAPI?.playReadyOverlay?.({ onComplete: beginPlay });
+            if (!played) beginPlay();
+          };
           if (window.PresentationAPI?.levelIntro){
             try {
-              PresentationAPI.levelIntro(G.level || 1, beginPlay);
+              PresentationAPI.levelIntro(G.level || 1, triggerReady);
             } catch (err){
               console.warn('[PresentationAPI] levelIntro', err);
-              beginPlay();
+              triggerReady();
             }
           } else {
-            beginPlay();
+            triggerReady();
           }
         }
         break;

@@ -111,7 +111,13 @@
 
       if (window.Physics?.registerEntity) Physics.registerEntity(medicEnt);
 
-      try { window.PuppetAPI?.attach?.(medicEnt, { rig: 'npc_medico', z: 0, scale: 1, data: { skin: medicEnt.skin } }); } catch (_) {}
+      try {
+      const puppet = window.Puppet?.bind?.(medicEnt, 'npc_medico', { z: 0, scale: 1, data: { skin: medicEnt.skin } })
+        || window.PuppetAPI?.attach?.(medicEnt, { rig: 'npc_medico', z: 0, scale: 1, data: { skin: medicEnt.skin } });
+      medicEnt.rigOk = medicEnt.rigOk === true || !!puppet;
+    } catch (_) {
+      medicEnt.rigOk = medicEnt.rigOk === true;
+    }
     },
 
     // Garantiza al menos 1 médico (fallback)
@@ -234,9 +240,21 @@
     _openRiddleDialog(medic) {
       const pool = this.cfg.riddles;
       const r = pool[(Math.random() * pool.length) | 0];
+      const player = this.G?.player || null;
+
+      const setTalking = (active) => {
+        if (medic) medic.isTalking = !!active;
+        if (player) player.isTalking = !!active;
+      };
+      setTalking(true);
+
+      const closeTalking = () => setTalking(false);
 
       // Soporte para varios dialog systems
-      const onSelect = (idx) => this._resolveRiddle(r, idx, medic);
+      const onSelect = (idx) => {
+        closeTalking();
+        this._resolveRiddle(r, idx, medic);
+      };
       const buttons = r.options.map((label, idx) => ({ label, value: idx }));
 
       if (window.DialogAPI?.open) {
@@ -244,9 +262,13 @@
           portrait: 'medico',
           title: r.title,
           text: r.text,
-          buttons,
+          buttons: buttons.map((btn, idx) => ({
+            label: btn.label,
+            primary: idx === r.correctIndex,
+            action: () => onSelect(idx)
+          })),
           pauseGame: true,
-          onSelect
+          onClose: closeTalking
         });
         return;
       }
@@ -256,7 +278,7 @@
           text: r.text,
           options: r.options,
           correct: r.correctIndex,
-          onAnswer: (idx) => onSelect(idx)
+          onAnswer: (idx) => { onSelect(idx); }
         });
         return;
       }
