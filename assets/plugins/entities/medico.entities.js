@@ -112,7 +112,8 @@
       if (window.Physics?.registerEntity) Physics.registerEntity(medicEnt);
 
       try {
-      const puppet = window.Puppet?.bind?.(medicEnt, 'npc_medico', { z: 0, scale: 1, data: { skin: medicEnt.skin } })\n        || window.PuppetAPI?.attach?.(medicEnt, { rig: 'npc_medico', z: 0, scale: 1, data: { skin: medicEnt.skin } });
+      const puppet = window.Puppet?.bind?.(medicEnt, 'npc_medico', { z: 0, scale: 1, data: { skin: medicEnt.skin } })
+        || window.PuppetAPI?.attach?.(medicEnt, { rig: 'npc_medico', z: 0, scale: 1, data: { skin: medicEnt.skin } });
       medicEnt.rigOk = medicEnt.rigOk === true || !!puppet;
     } catch (_) {
       medicEnt.rigOk = medicEnt.rigOk === true;

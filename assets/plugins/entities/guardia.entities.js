@@ -197,7 +197,8 @@
     G.entities = G.entities || []; pushUnique(G.entities, e);
     G.npcs     = G.npcs || [];     pushUnique(G.npcs, e);
     try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_guardia', { z: 0, scale: 1, data: { skin: e.skin } })\n        || window.PuppetAPI?.attach?.(e, { rig: 'npc_guardia', z: 0, scale: 1, data: { skin: e.skin } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_guardia', { z: 0, scale: 1, data: { skin: e.skin } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_guardia', z: 0, scale: 1, data: { skin: e.skin } });
       e.rigOk = e.rigOk === true || !!puppet;
     } catch (_) {
       e.rigOk = e.rigOk === true;

@@ -13,7 +13,8 @@
 
   function attachPuppet(ent){
     try {
-      const puppet = window.Puppet?.bind?.(ent, 'mosquito', { z: 0, scale: 1 })\n        || window.PuppetAPI?.attach?.(ent, { rig: 'mosquito', z: 0, scale: 1 });
+      const puppet = window.Puppet?.bind?.(ent, 'mosquito', { z: 0, scale: 1 })
+        || window.PuppetAPI?.attach?.(ent, { rig: 'mosquito', z: 0, scale: 1 });
       ent.rigOk = ent.rigOk === true || !!puppet;
     } catch (_) {
       ent.rigOk = ent.rigOk === true;

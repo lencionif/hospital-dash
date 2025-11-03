@@ -237,7 +237,8 @@
     };
     (G.entities||(G.entities=[])).push(t);
     try {
-      const puppet = window.Puppet?.bind?.(t, 'npc_tcae', { z: 0, scale: 1, data: { skin: t.skin } })\n        || window.PuppetAPI?.attach?.(t, { rig: 'npc_tcae', z: 0, scale: 1, data: { skin: t.skin } });
+      const puppet = window.Puppet?.bind?.(t, 'npc_tcae', { z: 0, scale: 1, data: { skin: t.skin } })
+        || window.PuppetAPI?.attach?.(t, { rig: 'npc_tcae', z: 0, scale: 1, data: { skin: t.skin } });
       t.rigOk = t.rigOk === true || !!puppet;
     } catch (_) {
       t.rigOk = t.rigOk === true;

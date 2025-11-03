@@ -226,7 +226,8 @@
     if (!G.entities.includes(e)) G.entities.push(e);
     if (!G.patients.includes(e)) G.patients.push(e);
     try {
-    const puppet = window.Puppet?.bind?.(e, rig, { z: 0, scale: 1, data: { skin: e.skin } })\n      || W.PuppetAPI?.attach?.(e, { rig, z: 0, scale: 1, data: { skin: e.skin } });
+    const puppet = window.Puppet?.bind?.(e, rig, { z: 0, scale: 1, data: { skin: e.skin } })
+      || W.PuppetAPI?.attach?.(e, { rig, z: 0, scale: 1, data: { skin: e.skin } });
     e.rigOk = e.rigOk === true || !!puppet;
   } catch (_) {
     e.rigOk = e.rigOk === true;
