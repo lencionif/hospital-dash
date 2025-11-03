@@ -430,6 +430,7 @@
         window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
         window.G.selectedHero = window.selectedHeroKey;
       }
+      window.GameFlowAPI?.primeReadyOverlay?.();
     });
   })();
 
@@ -1597,34 +1598,72 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
-    function flashlightColorFor(e){
-      const k = ((e.skin || e.spriteKey || '') + '').toLowerCase();
-      if (k.includes('enrique'))   return 'rgba(255,235,90,0.45)';   // amarillo
-      if (k.includes('roberto'))   return 'rgba(255,170,90,0.45)';   // naranja cálido
-      if (k.includes('francesco')) return 'rgba(80,160,255,0.45)';   // azul frío
-      if (e.isNPC || e.kind === ENT.PATIENT) return 'rgba(255,245,170,0.85)'; // cálida suave
-      return 'rgba(210,230,255,0.85)'; // neutro
+    function heroFlashlightColor(key){
+      if (key.includes('enrique'))   return '#ffe45c';
+      if (key.includes('roberto'))   return '#ff9f5c';
+      if (key.includes('francesco')) return '#5fa7ff';
+      return '#f2f5ff';
+    }
+
+    function npcFlashlightColor(e){
+      const skin = ((e.skin || e.spriteKey || '') + '').toLowerCase();
+      if (skin.includes('medico')) return '#3daee9';
+      if (skin.includes('jefe')) return '#ffd166';
+      if (skin.includes('guardia')) return '#ff006e';
+      if (skin.includes('celador')) return '#06d6a0';
+      if (skin.includes('familiar')) return '#f78c6c';
+      if (skin.includes('enfermera')) return '#f78c6c';
+      return '#d9e1ff';
+    }
+
+    function flashlightConfigForEntity(e){
+      if (!e) return null;
+      const skin = ((e.skin || e.spriteKey || '') + '').toLowerCase();
+      if (e === G.player){
+        const raw = G.player?._flashOuter || 740;
+        const dist = Math.max(220, Math.min(260, raw * 0.32));
+        return {
+          color: heroFlashlightColor(skin),
+          dist,
+          intensity: 0.62,
+          fov: Math.PI * 0.6,
+          softness: 0.68
+        };
+      }
+      if (e.dead) return null;
+      const dist = 120;
+      return {
+        color: npcFlashlightColor(e),
+        dist,
+        intensity: 0.2,
+        fov: Math.PI * 0.44,
+        softness: 0.8
+      };
     }
 
     function updateEntityFlashlights(){
       const list = [];
-      const add = (e, fov = Math.PI * 0.55, dist = 620) => {
+      const add = (e, cfg) => {
+        if (!cfg) return;
+        const { fov = Math.PI * 0.55, dist = 220, color, intensity = 0.6, softness = 0.7 } = cfg;
         const cx = e.x + e.w*0.5, cy = e.y + e.h*0.5;
         const ang = (typeof e.lookAngle === 'number')
           ? e.lookAngle
           : (Math.hypot(e.vx||0, e.vy||0) > 0.01 ? Math.atan2(e.vy||0, e.vx||0) : Math.PI/2);
         list.push({
           x: cx, y: cy, angle: ang,
-          fov, dist, color: flashlightColorFor(e), softness: 0.70
+          fov, dist, color, softness, intensity
         });
       };
 
       if (G.player && !G.player.dead) {
-        const dist = (G.player._flashOuter || 740);   // ← del héroe
-        add(G.player, Math.PI * 0.60, dist);
+        add(G.player, flashlightConfigForEntity(G.player));
       }
       if (Array.isArray(G.npcs)) {
-        for (const npc of G.npcs) { if (npc && !npc.dead) add(npc, Math.PI * 0.50, 520); }
+        for (const npc of G.npcs) {
+          if (!npc || npc.dead) continue;
+          add(npc, flashlightConfigForEntity(npc));
+        }
       }
       G.lights = list;
 
@@ -2363,11 +2402,15 @@ function drawEntities(c2){
     if (startBtn){
       startBtn.addEventListener('click', () => {
         ensureHeroSelected();
+        window.GameFlowAPI?.primeReadyOverlay?.();
         requestAnimationFrame(() => startGame());
       });
     }
     document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
-    document.getElementById('restartBtn')?.addEventListener('click', () => startGame());
+    document.getElementById('restartBtn')?.addEventListener('click', () => {
+      window.GameFlowAPI?.primeReadyOverlay?.();
+      startGame();
+    });
   }
 
   function runBootstrapDiagnostics(){

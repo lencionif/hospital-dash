@@ -1,6 +1,9 @@
 // ./assets/plugins/entities/mosquito.entities.js
 (function(){
-  const SPEED = 70;
+  const SPEED = 49;
+  const WANDER_SPEED = 26;
+  const CHASE_RADIUS = 240;
+  const TAU = Math.PI * 2;
 
   function resolveState(state){
     const g = window.G || (window.G = {});
@@ -51,6 +54,11 @@
       aiId: 'MOSQUITO'
     };
 
+    ent._spawnX = ent.x;
+    ent._spawnY = ent.y;
+    ent._wanderTimer = 0;
+    ent._wanderDir = Math.random() * TAU;
+
     try { window.AI?.attach?.(ent, 'MOSQUITO'); } catch (_) {}
 
     attachPuppet(ent);
@@ -65,17 +73,37 @@
     state = resolveState(state);
     if (!ent || ent.dead) return;
     const player = state.player;
-    if (!player){
-      ent.vx = 0;
-      ent.vy = 0;
+    const cx = ent.x + ent.w * 0.5;
+    const cy = ent.y + ent.h * 0.5;
+    const px = player ? (player.x + (player.w || 0) * 0.5) : cx;
+    const py = player ? (player.y + (player.h || 0) * 0.5) : cy;
+    const dx = px - cx;
+    const dy = py - cy;
+    const dist = Math.hypot(dx, dy);
+
+    ent._t = (ent._t || 0) + dt;
+
+    if (!player || dist > CHASE_RADIUS){
+      ent.hostile = dist <= CHASE_RADIUS;
+      ent._aiState = 'WANDER';
+      ent._wanderTimer = (ent._wanderTimer || 0) - dt;
+      if (ent._wanderTimer <= 0){
+        ent._wanderTimer = 0.8 + Math.random() * 1.6;
+        const homeDx = (ent._spawnX || ent.x) - cx;
+        const homeDy = (ent._spawnY || ent.y) - cy;
+        const bias = Math.atan2(homeDy, homeDx);
+        const jitter = (Math.random() - 0.5) * Math.PI * 0.6;
+        ent._wanderDir = isFinite(bias) ? bias + jitter : Math.random() * TAU;
+      }
+      const sway = Math.sin(ent._t * 2.6) * 0.4;
+      const dir = ent._wanderDir + sway * 0.2;
+      ent.vx = Math.cos(dir) * WANDER_SPEED;
+      ent.vy = Math.sin(dir) * WANDER_SPEED;
       return;
     }
 
-    const dx = (player.x + (player.w || 0) * 0.5) - (ent.x + ent.w * 0.5);
-    const dy = (player.y + (player.h || 0) * 0.5) - (ent.y + ent.h * 0.5);
-    const len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len;
-    const uy = dy / len;
+    const ux = dist > 0 ? dx / dist : 0;
+    const uy = dist > 0 ? dy / dist : 0;
 
     if (ent._aiState !== 'CHASE') {
       ent._aiState = 'CHASE';
@@ -88,9 +116,8 @@
       } catch (_) {}
     }
 
-    ent._t = (ent._t || 0) + dt;
-    const sway = Math.sin(ent._t * 6.0);
-    const sway2 = Math.cos(ent._t * 7.4);
+    const sway = Math.sin(ent._t * 5.8);
+    const sway2 = Math.cos(ent._t * 6.6);
 
     ent.vx = (ux + 0.4 * sway) * SPEED;
     ent.vy = (uy + 0.4 * sway2) * SPEED;

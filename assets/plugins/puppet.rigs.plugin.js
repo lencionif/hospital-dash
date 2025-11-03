@@ -22,9 +22,29 @@
   }
 
   function logMissing(name){
-    if (!name || Missing.has(name)) return;
+    if (!name || Missing.has(name)) return false;
     Missing.add(name);
-    console.warn(`[puppet.rigs] missing sprite: ${name}`);
+    return false;
+  }
+
+  function drawSilhouette(ctx, w, h, color){
+    ctx.save();
+    ctx.fillStyle = color || '#455264';
+    const headH = h * 0.32;
+    ctx.beginPath();
+    ctx.ellipse(0, -h * 0.28, w * 0.28, headH * 0.5, 0, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.22, -h * 0.08);
+    ctx.quadraticCurveTo(0, headH * 0.25, w * 0.22, -h * 0.08);
+    ctx.lineTo(w * 0.28, h * 0.26);
+    ctx.quadraticCurveTo(0, h * 0.42, -w * 0.28, h * 0.26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, h * 0.38, w * 0.22, h * 0.18, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
   }
 
   function toScreen(cam, e){
@@ -67,8 +87,7 @@
       ctx.drawImage(img, -w * 0.5, -h * 0.5, w, h);
     } else {
       if (skin) logMissing(skin);
-      ctx.fillStyle = fallbackColor || '#b5b5b5';
-      ctx.fillRect(-w * 0.5, -h * 0.5, w, h);
+      drawSilhouette(ctx, w, h, fallbackColor || '#566074');
     }
     if (tint){
       ctx.save();
@@ -355,7 +374,8 @@
       walk_down: { skin: frontSkin, bobMul: 0.95 },
       walk_up: { skin: backSkin, bobMul: 0.9 },
       walk_side: { skin: frontSkin, bobMul: 1.0 },
-      talk: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.5, tint: { color: 'rgba(240,250,255,1)', alpha: 0.14 } }
+      talk: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.5, tint: { color: 'rgba(240,250,255,1)', alpha: 0.18 } },
+      push: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.42, tint: { color: 'rgba(180,255,220,1)', alpha: 0.12 } }
     };
   }
 
@@ -373,48 +393,57 @@
   // ───────────────────────────── HEROES ─────────────────────────────
   registerWalkerRig('hero_enrique', {
     skin: 'enrique.png',
-    scale: 1.1,
-    walkCycle: 8.5,
-    idleCycle: 2.6,
+    scale: 1.08,
+    spriteWidth: 42,
+    spriteHeight: 66,
+    spriteScale: 1.05,
+    walkCycle: 11.1,
+    idleCycle: 3.3,
     walkBob: 4.6,
-    idleBob: 1.6,
+    idleBob: 1.9,
     swayFreq: 1.1,
     swayAmp: 0.6,
     lean: 0.18,
-    shadowRadius: 14,
-    offsetY: -6,
+    shadowRadius: 15,
+    offsetY: -8,
     states: makeHeroStates('enrique', 'enrique_back.png'),
     resolveState: resolveHeroState
   });
 
   registerWalkerRig('hero_roberto', {
     skin: 'roberto.png',
-    scale: 0.975,
-    walkCycle: 10.1,
-    idleCycle: 2.5,
-    walkBob: 3.1,
-    idleBob: 1.1,
+    scale: 1.0,
+    spriteWidth: 40,
+    spriteHeight: 64,
+    spriteScale: 1.0,
+    walkCycle: 13.2,
+    idleCycle: 3.2,
+    walkBob: 3.5,
+    idleBob: 1.4,
     swayFreq: 1.8,
     swayAmp: 1.1,
-    lean: 0.1,
-    shadowRadius: 13,
-    offsetY: -4,
+    lean: 0.12,
+    shadowRadius: 14,
+    offsetY: -6,
     states: makeHeroStates('roberto', 'roberto_back.png'),
     resolveState: resolveHeroState
   });
 
   registerWalkerRig('hero_francesco', {
     skin: 'francesco.png',
-    scale: 1.0,
-    walkCycle: 8.9,
-    idleCycle: 2.4,
-    walkBob: 3.6,
-    idleBob: 1.3,
+    scale: 1.02,
+    spriteWidth: 40,
+    spriteHeight: 66,
+    spriteScale: 1.02,
+    walkCycle: 11.6,
+    idleCycle: 3.1,
+    walkBob: 3.9,
+    idleBob: 1.6,
     swayFreq: 1.5,
-    swayAmp: 0.8,
-    lean: 0.12,
-    shadowRadius: 13,
-    offsetY: -5,
+    swayAmp: 0.85,
+    lean: 0.14,
+    shadowRadius: 14,
+    offsetY: -7,
     states: makeHeroStates('francesco', 'francesco_back.png'),
     resolveState: resolveHeroState
   });
@@ -576,6 +605,7 @@
           tint,
           scale: (typeof data.scale === 'number') ? data.scale : (cfg.scale ?? 1),
           state: 'idle_bed',
+          rawState: 'idle_bed',
           stateTime: 0,
           fade: 0
         };
@@ -589,13 +619,19 @@
         let next = 'idle_bed';
         if (attended) next = 'disappear_on_cure';
         else if (ringing) next = 'pain';
+        if (cfg.stateMap) {
+          st.rawState = next;
+          next = cfg.stateMap[next] || next;
+        } else {
+          st.rawState = next;
+        }
         if (next !== st.state){
           st.state = next;
           st.stateTime = 0;
         } else {
           st.stateTime += dt;
         }
-        if (st.state === 'disappear_on_cure'){
+        if ((st.rawState || st.state) === 'disappear_on_cure'){
           const fadeDur = cfg.disappearMs ? cfg.disappearMs / 1000 : 0.65;
           st.fade = Math.min(1, st.fade + dt / Math.max(0.01, fadeDur));
         } else {
@@ -604,23 +640,35 @@
       },
       draw(ctx, cam, e, st){
         const [cx, cy, sc] = toScreen(cam, e);
-        const totalScale = sc * st.scale;
-        const w = (cfg.spriteWidth ?? (e.w || 32)) * totalScale;
-        const h = (cfg.spriteHeight ?? (e.h || 48)) * totalScale;
+        const stateInfo = cfg.states ? (cfg.states[st.state] || cfg.states.default) : null;
+        const baseW = stateInfo?.spriteWidth ?? cfg.spriteWidth ?? (e.w || 32);
+        const baseH = stateInfo?.spriteHeight ?? cfg.spriteHeight ?? (e.h || 48);
+        const scaleMul = stateInfo?.scale ?? 1;
+        const totalScale = sc * st.scale * scaleMul;
+        const w = baseW * totalScale;
+        const h = baseH * totalScale;
         ctx.save();
         ctx.translate(cx, cy);
         const fade = Math.max(0, Math.min(1, st.fade || 0));
-        drawShadow(ctx, cfg.shadowRadius ?? (w * 0.35), totalScale, 0.28, (cfg.shadowAlpha ?? 0.25) * (1 - fade * 0.7));
-        ctx.translate(0, -h * 0.5 + (cfg.offsetY ?? 0) * totalScale + st.offset);
+        const shadowRadius = stateInfo?.shadowRadius ?? cfg.shadowRadius ?? (Math.max(baseW, baseH) * 0.35);
+        const shadowFlatten = stateInfo?.shadowFlatten ?? cfg.shadowFlatten ?? 0.28;
+        const shadowAlpha = (stateInfo?.shadowAlpha ?? cfg.shadowAlpha ?? 0.25) * (1 - fade * 0.7);
+        drawShadow(ctx, shadowRadius, totalScale, shadowFlatten, shadowAlpha);
+        const offsetY = ((cfg.offsetY ?? 0) + (stateInfo?.offsetY ?? 0)) * totalScale + st.offset;
+        ctx.translate(0, -h * 0.5 + offsetY);
         const baseTint = st.tint;
         let tint = baseTint;
-        if (st.state === 'pain'){
+        const raw = st.rawState || st.state;
+        if (raw === 'pain'){
           tint = parseTint({ color: 'rgba(255,120,120,1)', alpha: 0.35 });
+        } else if (stateInfo?.tint) {
+          tint = parseTint(stateInfo.tint, stateInfo.tintAlpha ?? 0.35);
         }
+        const skin = stateInfo?.skin || st.skin || cfg.skin;
         ctx.globalAlpha = 1 - fade;
-        drawSprite(ctx, st.skin || cfg.skin, w, h, cfg.fallbackColor || '#d8d0c8', tint);
+        drawSprite(ctx, skin, w, h, stateInfo?.fallbackColor || cfg.fallbackColor || '#d8d0c8', tint);
         ctx.restore();
-        if (st.state === 'pain' && fade < 0.95){
+        if (raw === 'pain' && fade < 0.95){
           ctx.save();
           ctx.translate(cx, cy - h * 0.6);
           ctx.globalAlpha = 0.4 + 0.4 * Math.sin(st.time * 8);
@@ -817,7 +865,13 @@
     amp: 2.6,
     speed: 1.2,
     shadowRadius: 18,
-    offsetY: -8
+    offsetY: -8,
+    stateMap: { idle_bed: 'bed_idle', pain: 'bed_alert', disappear_on_cure: 'disappear_on_cure' },
+    states: {
+      bed_idle: { tint: { color: 'rgba(255,245,235,1)', alpha: 0.18 } },
+      bed_alert: { tint: { color: 'rgba(255,120,120,1)', alpha: 0.32 }, offsetY: -2 },
+      disappear_on_cure: { tint: { color: 'rgba(210,255,220,1)', alpha: 0.28 } }
+    }
   });
 
   registerBedRig('boss2_fainted', {
@@ -828,43 +882,48 @@
     speed: 1.8,
     shadowRadius: 16,
     offsetY: -6,
-    tint: { color: '#6fb5ff', alpha: 0.18 }
+    tint: { color: '#6fb5ff', alpha: 0.18 },
+    stateMap: { idle_bed: 'fainted_floor', pain: 'recover', disappear_on_cure: 'recover' },
+    states: {
+      fainted_floor: { tint: { color: 'rgba(111,181,255,1)', alpha: 0.22 }, offsetY: -3 },
+      recover: { tint: { color: 'rgba(255,214,102,1)', alpha: 0.24 }, offsetY: -4, scale: 1.02 }
+    }
   });
 
-  API.registerRig('boss3_pyro', {
-    create(e){
-      const data = e?.puppet?.data || {};
-      return {
-        phase: Math.random() * TAU,
-        time: 0,
-        skin: data.skin || e.skin || 'boss_nivel3.png',
-        scale: (typeof data.scale === 'number') ? data.scale : 1,
-        tint: parseTint(data.tint)
-      };
+  registerWalkerRig('boss3_pyro', {
+    skin: 'boss_nivel3.png',
+    scale: 1.08,
+    spriteWidth: 40,
+    spriteHeight: 64,
+    walkCycle: 9.6,
+    idleCycle: 2.8,
+    walkBob: 3.4,
+    idleBob: 1.2,
+    swayAmp: 0.9,
+    lean: 0.08,
+    offsetY: -6,
+    shadowRadius: 15,
+    tint: { color: 'rgba(255,130,90,1)', alpha: 0.16 },
+    states: {
+      idle: { skin: { down: 'boss_nivel3.png', up: 'boss_nivel3.png', side: 'boss_nivel3.png' }, bobMul: 0.85 },
+      walk_down: { skin: 'boss_nivel3.png', bobMul: 1.12 },
+      walk_up: { skin: 'boss_nivel3.png', bobMul: 1.05 },
+      walk_side: { skin: 'boss_nivel3.png', bobMul: 1.15 },
+      ignite: { skin: 'boss_nivel3.png', tint: { color: 'rgba(255,150,70,1)', alpha: 0.36 }, bobMul: 0.25, scale: 1.05 },
+      attack: { skin: 'boss_nivel3.png', tint: { color: 'rgba(255,210,140,1)', alpha: 0.28 }, bobMul: 0.32 }
     },
-    update(st, e, dt){
-      st.time += dt;
-      st.phase = (st.phase + dt * 2.6) % TAU;
-      st.pulse = 0.65 + 0.35 * Math.sin(st.phase * 1.7);
-    },
-    draw(ctx, cam, e, st){
-      const [cx, cy, sc] = toScreen(cam, e);
-      const total = sc * st.scale;
-      const w = (e.w || 40) * total;
-      const h = (e.h || 48) * total;
-      ctx.save();
-      ctx.translate(cx, cy);
-      drawShadow(ctx, 15, total, 0.28, 0.24);
-      ctx.translate(0, -h * 0.5 - 4 * total);
-      drawSprite(ctx, st.skin, w, h, '#ffbca3', st.tint);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.35 + 0.35 * st.pulse;
-      ctx.fillStyle = 'rgba(255,120,40,1)';
-      ctx.beginPath();
-      ctx.ellipse(0, h * 0.1, (w + 26 * total) * st.pulse, (h + 30 * total) * 0.6, 0, 0, TAU);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.restore();
+    resolveState(st, e, dt){
+      const ignite = Math.max(0, e?._igniteTimer || 0);
+      if (ignite > 0){
+        const state = ignite > 0.35 ? 'ignite' : 'attack';
+        return { state, orientation: st.orientation };
+      }
+      if (st.moving){
+        if (st.orientation === 'up') return 'walk_up';
+        if (st.orientation === 'side') return { state: 'walk_side', dir: st.dir };
+        return 'walk_down';
+      }
+      return { state: 'idle', orientation: st.orientation };
     }
   });
 

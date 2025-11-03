@@ -110,9 +110,11 @@
             const rx = dist * 1.00, ry = dist * 0.42;
             const gx = rx * 0.70;
             const inner = Math.max(6, rx*(1-soft));
+            const intensity = (typeof L.intensity === 'number') ? clamp(L.intensity, 0, 1) : 0.6;
             const g = ctx.createRadialGradient(gx,0,inner, gx,0, rx);
-            g.addColorStop(0, L.color || 'rgba(255,255,200,0.95)');
-            g.addColorStop(1, 'rgba(255,255,200,0.0)');
+            const baseColor = L.color || 'rgba(255,255,200,1)';
+            g.addColorStop(0, applyIntensity(baseColor, intensity));
+            g.addColorStop(1, applyIntensity(baseColor, 0));
             ctx.fillStyle = g;
 
             // Cono: elipse recortada por FOV
