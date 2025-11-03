@@ -44,8 +44,10 @@
         mass: 130, dynamic: true, solid: true, pushable: true,
         color: '#ff2f4f',
         t: 0, touchCD: 0,
-        ai: { lastX: 0, lastY: 1 }
+        ai: { lastX: 0, lastY: 1 },
+        aiId: 'FURIOUS'
       };
+      try { window.AI?.attach?.(e, 'FURIOUS'); } catch (_) {}
       this.G.entities.push(e);
       this.G.enemies.push(e);
       this.live.add(e);

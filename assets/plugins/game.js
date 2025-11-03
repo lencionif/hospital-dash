@@ -1481,6 +1481,15 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
   // Paso de IA específica por entidad hostil (antes de la física)
   function runEntityAI(dt){
+    if (window.AI?.update) {
+      try {
+        window.AI.update(G, dt);
+        return;
+      } catch (err) {
+        if (window.DEBUG_FORCE_ASCII) console.warn('[AI] update error', err);
+      }
+    }
+
     if (!Array.isArray(G.entities)) return;
     const dbg = !!window.DEBUG_FORCE_ASCII;
     for (const ent of G.entities){

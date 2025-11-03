@@ -70,13 +70,15 @@
         vx:0, vy:0, mass:this.cfg.mass, restitution:this.cfg.restitution, friction:this.cfg.friction,
         maxSpeed: this.cfg.maxSpeed, pushable: true, solid: true, dynamic: true,
         skin: 'supervisora.png',
-        ai: { roamAngle: this._rng()*Math.PI*2, roamTime: 0, pause: 0 }
+        ai: { roamAngle: this._rng()*Math.PI*2, roamTime: 0, pause: 0 },
+        aiId: 'SUPERVISORA'
       };
 
       // Registrar en listas globales
       const g = G();
       g.entities.push(e);
       g.npcs.push(e);
+      try { window.AI?.attach?.(e, 'SUPERVISORA'); } catch (_) {}
       try {
       const puppet = window.Puppet?.bind?.(e, 'npc_supervisora', { z: 0, scale: 1, data: { skin: e.skin } })
         || window.PuppetAPI?.attach?.(e, { rig: 'npc_supervisora', z: 0, scale: 1, data: { skin: e.skin } });

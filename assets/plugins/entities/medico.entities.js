@@ -104,6 +104,8 @@
       medicEnt.lastRiddleAt = -999;
 
       medicEnt.skin = medicEnt.skin || 'medico.png';
+      medicEnt.aiId = 'MEDIC';
+      try { window.AI?.attach?.(medicEnt, 'MEDIC'); } catch (_) {}
 
       this.G.entities.push(medicEnt);
       this.G.npcs.push(medicEnt);

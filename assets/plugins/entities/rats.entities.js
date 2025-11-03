@@ -48,8 +48,11 @@
       vy: 0,
       hostile: true,
       seed: Math.random() * Math.PI * 2,
-      ai: 'RAT'
+      ai: 'RAT',
+      aiId: 'RAT'
     };
+
+    try { window.AI?.attach?.(ent, 'RAT'); } catch (_) {}
 
     attachPuppet(ent);
     window.MovementSystem?.register?.(ent);

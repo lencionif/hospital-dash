@@ -223,6 +223,7 @@
       lightColor:B.lightColor,
       spriteKey: B.spriteKey,
       skin: 'TCAE.png',
+      aiId: 'TCAE',
       // Estado
       mode: 'patrol',         // patrol|follow|toBell|toCart|reloading
       taskUntil: 0,           // timestamp para throttling
@@ -236,6 +237,8 @@
       interact(by){ return TCAE.toggleFollowNearest(by); }
     };
     (G.entities||(G.entities=[])).push(t);
+    (G.npcs||(G.npcs=[])).push(t);
+    try { W.AI?.attach?.(t, 'TCAE'); } catch (_) {}
     try {
       const puppet = window.Puppet?.bind?.(t, 'npc_tcae', { z: 0, scale: 1, data: { skin: t.skin } })
         || window.PuppetAPI?.attach?.(t, { rig: 'npc_tcae', z: 0, scale: 1, data: { skin: t.skin } });

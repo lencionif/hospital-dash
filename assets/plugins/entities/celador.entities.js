@@ -202,8 +202,10 @@
       name: "Celador",
       skin: "celador.png",
       light: b.lightColor,
-      _lastSafeX: x, _lastSafeY: y
+      _lastSafeX: x, _lastSafeY: y,
+      aiId: 'CELADOR'
     };
+    try { window.AI?.attach?.(e, 'CELADOR'); } catch (_) {}
     pushUnique(G.entities, e);
     pushUnique(G.npcs || (G.npcs=[]), e);
     try {

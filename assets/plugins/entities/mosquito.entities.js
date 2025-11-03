@@ -47,8 +47,11 @@
       vy: 0,
       hostile: true,
       _t: 0,
-      ai: 'MOSQUITO'
+      ai: 'MOSQUITO',
+      aiId: 'MOSQUITO'
     };
+
+    try { window.AI?.attach?.(ent, 'MOSQUITO'); } catch (_) {}
 
     attachPuppet(ent);
     window.MovementSystem?.register?.(ent);
