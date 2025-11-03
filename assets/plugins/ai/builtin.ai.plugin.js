@@ -36,7 +36,13 @@
   system('NURSE', (dt) => W.Entities?.NurseSexy?.update?.(dt));
   system('FAMILIAR', (dt) => W.FamiliarAPI?.updateAll?.(dt));
   system('CLEANER', (dt) => W.CleanerAPI?.updateAll?.(dt));
-  system('TCAE', (dt) => W.TCAEAPI?.update?.(dt));
+  system('TCAE', (dt) => {
+    const api = W.TCAEAPI;
+    if (!api || typeof api.update !== 'function') return;
+    const world = W.G || (W.G = {});
+    world._externalUpdateCallsTCAE = true;
+    api.update(dt);
+  });
 
   // Guardia y celador (requieren listas internas)
   system('GUARDIA', (dt, G) => {
