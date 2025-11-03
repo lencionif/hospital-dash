@@ -894,7 +894,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
     // Recogeremos aquí los placements derivados del ASCII (en píxeles)
     const asciiPlacements = [];
-    // Guarda referencia global para applyPlacementsFromMapgen
+    // Guarda referencia global para Placement.applyFromAsciiMap
     G.__asciiPlacements = asciiPlacements;
 
     for (let y = 0; y < G.mapH; y++){
@@ -1875,22 +1875,26 @@ function drawEntities(c2){
   }
 
   // === Post-parse: instanciar placements SOLO UNA VEZ ===
-  function finalizeLevelBuildOnce(){
-    if (G._placementsFinalized) return;          // evita duplicados
-    G._placementsFinalized = true;
+  function finalizeLevelBuildOnce(options = {}){
+    const forceFallback = options.forceFallback === true;
+    if (G._placementsFinalized && !forceFallback) return;          // evita duplicados
+    if (!forceFallback) {
+      G._placementsFinalized = true;
+    }
 
-    if (!Array.isArray(G.mapgenPlacements) || !G.mapgenPlacements.length) return;
+    const sourcePlacements = Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length
+      ? G.mapgenPlacements
+      : (Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements : []);
+    if (!sourcePlacements.length) return;
+
+    if (!forceFallback && window.Placement?.applyFromAsciiMap) {
+      return; // el flujo principal se encarga en startGame
+    }
 
     try {
-      // Camino “oficial”: si existe el helper, úsalo
-      if (typeof window.applyPlacementsFromMapgen === 'function') {
-        window.applyPlacementsFromMapgen(G.mapgenPlacements);
-        return;
-      }
-
-      // Fallback LOCAL: instanciar lo básico si no hay placement.api.js
+      // Fallback LOCAL: instanciar lo básico si no hay Placement API
       const T = (window.TILE_SIZE || 32);
-      for (const p of G.mapgenPlacements) {
+      for (const p of sourcePlacements) {
         if (!p || !p.type) continue;
 
         if (p.type === 'patient') {
@@ -1919,6 +1923,7 @@ function drawEntities(c2){
         }
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
+    G._placementsFinalized = true;
   }
   // ------------------------------------------------------------
   // Control de estado
@@ -1946,14 +1951,9 @@ function drawEntities(c2){
     if (window.DEBUG_FORCE_ASCII){
       ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
       parseMap(ASCII_MAP);
-      if (typeof window.applyPlacementsFromMapgen === 'function'){
-        try {
-          window.applyPlacementsFromMapgen(G.__asciiPlacements || G.mapgenPlacements || []);
-        } catch (err){
-          console.warn('[applyPlacementsFromMapgen] ASCII', err);
-        }
+      if (!window.Placement?.applyFromAsciiMap) {
+        finalizeLevelBuildOnce();
       }
-      finalizeLevelBuildOnce();
       console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
       return;
     }
@@ -1982,7 +1982,9 @@ function drawEntities(c2){
           G.mapgenPlacements = res.placements || [];
           G.mapAreas = res.areas || null;
           parseMap(ASCII_MAP);
-          finalizeLevelBuildOnce();
+          if (!window.Placement?.applyFromAsciiMap) {
+            finalizeLevelBuildOnce();
+          }
           usedGenerator = true;
           console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
         }
@@ -1994,7 +1996,9 @@ function drawEntities(c2){
     if (!usedGenerator){
       ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       parseMap(ASCII_MAP);
-      finalizeLevelBuildOnce();
+      if (!window.Placement?.applyFromAsciiMap) {
+        finalizeLevelBuildOnce();
+      }
       console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
     }
   }
@@ -2234,6 +2238,27 @@ function drawEntities(c2){
     G._levelCompleteShown = false;
 
     buildLevelForCurrentMode(targetLevel);
+
+    let placementApplied = false;
+    if (window.Placement?.applyFromAsciiMap) {
+      try {
+        const placementResult = window.Placement.applyFromAsciiMap({
+          G,
+          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
+          debug: DEBUG_MAP_MODE
+        });
+        placementApplied = placementResult?.applied === true || placementResult?.reason === 'guard';
+        if (placementResult?.applied) {
+          try { window.Placement?.summarize?.(); } catch (_) {}
+        }
+      } catch (err) {
+        console.warn('[Placement] applyFromAsciiMap falló', err);
+      }
+    }
+    if (!placementApplied) {
+      finalizeLevelBuildOnce({ forceFallback: true });
+    }
+
     configureLevelSystems();
 
     try {
