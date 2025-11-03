@@ -216,7 +216,9 @@
       // flags
       static: false,
       pushable: true,
+      aiId: 'CLEANER'
     };
+    try { window.AI?.attach?.(e, 'CLEANER'); } catch (_) {}
 
     // evitar nacer dentro de pared
     if (hitsWallRect(e.x,e.y,e.w,e.h)) {
@@ -225,6 +227,7 @@
     }
 
     (G.entities || (G.entities=[])).push(e);
+    (G.npcs || (G.npcs=[])).push(e);
     cleaners.push(e);
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_chica_limpieza', { z: 0, scale: 1, data: { skin: e.skin } })

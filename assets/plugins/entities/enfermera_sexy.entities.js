@@ -187,9 +187,11 @@
         lastPerfume: 0,
         talkCD: 0, helpCD: 0
       },
+      aiId: 'NURSE',
       // Interacción
       onInteract: (player) => onTalk(e, player)
     };
+    try { window.AI?.attach?.(e, 'NURSE'); } catch (_) {}
     return e;
   }
 
@@ -508,6 +510,7 @@
       }
       return this;
     },
+    update,
     spawn(x,y,props={}){
       const e = create(x,y,props);
       ensureOnArrays(e);

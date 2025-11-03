@@ -760,6 +760,8 @@ function ensureOnLists(e){
   return { applied: true, before, after, delta };
 };
 
+window.applyPlacementsFromMapGen = window.applyPlacementsFromMapgen;
+
   function resolvePlacementList(levelCfg, G) {
     if (Array.isArray(levelCfg?.placements) && levelCfg.placements.length) {
       return { list: levelCfg.placements, allowAscii: !!levelCfg.allowAscii };

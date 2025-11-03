@@ -171,7 +171,8 @@
           target: null
         },
         // tag por si tu renderer necesita distinguir
-        npc: 'jefe_servicio'
+        npc: 'jefe_servicio',
+        aiId: 'JEFESERVICIO'
       };
 
       // Registro global
@@ -179,6 +180,7 @@
       G.npcs = G.npcs || [];
       G.entities.push(e);
       G.npcs.push(e);
+      try { W.AI?.attach?.(e, 'JEFESERVICIO'); } catch (_) {}
       try {
         const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })
           || window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } });

@@ -328,8 +328,10 @@
         cd: 0,
         nextTurnAt: now() + 0.4 + Math.random() * 0.5,
         nextTouchAt: 0
-      }
+      },
+      aiId: 'FAMILIAR'
     };
+    try { window.AI?.attach?.(e, 'FAMILIAR'); } catch (_) {}
     return pushEntity(e);
   }
 

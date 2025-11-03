@@ -119,8 +119,10 @@
       active: false,
       locked: !!opts.locked,
       _cooldown: 0, // local, por si alguna vez lo quieres por-ascensor
+      aiId: 'ELEVATOR',
       draw: null
     };
+    try { W.AI?.attach?.(e, 'ELEVATOR'); } catch (_) {}
 
     // pinta “semáforo” simple si no hay SpriteManager
     e.draw = function(ctx){

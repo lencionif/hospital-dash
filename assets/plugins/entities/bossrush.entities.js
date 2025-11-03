@@ -192,6 +192,7 @@
       hp: 1,
       cured: false,
       dead: false,
+      aiId: 'BOSS',
       // Dibujo fallback si no hay sprites
       draw(ctx) {
         ctx.save();
@@ -225,6 +226,7 @@
     G.boss = e;
     if (!G.entities.includes(e)) G.entities.push(e);
     if (!G.patients.includes(e)) G.patients.push(e);
+    try { W.AI?.attach?.(e, 'BOSS'); } catch (_) {}
     try {
     const puppet = window.Puppet?.bind?.(e, rig, { z: 0, scale: 1, data: { skin: e.skin } })
       || W.PuppetAPI?.attach?.(e, { rig, z: 0, scale: 1, data: { skin: e.skin } });

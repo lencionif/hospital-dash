@@ -192,10 +192,12 @@
     e.pursueTimer = 0;
     e.visionRadiusPx = TILE * 12;    // alcance para detectar héroe empujando
     e.closeRangePx   = TILE * 0.9;   // distancia para operar puerta
+    e.aiId = 'GUARDIA';
 
     // Registro
     G.entities = G.entities || []; pushUnique(G.entities, e);
     G.npcs     = G.npcs || [];     pushUnique(G.npcs, e);
+    try { W.AI?.attach?.(e, 'GUARDIA'); } catch (_) {}
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_guardia', { z: 0, scale: 1, data: { skin: e.skin } })
         || window.PuppetAPI?.attach?.(e, { rig: 'npc_guardia', z: 0, scale: 1, data: { skin: e.skin } });
