@@ -74,6 +74,19 @@
     const distSq = dx*dx + dy*dy;
     const chase = distSq <= CHASE_RADIUS * CHASE_RADIUS;
 
+    const nextState = chase ? 'CHASE' : 'WANDER';
+    if (ent._aiState !== nextState) {
+      ent._aiState = nextState;
+      try {
+        window.LOG?.event?.('AI_STATE', {
+          entity: ent.id || null,
+          kind: 'RAT',
+          state: nextState,
+          distance: Math.sqrt(distSq) || 0,
+        });
+      } catch (_) {}
+    }
+
     if (chase){
       const len = Math.hypot(dx, dy) || 1;
       ent.vx = (dx / len) * SPEED;

@@ -198,6 +198,17 @@
 
     function unregister(e){
       if (!e) return;
+      if (!e.__loggedDespawn){
+        e.__loggedDespawn = true;
+        try {
+          window.LOG?.event?.('DESPAWN', {
+            id: e.id || e.name || null,
+            kind: e.kindName || e.kind || null,
+            x: Number.isFinite(e.x) ? Math.round(e.x) : null,
+            y: Number.isFinite(e.y) ? Math.round(e.y) : null,
+          });
+        } catch (_) {}
+      }
       movers.delete(e);
       states.delete(e);
     }
@@ -1437,6 +1448,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
     if (G.health <= 0){
       G.health = 0;
+      G._gameOverReason = isRatHit ? 'rat_hit' : 'health_zero';
       setGameState('GAMEOVER');
       window.GameFlowAPI?.notifyHeroDeath?.();
     }
@@ -1863,7 +1875,7 @@ function drawEntities(c2){
   function loop(now){
     if (!Number.isFinite(camera.zoom) || camera.zoom <= 0){
       if (!invalidZoomLogged){
-        logThrough('error', '[camera] zoom inválido, reajustando', { zoom: camera.zoom });
+        logThrough('warn', '[camera] zoom inválido, reajustando', { zoom: camera.zoom });
         window.LOG?.event('CAMERA', { issue: 'invalid-zoom', zoom: camera.zoom });
         invalidZoomLogged = true;
       }
@@ -1889,6 +1901,12 @@ function drawEntities(c2){
       const fpsVal = Number.isFinite(FPS) && FPS > 0 ? Number(FPS.toFixed(1)) : 0;
       window.LOG.counter('fps', fpsVal);
       window.LOG.counter('entities', Array.isArray(G.entities) ? G.entities.length : 0);
+      const zoomVal = Number.isFinite(camera.zoom) ? Number(camera.zoom.toFixed(2)) : 0;
+      window.LOG.counter('camera.zoom', zoomVal);
+      const hpVal = (G.player && Number.isFinite(G.player.hp)) ? G.player.hp
+        : Number.isFinite(G.health) ? Number((G.health || 0) / 2) : 0;
+      window.LOG.counter('player.hp', hpVal);
+      window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
     }
     requestAnimationFrame(loop);
   }
@@ -2186,6 +2204,16 @@ function drawEntities(c2){
           try { window.PresentationAPI?.gameOver?.({ mode: 'under' }); }
           catch (err){ console.warn('[PresentationAPI] gameOver', err); }
         }
+        if (!G._gameOverLogged) {
+          G._gameOverLogged = true;
+          const payload = {
+            level: G.level || 1,
+            reason: G._gameOverReason || 'unknown',
+            time: Number.isFinite(G.time) ? Number(G.time.toFixed(2)) : null,
+            health: Number.isFinite(G.health) ? G.health : null,
+          };
+          window.LOG?.event('GAME_OVER', payload);
+        }
         break;
       }
       case 'COMPLETE': {
@@ -2213,6 +2241,14 @@ function drawEntities(c2){
           } else {
             proceed();
           }
+          if (!G._levelCompleteLogged) {
+            G._levelCompleteLogged = true;
+            window.LOG?.event('LEVEL_COMPLETE', {
+              level: G.level || 1,
+              total,
+              breakdown,
+            });
+          }
         }
         break;
       }
@@ -2230,6 +2266,14 @@ function drawEntities(c2){
     G.debugMap = DEBUG_MAP_MODE;
     G._hasPlaced = false;
     G.__placementsApplied = false;
+    G._gameOverLogged = false;
+    G._levelCompleteLogged = false;
+
+    if (window.LOG?.counter) {
+      window.LOG.counter('spawns', 0);
+      window.LOG.counter('duplicates', 0);
+      window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
+    }
 
     const heroKey = ensureHeroSelected();
     if (heroKey) {
@@ -2241,6 +2285,7 @@ function drawEntities(c2){
       debug: DEBUG_MAP_MODE,
       restart: wasRestart,
     });
+    window.LOG?.event('START_GAME', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
     window.LOG?.event('LEVEL_START', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
 
     startScreen.classList.add('hidden');
@@ -2337,6 +2382,7 @@ function drawEntities(c2){
       window.LOG.init({ buffer: 2000, uiHotkey: 'F10', verbose: DIAG_MODE, level: DIAG_MODE ? 'debug' : 'info' });
       if (DIAG_MODE) window.LOG.level = 'debug';
       if (DIAG_MODE) window.LOG.debug?.('[diag] modo diagnóstico activo');
+      window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
     }
     requestAnimationFrame(loop);
     if (DEBUG_MAP_MODE){
@@ -2369,7 +2415,7 @@ function drawEntities(c2){
   window.__toggleMinimapMode = window.__toggleMinimapMode || function(){ return 'small'; };
 
   // Actívalo con ?mini=1 o definiendo window.DEBUG_MINIMAP = true en consola
-  const enabled = /[?&]mini=1/.test(location.search) || window.DEBUG_MINIMAP === true;
+  const enabled = /[?&]mini=1/.test(location.search) || window.DEBUG_MINIMAP === true || /[?&]map=debug\b/i.test(location.search || '');
   if (!enabled) return;
 
   const TILE = window.TILE_SIZE || window.TILE || 32;

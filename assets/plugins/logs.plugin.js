@@ -8,6 +8,7 @@
     return; // ya instalado
   }
 
+  const LOG_VERSION = '3.1.0';
   const LEVELS = ['debug', 'info', 'warn', 'error'];
   const LEVEL_WEIGHT = { debug: 0, info: 1, warn: 2, error: 3 };
   const NOISE_PATTERNS = [/^chrome-extension:\/\//i, /^The message port closed/i];
@@ -34,6 +35,9 @@
     panicShown: false,
     persistTimer: null,
     seq: 0,
+    availableTags: new Set(),
+    tagFilter: '',
+    tagOptionsDirty: false,
   };
 
   let overlay = null;
@@ -41,6 +45,8 @@
   let countersNode = null;
   let levelSelect = null;
   let filterInput = null;
+  let tagSelect = null;
+  let versionBadge = null;
 
   function levelWeight(level) {
     return LEVEL_WEIGHT[level] ?? LEVEL_WEIGHT.info;
@@ -55,6 +61,10 @@
   function passesFilters(entry) {
     if (!entry) return false;
     if (levelWeight(entry.level) < levelWeight(activeThreshold())) return false;
+    if (state.tagFilter && state.tagFilter !== '__all__') {
+      const tag = entry.tag || '';
+      if (tag !== state.tagFilter) return false;
+    }
     if (state.filterRegex) {
       const sample = [entry.tag, entry.text, entry.source].filter(Boolean).join(' ');
       try {
@@ -129,8 +139,53 @@
         };
         if (shouldIgnore(entry)) continue;
         state.entries.push(entry);
+        if (entry.tag) {
+          state.availableTags.add(entry.tag);
+          state.tagOptionsDirty = true;
+        }
       }
     } catch (_) {}
+  }
+
+  function ensureTagOptions() {
+    if (!tagSelect || !state.tagOptionsDirty) return;
+    state.tagOptionsDirty = false;
+    const current = state.tagFilter;
+    const existing = new Set();
+    for (const opt of Array.from(tagSelect.options)) {
+      existing.add(opt.value || '');
+    }
+    const sorted = Array.from(state.availableTags).filter(Boolean).sort();
+    // ensure default option first
+    if (!existing.has('')) {
+      const defOpt = document.createElement('option');
+      defOpt.value = '';
+      defOpt.textContent = 'tag: todos';
+      tagSelect.appendChild(defOpt);
+    }
+    for (const tag of sorted) {
+      if (existing.has(tag)) continue;
+      const opt = document.createElement('option');
+      opt.value = tag;
+      opt.textContent = `tag: ${tag}`;
+      tagSelect.appendChild(opt);
+    }
+    // remove orphaned options (except default)
+    for (const opt of Array.from(tagSelect.options)) {
+      if (!opt.value) continue;
+      if (!state.availableTags.has(opt.value)) {
+        if (opt.selected) {
+          tagSelect.value = '';
+          state.tagFilter = '';
+        }
+        opt.remove();
+      }
+    }
+    if (tagSelect.value !== (current || '')) {
+      const desired = state.availableTags.has(current) ? current : '';
+      tagSelect.value = desired;
+      state.tagFilter = desired;
+    }
   }
 
   function ensureOverlay() {
@@ -145,6 +200,7 @@
       .hd-log-header{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.07);}
       .hd-log-header button,.hd-log-header select,.hd-log-header input{background:#0d1117;color:#f0f6fc;border:1px solid #1f6feb;border-radius:6px;padding:4px 8px;font:12px 'Fira Code',monospace;}
       .hd-log-header button:hover,.hd-log-header select:hover,.hd-log-header input:hover{border-color:#58a6ff;}
+      .hd-log-header .hd-log-version{margin-left:auto;color:#8b949e;font-size:11px;padding:4px 0;}
       .hd-log-body{flex:1 1 auto;overflow:auto;padding:8px 14px;}
       .hd-log-entry{margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.05);white-space:pre-wrap;word-break:break-word;}
       .hd-log-entry[data-level="debug"]{color:#8b949e;}
@@ -185,6 +241,17 @@
     });
     levelSelect.addEventListener('change', () => {
       LOG.level = levelSelect.value;
+    });
+
+    tagSelect = document.createElement('select');
+    tagSelect.setAttribute('aria-label', 'Filtrar por tag');
+    const defaultTagOpt = document.createElement('option');
+    defaultTagOpt.value = '';
+    defaultTagOpt.textContent = 'tag: todos';
+    tagSelect.appendChild(defaultTagOpt);
+    tagSelect.addEventListener('change', () => {
+      state.tagFilter = tagSelect.value || '';
+      rerenderList();
     });
 
     filterInput = document.createElement('input');
@@ -238,9 +305,15 @@
     });
 
     header.appendChild(levelSelect);
+    header.appendChild(tagSelect);
     header.appendChild(filterInput);
     header.appendChild(copyBtn);
     header.appendChild(clearBtn);
+
+    versionBadge = document.createElement('span');
+    versionBadge.className = 'hd-log-version';
+    versionBadge.textContent = `logVersion ${LOG_VERSION}`;
+    header.appendChild(versionBadge);
 
     listNode = document.createElement('div');
     listNode.className = 'hd-log-body';
@@ -259,6 +332,7 @@
 
   function rerenderList() {
     if (!listNode) return;
+    ensureTagOptions();
     listNode.innerHTML = '';
     const threshold = activeThreshold();
     if (levelSelect && levelSelect.value !== threshold) {
@@ -314,6 +388,11 @@
     if (state.entries.length > state.bufferSize) {
       state.entries.splice(0, state.entries.length - state.bufferSize);
     }
+    if (entry.tag) {
+      state.availableTags.add(entry.tag);
+      state.tagOptionsDirty = true;
+      ensureTagOptions();
+    }
     if (passesFilters(entry)) {
       appendEntry(entry);
     }
@@ -323,6 +402,7 @@
 
   function appendEntry(entry) {
     if (!listNode) return;
+    ensureTagOptions();
     const node = document.createElement('article');
     node.className = 'hd-log-entry';
     node.dataset.level = entry.level;
@@ -511,6 +591,14 @@
     } else {
       state.filterLevel = null;
     }
+    if (typeof opts.tag === 'string') {
+      state.tagFilter = opts.tag || '';
+      if (tagSelect) {
+        state.tagOptionsDirty = true;
+        ensureTagOptions();
+        tagSelect.value = state.tagFilter;
+      }
+    }
     if (opts.tagRegex instanceof RegExp) {
       state.filterRegex = opts.tagRegex;
     } else if (typeof opts.tagRegex === 'string' && opts.tagRegex.trim()) {
@@ -531,8 +619,35 @@
     updateCounters();
   }
 
+  function coerceNumber(value, fallback = 0) {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : fallback;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
+
+  function bumpCounter(name, delta = 1, fallback = 0) {
+    const key = String(name);
+    const prev = coerceNumber(state.counters.get(key), fallback);
+    const next = prev + delta;
+    state.counters.set(key, next);
+    updateCounters();
+    return next;
+  }
+
   function event(tag, data) {
     record('info', [`[${tag}]`, data], { tag: tag || null, data, source: 'event' });
+    const norm = (tag || '').toString().toUpperCase();
+    if (norm === 'SPAWN') {
+      bumpCounter('spawns', 1, 0);
+    } else if (norm === 'DESPAWN') {
+      const next = bumpCounter('spawns', -1, 0);
+      if (next < 0) counter('spawns', 0);
+    }
+    if (data && typeof data === 'object' && data.duplicatePlacement) {
+      bumpCounter('duplicates', 1, 0);
+    }
   }
 
   function info(...args) {
@@ -564,11 +679,13 @@
     setFilter,
     export: exportAll,
     counter,
+    bumpCounter,
     event,
     info,
     debug,
     warn,
     error,
+    logVersion: LOG_VERSION,
   };
 
   Object.defineProperty(LOG, 'level', {

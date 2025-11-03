@@ -84,6 +84,17 @@
 
       const G=this.G, p=G.player; if(!p) return;
 
+      if (e._aiState !== 'CHASE') {
+        e._aiState = 'CHASE';
+        try {
+          window.LOG?.event?.('AI_STATE', {
+            entity: e.id || null,
+            kind: 'FURIOUS',
+            state: 'CHASE',
+          });
+        } catch (_) {}
+      }
+
       // 1) Dirección hacia jugador (cardinal dominante con inercia)
       const cx = e.x + e.w/2, cy = e.y + e.h/2;
       const px = p.x + p.w/2, py = p.y + p.h/2;

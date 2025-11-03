@@ -74,6 +74,17 @@
     const ux = dx / len;
     const uy = dy / len;
 
+    if (ent._aiState !== 'CHASE') {
+      ent._aiState = 'CHASE';
+      try {
+        window.LOG?.event?.('AI_STATE', {
+          entity: ent.id || null,
+          kind: 'MOSQUITO',
+          state: 'CHASE',
+        });
+      } catch (_) {}
+    }
+
     ent._t = (ent._t || 0) + dt;
     const sway = Math.sin(ent._t * 6.0);
     const sway2 = Math.cos(ent._t * 7.4);

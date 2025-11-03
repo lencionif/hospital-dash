@@ -441,6 +441,14 @@
       S.bossDoor.color = S.bossDoor.colorOpen || '#3fb950';
       if (S.bossDoor.spriteKey) S.bossDoor.spriteKey = '--sprite-door-open';
     }
+    try {
+      const level = (S.G && S.G.level) || S.level || 1;
+      window.LOG?.event?.('OPEN_BOSS_DOOR', {
+        level,
+        patientsDelivered: S.deliveredPatients || 0,
+        totalPatients: S.totalPatients || 0,
+      });
+    } catch (_) {}
   }
 
   // Fog + Zoom al boss
@@ -544,6 +552,17 @@
     // Pausa subsistemas tolerante
     if (S.G && typeof S.G.pauseAll === 'function') { try { S.G.pauseAll(true); } catch (e) {} }
     if (W.Audio && typeof W.Audio.duck === 'function') { try { W.Audio.duck(true); } catch (e) {} }
+    if (S.G) {
+      S.G._gameOverReason = S.G._gameOverReason || 'gameflow';
+      if (!S.G._gameOverLogged) {
+        S.G._gameOverLogged = true;
+        window.LOG?.event?.('GAME_OVER', {
+          level: S.G.level || S.level || 1,
+          reason: S.G._gameOverReason,
+          deliveredPatients: S.deliveredPatients || 0,
+        });
+      }
+    }
   }
 
   // Seguimiento de pacientes
@@ -677,6 +696,14 @@
     showOverlay(DOM.complete);
     // Música/ducking leve
     if (W.Audio && W.Audio.duck) { try { W.Audio.duck(true); } catch (e) {} }
+    if (S.G && !S.G._levelCompleteLogged) {
+      S.G._levelCompleteLogged = true;
+      window.LOG?.event?.('LEVEL_COMPLETE', {
+        level: S.G.level || S.level || 1,
+        deliveredPatients: S.deliveredPatients || 0,
+        totalPatients: S.totalPatients || 0,
+      });
+    }
   }
 
   // Helpers overlays

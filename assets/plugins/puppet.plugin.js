@@ -30,6 +30,12 @@
       time: 0
     };
     entity.puppet = puppet;
+    if (entity) {
+      const rig = puppet.rigName || null;
+      if (rig) {
+        entity.rigName = rig;
+      }
+    }
     puppets.push(puppet);
     needsSort = true;
     return puppet;
@@ -39,6 +45,9 @@
     if (!entity) return null;
     const puppet = attach(entity, { ...opts, rig: rigName });
     if (entity) entity.rigOk = !!puppet;
+    if (entity && rigName) {
+      entity.rigName = rigName;
+    }
     return puppet;
   }
 
