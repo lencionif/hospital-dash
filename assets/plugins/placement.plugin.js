@@ -377,6 +377,10 @@ window.applyPlacementsFromMapgen = function(arr, ctx){
   }
   if (G.__placementsApplied === true) {
     console.warn('applyPlacementsFromMapgen: SKIP duplicate invocation');
+    try {
+      window.LOG?.warn?.('[placement] invocación duplicada detectada', { mode });
+      window.LOG?.event?.('PLACEMENT_GUARD', { duplicatePlacement: true, mode, level: G.level || null });
+    } catch (_) {}
     finalize(mode, { G });
     return { skipped: true, reason: 'duplicate' };
   }
@@ -841,7 +845,7 @@ function ensureOnLists(e){
       total: lastSummary.total
     };
     console.log('PLACEMENT_SUMMARY', snapshot);
-    try { window.LOG?.info?.('PLACEMENT_SUMMARY', snapshot); } catch (_) {}
+    try { window.LOG?.event?.('PLACEMENT_SUMMARY', snapshot); } catch (_) {}
     return snapshot;
   }
 
