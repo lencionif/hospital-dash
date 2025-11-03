@@ -22,12 +22,6 @@
 //   w,h: number                         // forzar tamaño (sino usa nivel)
 //   defs: object                        // override de detección de entidades
 //   charset: object                     // override de caracteres ASCII
-//   place: boolean                      // si true, invoca callbacks para instanciar
-//   callbacks: {                        // se llaman si place:true
-//     placePlayer, placePhone, placeDoor, placeBoss,
-//     placeLight, placeSpawner, placeElevator,
-//     placePatient, placePill, placeBell
-//   }
 //   density: { rooms, lights, worms }   // tuning fino por tamaño
 //
 // Caracteres ASCII por defecto (override con options.charset):
@@ -44,6 +38,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
 (function (W) {
   'use strict';
+
+  const rawSearch = (typeof location !== 'undefined' && typeof location.search === 'string')
+    ? location.search
+    : '';
+  const MAP_PARAMS = new URLSearchParams(rawSearch || '');
+  const MAP_MODE = (MAP_PARAMS.get('map') || '').trim().toLowerCase() || 'normal';
+  if (!W.__MAP_MODE) {
+    W.__MAP_MODE = MAP_MODE;
+  }
+  if (MAP_MODE === 'ascii' || MAP_MODE === 'debug') {
+    W.DEBUG_FORCE_ASCII = true;
+  }
+  if (MAP_MODE === 'mini') {
+    W.DEBUG_MINIMAP = true;
+  }
+  try {
+    console.log('%cMAP_MODE', 'color:#0bf', MAP_MODE);
+  } catch (_) {}
 
   // --- REGLAS DE GENERACIÓN (mapa) ---
   const GEN_RULES = {
@@ -1001,12 +1013,6 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       charset: cs,
       seed, level:lvl, width:Wd, height:Hd
     };
-
-    // 18) Callbacks (si place:true)
-    if (options.place && options.callbacks){
-      try { placeWithCallbacks(result, options.callbacks); } catch(e){ console.warn(e); }  
-    }
-
     return result;
   }
 
@@ -1461,28 +1467,6 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     }
 
     return placements;
-  }
-
-  function placeWithCallbacks(res, cbs){
-    const {placements} = res;
-    for(const p of placements){
-      switch(p.type){
-        case 'follower':   cbs.placeFollower?.(p.sub, p.x, p.y, p); break;
-        case 'boss':       cbs.placeBoss?.(p.x, p.y, p); break;
-        case 'door':       cbs.placeDoor?.(p.x, p.y, {locked:true, ...p}); break;
-        case 'boss_door':  cbs.placeDoor?.(p.x, p.y, {locked:true,isBoss:true, ...p}); break;
-        case 'elevator':   cbs.placeElevator?.(p.x, p.y, {pairId:p.pairId, active:true}); break;
-        case 'enemy':      cbs.placeEnemy?.(p.sub, p.x, p.y, p); break;
-        case 'npc':        cbs.placeNPC?.(p.sub, p.x, p.y, p); break;
-        case 'npc_unique': cbs.placeNPC?.(p.sub, p.x, p.y, {unique:true, ...p}); break;
-        case 'cart':       cbs.placeCart?.(p.sub, p.x, p.y, p); break;
-        case 'item':       cbs.placeItem?.(p.sub, p.x, p.y, p); break;
-        case 'spawn_mosquito':
-        case 'spawn_rat':
-        case 'spawn_staff':
-        case 'spawn_cart': cbs.placeSpawner?.(p.type, p.x, p.y, p); break;
-      }
-    }
   }
 
 })(this);

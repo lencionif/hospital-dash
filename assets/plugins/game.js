@@ -2355,14 +2355,31 @@ function drawEntities(c2){
 
     buildLevelForCurrentMode(targetLevel);
 
+    const placementMode = DEBUG_MAP_MODE ? 'debug' : 'normal';
+    const hasAsciiPlacements = Array.isArray(G.__asciiPlacements) && G.__asciiPlacements.length > 0;
+    const hasMapgenPlacements = Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length > 0;
+    const levelCfg = {
+      G,
+      mode: placementMode,
+      debug: DEBUG_MAP_MODE,
+      placements: hasMapgenPlacements ? G.mapgenPlacements : undefined,
+      asciiPlacements: hasAsciiPlacements ? G.__asciiPlacements : undefined,
+      allowAscii: hasAsciiPlacements,
+      asciiMap: ASCII_MAP,
+      ascii: ASCII_MAP,
+      map: G.map,
+      areas: G.mapAreas,
+      width: G.mapW,
+      height: G.mapH,
+      level: targetLevel,
+      seed: G.seed,
+    };
+    G._lastLevelCfg = levelCfg;
+
     let placementApplied = false;
     if (window.Placement?.applyFromAsciiMap) {
       try {
-        const placementResult = window.Placement.applyFromAsciiMap({
-          G,
-          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
-          debug: DEBUG_MAP_MODE
-        });
+        const placementResult = window.Placement.applyFromAsciiMap(levelCfg);
         placementApplied = placementResult?.applied === true || placementResult?.reason === 'guard';
         if (placementResult?.applied) {
           try { window.Placement?.summarize?.(); } catch (_) {}
