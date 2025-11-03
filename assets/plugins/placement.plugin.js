@@ -103,42 +103,56 @@
     };
 
     window.logPlacement = function(p, key, allowed){
-      const C = window.DEBUG_POPULATE;
+      const C = window.DEBUG_POPULATE || {};
       if (!C.LOG) return;
-      const where = (p.x!=null && p.y!=null) ? `at(${p.x},${p.y})` : '';
+      const where = (p && p.x != null && p.y != null) ? `at(${p.x},${p.y})` : '';
       if (C.DRY_RUN) {
         console.log(`DRY_RUN kind=${key} ${where} wouldCreate=true`, C.VERBOSE ? p : '');
-      } else if (!allowed) {
-        console.log(`PLACEMENT_SKIPPED kind=${key} ${where} reason=debug`, C.VERBOSE ? p : '');
-      } else {
-        console.log(`PLACEMENT_OK kind=${k} at(${x},${y}) ok=${ok}  [${_countsStr(_snapCounts())}]`);
+        return;
       }
+      if (!allowed) {
+        console.log(`PLACEMENT_SKIPPED kind=${key} ${where} reason=debug`, C.VERBOSE ? p : '');
+        return;
+      }
+      const snapshot = _countsStr(_snapCounts());
+      console.log(`PLACEMENT_OK kind=${key} ${where} [${snapshot}]`, C.VERBOSE ? p : '');
     };
   })();
   'use strict';
   const DEBUG_MAP = /(?:\?|&)map=debug\b/i.test(location.search || '');
   const TILE = (typeof W.TILE_SIZE!=='undefined')? W.TILE_SIZE : (W.TILE||32);
   const ENT  = (W.ENT || {});
+  const EMPTY_SUMMARY = () => ({ countsPorTipo: {}, total: 0 });
+  let lastSummary = EMPTY_SUMMARY();
 
-  function shouldRunPlacement(mode){
+  function shouldRunPlacement(mode, ctx){
+    const targetG = ctx?.G;
+    if (targetG && window.G !== targetG) {
+      window.G = targetG;
+    }
     const g = window.G || (window.G = {});
-    const activeMode = g._placementMode || (g.debugMap ? 'debug' : 'normal');
-    const requested = mode || activeMode || (DEBUG_MAP ? 'debug' : 'normal');
-    if (activeMode && mode && activeMode !== mode){
-      window.LOG?.debug?.('[placement] salto por modo activo', { requested: mode, active: activeMode });
+    const requested = mode || ctx?.mode || (DEBUG_MAP ? 'debug' : 'normal');
+    const activeMode = g._placementMode || (g.debugMap ? 'debug' : requested);
+    if (activeMode && requested && activeMode !== requested) {
+      window.LOG?.debug?.('[placement] skip: modo activo distinto', { requested, active: activeMode });
       return false;
     }
-    if (g._hasPlaced){
+    if (g._hasPlaced || g.__placementsApplied) {
       window.LOG?.warn?.('[placement] intento duplicado', { mode: requested });
       return false;
     }
     return true;
   }
 
-  function finalizePlacement(mode){
+  function finalizePlacement(mode, ctx){
+    const targetG = ctx?.G;
+    if (targetG && window.G !== targetG) {
+      window.G = targetG;
+    }
     const g = window.G || (window.G = {});
     g._hasPlaced = true;
     if (mode) g._placementMode = mode;
+    g.__placementsApplied = true;
   }
 
   //Helpers
@@ -229,20 +243,24 @@
 
       // Enemigos
       if (kk === 'RAT') {
-        if (window.RatsAPI?.spawn) return window.RatsAPI.spawn(x, y, props);
-        if (e && e.update) {
+        let spawned = null;
+        if (window.RatsAPI?.spawn) spawned = window.RatsAPI.spawn(x, y, props);
+        else if (window.Entities?.Rat?.spawn) spawned = window.Entities.Rat.spawn(x, y, props);
+        if (spawned && spawned.update) {
           G.movers = G.movers || [];
-          if (G.movers.indexOf(e) === -1) G.movers.push(e);
+          if (!G.movers.includes(spawned)) G.movers.push(spawned);
         }
-        if (window.Entities?.Rat?.spawn) return window.Entities.Rat.spawn(x, y, props);
+        return spawned;
       }
       if (kk === 'MOSQUITO') {
-        if (window.MosquitoAPI?.spawn) return window.MosquitoAPI.spawn(x, y, props);
-        if (e && e.update) {
+        let spawned = null;
+        if (window.MosquitoAPI?.spawn) spawned = window.MosquitoAPI.spawn(x, y, props);
+        else if (window.Entities?.Mosquito?.spawn) spawned = window.Entities.Mosquito.spawn(x, y, props);
+        if (spawned && spawned.update) {
           G.movers = G.movers || [];
-          if (G.movers.indexOf(e) === -1) G.movers.push(e);
+          if (!G.movers.includes(spawned)) G.movers.push(spawned);
         }
-        if (window.Entities?.Mosquito?.spawn) return window.Entities.Mosquito.spawn(x, y, props);
+        return spawned;
       }
 
       // Paciente (por si quieres sembrar alguno suelto)
@@ -300,7 +318,7 @@
     // constraints example:
     // { avoidRects:[controlRoomRect, bossRoomRect], minDistFrom:{x:spawnTx,y:spawnTy,d:15} }
     placeEntities(G, plan){
-      if (!shouldRunPlacement('normal')) {
+      if (!shouldRunPlacement('normal', { G })) {
         return;
       }
       // plan: { patients:7, pills:8, rats:1, mosquitos:1, cleaners:1, supervisor:1, family:1, doctor:1, boss:{roomRect, type:'a'} }
@@ -331,11 +349,13 @@
         const e = W.NPC?.create('BOSS', tx*TILE+6, ty*TILE+6, { bossType: plan.boss.type||'a' });
         if (e) G.entities.push(e);
       }
-      finalizePlacement('normal');
+      finalizePlacement('normal', { G });
     }
   };
 
   W.MapPlacementAPI = MapPlacementAPI;
+  W.__placementShouldRun = shouldRunPlacement;
+  W.__placementFinalize = finalizePlacement;
 
 })(this);
 
@@ -343,16 +363,26 @@
 
 // === Instanciador NUCLEO único para placements del MapGen ===
 
-window.applyPlacementsFromMapgen = function(arr){
-  const W = window, G = W.G || (W.G = {});
-  const mode = (G.debugMap === true) ? 'debug' : 'normal';
-  if (!shouldRunPlacement(mode)) {
+window.applyPlacementsFromMapgen = function(arr, ctx){
+  const W = window;
+  const G = ctx?.G || W.G || (W.G = {});
+  if (ctx?.G && W.G !== ctx.G) {
+    W.G = ctx.G;
+  }
+  const mode = ctx?.mode || (G.debugMap === true ? 'debug' : 'normal');
+  const runGuard = W.__placementShouldRun || (() => true);
+  const finalize = W.__placementFinalize || (() => {});
+  if (!runGuard(mode, { G, mode })) {
     return { skipped: true, reason: 'guard' };
   }
   if (G.__placementsApplied === true) {
     console.warn('applyPlacementsFromMapgen: SKIP duplicate invocation');
-    finalizePlacement(mode);
+    finalize(mode, { G });
     return { skipped: true, reason: 'duplicate' };
+  }
+  if (!Array.isArray(arr) || arr.length === 0) {
+    window.LOG?.info?.('[placement] lista vacía');
+    return { skipped: true, reason: 'empty' };
   }
   G.__placementsApplied = true;
   // KILL-SWITCH (instancia SIEMPRE si viene autorizado desde parseMap ASCII)
@@ -360,7 +390,7 @@ window.applyPlacementsFromMapgen = function(arr){
   // Solo saltamos si NO es ASCII y además alguien lo ha deshabilitado explícitamente
   if (!__allowAscii && G?.flags?.__DISABLE_MAPGEN_PLACEMENTS === true) {
     console.warn('applyPlacementsFromMapgen: SKIPPED por __DISABLE_MAPGEN_PLACEMENTS');
-    return { skipped:true };
+    return { skipped:true, reason: 'disabled' };
   }
   const TILE = (W.TILE_SIZE || W.TILE || 32);
   const ENT  = W.ENT || {};
@@ -476,20 +506,31 @@ function ensureOnLists(e){
       }
 
       // ---------- NPCs ----------
-      case 'npc_unique': return window.Entities?.NPC?.spawn?.(p.sub,x,y,{unique:true,...p});
+      case 'npc_unique': {
+        const npc = window.Entities?.NPC?.spawn?.(p.sub, x, y, { unique: true, ...p }) || null;
+        if (npc) { npc.isNPC = true; ensureOnLists(npc); logOk('NPC_UNIQUE_'+(p.sub||'?'), x, y, npc); }
+        else { logFail('NPC_UNIQUE_'+(p.sub||'?'), x, y, 'Entities.NPC.spawn no disponible'); }
+        return;
+      }
       case 'npc':
       case 'NPC': {
-        const sub = (p.sub || p.role || '').toLowerCase();
+        const subName = (p.sub || p.role || '').toLowerCase();
         const tryApi = (API) => API ? (API.spawn?.(x,y,p) || API.create?.(x,y,p) || null) : null;
-        if (sub === 'cleaner')       return tryApi(window.CleanerAPI);
-        if (sub === 'celador')       return tryApi(window.CeladorAPI);
-        if (sub === 'tcae')          return tryApi(window.TCAEAPI);
-        if (sub === 'guardia')       return tryApi(window.GuardiaAPI);
-        if (sub === 'medico')        return tryApi(window.MedicoAPI);
-        if (sub === 'supervisora')   return tryApi(window.SupervisoraAPI);
-        if (sub === 'familiar' || sub === 'familiar_molesto') return tryApi(window.FamiliarMolestoAPI);
-        if (sub === 'enfermera_sexy') return tryApi(window.EnfermeraSexyAPI);
-        return window.Entities?.NPC?.spawn?.(sub || 'generic', x, y, p);
+        let npc = null;
+        if (subName === 'cleaner')       npc = tryApi(window.CleanerAPI);
+        else if (subName === 'celador')  npc = tryApi(window.CeladorAPI);
+        else if (subName === 'tcae')     npc = tryApi(window.TCAEAPI);
+        else if (subName === 'guardia')  npc = tryApi(window.GuardiaAPI);
+        else if (subName === 'medico')   npc = tryApi(window.MedicoAPI);
+        else if (subName === 'supervisora' || subName === 'jefe') npc = tryApi(window.SupervisoraAPI || window.JefeServicioAPI);
+        else if (subName === 'familiar' || subName === 'familiar_molesto') npc = tryApi(window.FamiliarMolestoAPI);
+        else if (subName === 'enfermera_sexy') npc = tryApi(window.EnfermeraSexyAPI);
+        if (!npc) {
+          npc = window.Entities?.NPC?.spawn?.(subName || 'generic', x, y, p) || null;
+        }
+        if (npc) { npc.isNPC = true; ensureOnLists(npc); logOk('NPC_'+(subName || 'generic').toUpperCase(), x, y, npc); }
+        else { logFail('NPC_'+(subName||'?').toUpperCase(), x, y, 'sin API'); }
+        return;
       }
       case 'spawn_staff': {
         // Soporte directo por roles conocidos (si existen), si no, genérico
@@ -577,22 +618,34 @@ function ensureOnLists(e){
 
       // ---------- Carros / camas / sillas ----------
       case 'cart': {
-        // el 1º carro sin subtipo → urgencias
         G._debugCartCount = (G._debugCartCount|0);
         let sub = String(p.sub||'').toLowerCase();
         if (!sub) sub = (G._debugCartCount === 0) ? 'urgencias' : 'medicinas';
         G._debugCartCount++;
-        return (window.Entities?.Cart?.spawn?.(sub, x, y, p) ||
-                window.CartsAPI?.spawn?.(sub, x, y, p) ||
-                window.Entities?.Spawner?.spawn?.('cart', x, y, { ...p, sub }));
+        const cart = (window.Entities?.Cart?.spawn?.(sub, x, y, p)
+          || window.CartsAPI?.spawn?.(sub, x, y, p)
+          || window.Entities?.Spawner?.spawn?.('cart', x, y, { ...p, sub })
+          || null);
+        if (cart) { cart.pushable = true; ensureOnLists(cart); logOk('CART_'+sub.toUpperCase(), x, y, cart); }
+        else { logFail('CART_'+sub.toUpperCase(), x, y, 'sin API'); }
+        return;
       }
       case 'spawn_cart': {
         const sub = (String(p.sub||'').toLowerCase()||'medicinas');
-        return (window.Entities?.Cart?.spawn?.(sub, x, y, p) ||
-                window.CartsAPI?.spawn?.(sub, x, y, p) ||
-                window.Entities?.Spawner?.spawn?.('cart', x, y, { ...p, sub }));
+        const cart = (window.Entities?.Cart?.spawn?.(sub, x, y, p)
+          || window.CartsAPI?.spawn?.(sub, x, y, p)
+          || window.Entities?.Spawner?.spawn?.('cart', x, y, { ...p, sub })
+          || null);
+        if (cart) { cart.pushable = true; ensureOnLists(cart); logOk('CART_'+sub.toUpperCase(), x, y, cart); }
+        else { logFail('CART_'+sub.toUpperCase(), x, y, 'sin API'); }
+        return;
       }
-      case 'boss_door': return window.Entities?.Door?.spawn?.(x,y,{locked:true,isBoss:true,...p});
+      case 'boss_door': {
+        const door = window.Entities?.Door?.spawn?.(x,y,{locked:true,isBoss:true,...p}) || null;
+        if (door) { ensureOnLists(door); logOk('BOSS_DOOR', x, y, door); }
+        else { logFail('BOSS_DOOR', x, y, 'Entities.Door.spawn no disponible'); }
+        return;
+      }
       case 'wheelchair': {
         const cartType = (sub==='comida'||sub==='meal'||sub==='food') ? 'comida' :
                          (sub==='urgencias'||sub==='er'||sub==='emergency') ? 'urgencias' : 'medicinas';
@@ -609,7 +662,12 @@ function ensureOnLists(e){
       }
 
       // ---------- Puertas / Ascensores ----------
-      case 'door': return window.Entities?.Door?.spawn?.(x,y,{locked:true, ...p});
+      case 'door': {
+        const door = window.Entities?.Door?.spawn?.(x,y,{locked:true, ...p}) || null;
+        if (door) { ensureOnLists(door); logOk('DOOR', x, y, door); }
+        else { logFail('DOOR', x, y, 'Entities.Door.spawn no disponible'); }
+        return;
+      }
       // ---------- Boss ----------
       case 'boss': {
         // soporta: Entities.Boss.spawn || BossRushAPI.spawnBoss
@@ -620,16 +678,14 @@ function ensureOnLists(e){
         logFail('BOSS',x,y,'No hay API de Boss');
         return;
       }
-      case 'boss_door': {
-        e = W.Entities?.Door?.spawn?.(x,y,{ locked: !!p.locked, isBoss:(type==='boss_door'), ...p });
-        if (e){ ensureOnLists(e); logOk(UPPER(type),x,y,e); return; }
-        logFail(UPPER(type),x,y,'Entities.Door.spawn no disponible');
-        return;
-      }
       case 'elevator':
       case 'elevator_active':
-      case 'elevator_closed':
-      return window.Entities?.Elevator?.spawn?.(x,y,{ pairId:p.pairId, active:(p.active!==false), ...p });
+      case 'elevator_closed': {
+        const elev = window.Entities?.Elevator?.spawn?.(x,y,{ pairId:p.pairId, active:(p.active!==false), ...p }) || null;
+        if (elev) { ensureOnLists(elev); logOk('ELEVATOR', x, y, elev); }
+        else { logFail('ELEVATOR', x, y, 'Entities.Elevator.spawn no disponible'); }
+        return;
+      }
       case 'lift': {
         // OJO: el wrapper de Elevator espera TILES, no PX
         e = (W.Entities?.Elevator?.spawn ? W.Entities.Elevator.spawn(tx, ty, { pairId:p.pairId, active:(p.active!==false), ...p })
@@ -681,33 +737,130 @@ function ensureOnLists(e){
     }
   });
 
-  finalizePlacement(mode);
+  finalize(mode, { G });
   const after = count();
-  if (__LOG_ON__) {
-    try {   console.log('%cPLACEMENT_SUMMARY','background:#222;color:#fff;padding:2px 6px',
-      { before, after, delta:{
-        ents: after.ents-before.ents,
-        npcs: after.npcs-before.npcs,
-        enemies: after.enemies-before.enemies,
-        doors: after.doors-before.doors,
-        elevators: after.elevators-before.elevators,
-        pushables: after.pushables-before.pushables
-      }}); } catch(_) {}
+  const delta = {
+    ents: after.ents-before.ents,
+    npcs: after.npcs-before.npcs,
+    enemies: after.enemies-before.enemies,
+    doors: after.doors-before.doors,
+    elevators: after.elevators-before.elevators,
+    pushables: after.pushables-before.pushables
+  };
+  if (__LOG_ON__ && !window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__) {
+    try {
+      console.log('%cPLACEMENT_RESULT','background:#222;color:#fff;padding:2px 6px', { before, after, delta });
+    } catch(_) {}
   }
   try { window.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+  return { applied: true, before, after, delta };
 };
 
-// === Hotkeys debug ===
-window.addEventListener('keydown', (ev)=>{
-  if (ev.code === 'F8') { // toggle DRY_RUN
-    window.DEBUG_POPULATE.DRY_RUN = !window.DEBUG_POPULATE.DRY_RUN;
-    console.log('[DEBUG_POPULATE] DRY_RUN =', window.DEBUG_POPULATE.DRY_RUN);
+  function resolvePlacementList(levelCfg, G) {
+    if (Array.isArray(levelCfg?.placements) && levelCfg.placements.length) {
+      return { list: levelCfg.placements, allowAscii: !!levelCfg.allowAscii };
+    }
+    if (Array.isArray(levelCfg?.asciiPlacements) && levelCfg.asciiPlacements.length) {
+      return { list: levelCfg.asciiPlacements, allowAscii: true };
+    }
+    if (Array.isArray(G?.__asciiPlacements) && G.__asciiPlacements.length) {
+      return { list: G.__asciiPlacements, allowAscii: true };
+    }
+    if (Array.isArray(G?.mapgenPlacements) && G.mapgenPlacements.length) {
+      return { list: G.mapgenPlacements, allowAscii: false };
+    }
+    return { list: [], allowAscii: false };
   }
-  if (ev.code === 'F9') { // toggle ALL ON/OFF
-    const on = !Object.values(window.DEBUG_POPULATE).some(v => v === true);
-    const KEYS = Object.keys(window.DEBUG_POPULATE).filter(k=>/^[A-Z_]+$/.test(k));
-    KEYS.forEach(k => window.DEBUG_POPULATE[k] = on);
-    console.log('[DEBUG_POPULATE] ALL =', on ? 'ON' : 'OFF');
+
+  function computeSummary(placements) {
+    const counts = {};
+    let total = 0;
+    for (const p of placements || []) {
+      const key = (typeof window.classifyKind === 'function')
+        ? window.classifyKind(p?.type || p?.kind || p?.k, p)
+        : String(p?.type || p?.kind || 'OTHER').toUpperCase();
+      const normalized = key || 'OTHER';
+      counts[normalized] = (counts[normalized] || 0) + 1;
+      total++;
+    }
+    return { countsPorTipo: counts, total };
   }
-});
-window.applyPlacementsFromMapgen_core = window.applyPlacementsFromMapgen;
+
+  function applyFromAsciiMap(levelCfg = {}) {
+    const W = window;
+    const G = levelCfg.G || W.G || (W.G = {});
+    if (levelCfg.G && W.G !== levelCfg.G) {
+      W.G = levelCfg.G;
+    }
+    const mode = levelCfg.mode || (G.debugMap ? 'debug' : 'normal');
+    const { list, allowAscii } = resolvePlacementList(levelCfg, G);
+    const summary = computeSummary(list);
+    lastSummary = summary;
+
+    const runGuard = W.__placementShouldRun || (() => true);
+    if (!runGuard(mode, { G, mode })) {
+      return { applied: false, skipped: true, reason: 'guard', summary };
+    }
+    if (!Array.isArray(list) || list.length === 0) {
+      return { applied: false, skipped: true, reason: 'empty', summary };
+    }
+
+    let result;
+    try {
+      if (allowAscii) {
+        G.__allowASCIIPlacements = true;
+      }
+      window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__ = true;
+      result = window.applyPlacementsFromMapgen(list, { G, mode });
+    } finally {
+      delete window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__;
+      if (allowAscii) {
+        delete G.__allowASCIIPlacements;
+      }
+    }
+    const response = (result && typeof result === 'object') ? { ...result } : { applied: true };
+    response.summary = summary;
+    response.applied = response.skipped ? false : response.applied !== false;
+    return response;
+  }
+
+  function placementShouldRun(levelCfg = {}) {
+    const W = window;
+    const G = levelCfg.G || W.G || (W.G = {});
+    if (levelCfg.G && W.G !== levelCfg.G) {
+      W.G = levelCfg.G;
+    }
+    const mode = levelCfg.mode || (G.debugMap ? 'debug' : 'normal');
+    const runGuard = W.__placementShouldRun || (() => true);
+    return runGuard(mode, { G, mode });
+  }
+
+  function summarizePlacements() {
+    const snapshot = {
+      countsPorTipo: { ...lastSummary.countsPorTipo },
+      total: lastSummary.total
+    };
+    console.log('PLACEMENT_SUMMARY', snapshot);
+    try { window.LOG?.info?.('PLACEMENT_SUMMARY', snapshot); } catch (_) {}
+    return snapshot;
+  }
+
+  window.Placement = {
+    applyFromAsciiMap,
+    shouldRun: placementShouldRun,
+    summarize: summarizePlacements
+  };
+
+  // === Hotkeys debug ===
+  window.addEventListener('keydown', (ev)=>{
+    if (ev.code === 'F8') { // toggle DRY_RUN
+      window.DEBUG_POPULATE.DRY_RUN = !window.DEBUG_POPULATE.DRY_RUN;
+      console.log('[DEBUG_POPULATE] DRY_RUN =', window.DEBUG_POPULATE.DRY_RUN);
+    }
+    if (ev.code === 'F9') { // toggle ALL ON/OFF
+      const on = !Object.values(window.DEBUG_POPULATE).some(v => v === true);
+      const KEYS = Object.keys(window.DEBUG_POPULATE).filter(k=>/^[A-Z_]+$/.test(k));
+      KEYS.forEach(k => window.DEBUG_POPULATE[k] = on);
+      console.log('[DEBUG_POPULATE] ALL =', on ? 'ON' : 'OFF');
+    }
+  });

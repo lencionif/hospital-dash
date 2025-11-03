@@ -121,34 +121,17 @@
   </div>
 
   <!-- JS (no modules para funcionar con file://) -->
-  <!-- Helpers primero -->
-  <script defer src="./assets/plugins/physics.plugin.js"></script>
-  <script defer src="./assets/plugins/lighting.plugin.js"></script>
-  <script defer src="./assets/plugins/skyweather.plugin.js"></script>
-  <script defer src="./assets/plugins/arrowguide.plugin.js"></script>
-  <script defer src="./assets/plugins/damage.plugin.js"></script>
-  <script defer src="./assets/plugins/audio.plugin.js"></script>
-  <script defer src="./assets/plugins/score.plugin.js"></script>
+  <!-- constants / utils / logs -->
+  <script defer src="./assets/plugins/patients.names.js"></script>
   <script defer src="./assets/plugins/sprites.plugin.js"></script>
-  <script defer src="./assets/plugins/gameflow.plugin.js"></script>
-  <script defer src="./assets/plugins/presentation.plugin.js"></script>
-  <script defer src="./assets/plugins/music.plugin.js"></script>
-  <script defer src="./assets/plugins/mouse.control.plugin.js"></script>
-  <script defer src="./assets/plugins/furious.plugin.js"></script>
-  <script defer src="./assets/plugins/bells.plugin.js"></script>
-  <script defer src="./assets/plugins/dialog.plugin.js"></script>
+  <script defer src="./assets/plugins/logs.plugin.js"></script>
 
-  <!-- Núcleo del juego -->
-  <script defer src="./assets/plugins/game.js"></script>
-
-  <!-- Plugins de gameplay y render tras el núcleo -->
-  <script defer src="./assets/plugins/placement.plugin.js"></script>
+  <!-- physics, mapgen, placement -->
+  <script defer src="./assets/plugins/physics.plugin.js"></script>
   <script defer src="./assets/plugins/mapgen.plugin.js"></script>
-  <script defer src="./assets/plugins/puppet.plugin.js"></script>
-  <script defer src="./assets/plugins/puppet.rigs.plugin.js"></script>
-  <script defer src="./assets/plugins/hud.plugin.js"></script>
+  <script defer src="./assets/plugins/placement.plugin.js"></script>
 
-  <!-- Entidades -->
+  <!-- entities -->
   <script defer src="./assets/plugins/entities/heroes.entities.js"></script>
   <script defer src="./assets/plugins/entities/carts.entities.js"></script>
   <script defer src="./assets/plugins/entities/mosquito.entities.js"></script>
@@ -171,8 +154,32 @@
   <script defer src="./assets/plugins/entities/guardia.entities.js"></script>
   <script defer src="./assets/plugins/entities/lights.entities.js"></script>
 
-  <!-- Diagnóstico -->
-  <script defer src="./assets/apisPlugins/logs.plugin.js"></script>
+  <!-- ai -->
+  <script defer src="./assets/plugins/furious.plugin.js"></script>
+
+  <!-- puppet systems -->
+  <script defer src="./assets/plugins/puppet.plugin.js"></script>
+  <script defer src="./assets/plugins/puppet.rigs.plugin.js"></script>
+
+  <!-- hud / audio / ui -->
+  <script defer src="./assets/plugins/hud.plugin.js"></script>
+  <script defer src="./assets/plugins/audio.plugin.js"></script>
+  <script defer src="./assets/plugins/music.plugin.js"></script>
+  <script defer src="./assets/plugins/dialog.plugin.js"></script>
+  <script defer src="./assets/plugins/presentation.plugin.js"></script>
+  <script defer src="./assets/plugins/mouse.control.plugin.js"></script>
+  <script defer src="./assets/plugins/bells.plugin.js"></script>
+  <script defer src="./assets/plugins/damage.plugin.js"></script>
+  <script defer src="./assets/plugins/lighting.plugin.js"></script>
+  <script defer src="./assets/plugins/skyweather.plugin.js"></script>
+
+  <!-- progression helpers -->
+  <script defer src="./assets/plugins/arrowguide.plugin.js"></script>
+  <script defer src="./assets/plugins/score.plugin.js"></script>
+  <script defer src="./assets/plugins/gameflow.plugin.js"></script>
+
+  <!-- núcleo del juego -->
+  <script defer src="./assets/plugins/game.js"></script>
 
   <script id="sprites-manifest" type="application/json">
   [
