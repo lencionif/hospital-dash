@@ -122,8 +122,11 @@
         ? 'cart_emergency'
         : (e.cartType === this.TYPES.MED ? 'cart_meds' : 'cart_food');
       try {
-        window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } });
-      } catch (_) {}
+        const puppet = window.Puppet?.bind?.(e, rigName, { z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } })\n          || window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } });
+        e.rigOk = e.rigOk === true || !!puppet;
+      } catch (_) {
+        e.rigOk = e.rigOk === true;
+      }
 
       // registro
       const G=getG();

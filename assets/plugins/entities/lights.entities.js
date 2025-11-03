@@ -97,8 +97,11 @@
       this.dead  = false;
 
       try {
-        window.PuppetAPI?.attach?.(this, { rig: 'light', z: 0, scale: 1, data: { radius, intensity, broken } });
-      } catch (_) {}
+        const puppet = window.Puppet?.bind?.(this, 'light', { z: 0, scale: 1, data: { radius, intensity, broken } })\n          || window.PuppetAPI?.attach?.(this, { rig: 'light', z: 0, scale: 1, data: { radius, intensity, broken } });
+        this.rigOk = this.rigOk === true || !!puppet;
+      } catch (_) {
+        this.rigOk = this.rigOk === true;
+      }
     }
     update(/*dt*/){}
     draw(/*ctx*/){}

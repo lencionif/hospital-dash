@@ -87,7 +87,12 @@
   function pushEntity(e) {
     (G.entities ||= []).push(e);
     (G.npcs ||= []).push(e);
-    try { window.PuppetAPI?.attach?.(e, { rig: 'npc_familiar_molesto', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
+    try {
+      const puppet = window.Puppet?.bind?.(e, 'npc_familiar_molesto', { z: 0, scale: 1, data: { skin: e.skin } })\n        || window.PuppetAPI?.attach?.(e, { rig: 'npc_familiar_molesto', z: 0, scale: 1, data: { skin: e.skin } });
+      e.rigOk = e.rigOk === true || !!puppet;
+    } catch (_) {
+      e.rigOk = e.rigOk === true;
+    }
     return e;
   }
 

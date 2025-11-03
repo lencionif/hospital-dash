@@ -206,7 +206,12 @@
     };
     pushUnique(G.entities, e);
     pushUnique(G.npcs || (G.npcs=[]), e);
-    try { window.PuppetAPI?.attach?.(e, { rig: 'npc_celador', z: 0, scale: 1, data: { skin: e.skin } }); } catch (_) {}
+    try {
+      const puppet = window.Puppet?.bind?.(e, 'npc_celador', { z: 0, scale: 1, data: { skin: e.skin } })\n        || window.PuppetAPI?.attach?.(e, { rig: 'npc_celador', z: 0, scale: 1, data: { skin: e.skin } });
+      e.rigOk = e.rigOk === true || !!puppet;
+    } catch (_) {
+      e.rigOk = e.rigOk === true;
+    }
     return e;
   }
 

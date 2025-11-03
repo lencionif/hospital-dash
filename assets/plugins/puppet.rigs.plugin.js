@@ -80,6 +80,60 @@
     }
   }
 
+  function normalizeStateResult(res){
+    if (!res) return null;
+    if (typeof res === 'string') return { state: res };
+    if (typeof res === 'object') return { ...res };
+    return null;
+  }
+
+  function resolveOrientation(e, st, cfg){
+    const vx = e?.vx ?? e?.dirX ?? 0;
+    const vy = e?.vy ?? e?.dirY ?? 0;
+    const bias = cfg?.orientationBias ?? 0.72;
+    const threshold = cfg?.orientationThreshold ?? 8;
+    let orientation = st.orientation || 'down';
+    const speed = Math.hypot(vx, vy);
+    if (speed > threshold){
+      if (Math.abs(vx) > Math.abs(vy) * bias){
+        orientation = 'side';
+        if (Math.abs(vx) > 0.5) st.dir = vx < 0 ? -1 : 1;
+      } else {
+        orientation = vy < 0 ? 'up' : 'down';
+      }
+    } else if (typeof e?.lookAngle === 'number' || typeof e?.facingAngle === 'number'){
+      const ang = (typeof e.lookAngle === 'number') ? e.lookAngle : e.facingAngle;
+      const norm = ((ang % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      if (norm > Math.PI * 0.25 && norm < Math.PI * 0.75) orientation = 'down';
+      else if (norm > Math.PI * 1.25 && norm < Math.PI * 1.75) orientation = 'up';
+      else {
+        orientation = 'side';
+        st.dir = (norm <= Math.PI * 0.25 || norm >= Math.PI * 1.75) ? 1 : -1;
+      }
+    } else if (typeof e?.facing === 'string'){
+      const f = e.facing.toUpperCase();
+      if (f.startsWith('N') || f === 'UP') orientation = 'up';
+      else if (f.startsWith('S') || f === 'DOWN') orientation = 'down';
+      else if (f.startsWith('W')) { orientation = 'side'; st.dir = -1; }
+      else if (f.startsWith('E')) { orientation = 'side'; st.dir = 1; }
+    }
+    st.orientation = orientation;
+    return orientation;
+  }
+
+  function pickStateInfo(cfg, st){
+    const states = cfg?.states || null;
+    if (!states) return null;
+    const ori = st.orientation || 'down';
+    let key = st.state || cfg.initialState || 'idle';
+    let info = states[key];
+    if (!info && ori){
+      info = states[`${key}_${ori}`] || states[`${key}${ori[0].toUpperCase() + ori.slice(1)}`];
+    }
+    if (!info && states.default) info = states.default;
+    return info || null;
+  }
+
   function baseWalkerState(e, cfg){
     const data = e?.puppet?.data || {};
     const tint = parseTint(data.tint || cfg.tint);
@@ -96,7 +150,15 @@
       dir: 1,
       tint,
       scale,
-      skin
+      skin,
+      state: cfg.initialState || 'idle',
+      stateTime: 0,
+      orientation: 'down',
+      stateTint: null,
+      stateScale: 1,
+      stateBob: 1,
+      stateSkin: null,
+      stateFlip: null
     };
   }
 
@@ -131,27 +193,87 @@
     if (cfg.headTilt){
       st.headTilt = Math.sin(st.phase * cfg.headTilt.freq + st.swayPhase) * cfg.headTilt.amp;
     }
+    st.moving = moving;
+    st.speed = speed;
+    st.stateTint = null;
+    st.stateScale = 1;
+    st.stateBob = 1;
+    st.stateSkin = null;
+    st.stateFlip = null;
     if (cfg.extraUpdate) cfg.extraUpdate(st, e, dt, speed, moving);
     if (cfg.faceFromVelocity !== false){
       if (Math.abs(vx) > 2) st.dir = vx < 0 ? -1 : 1;
       else if (e?.dirX) st.dir = e.dirX < 0 ? -1 : 1;
     }
+    const orientation = resolveOrientation(e, st, cfg);
+    let desired = st.state || cfg.initialState || 'idle';
+    const result = normalizeStateResult(cfg.resolveState ? cfg.resolveState(st, e, dt, { speed, moving, orientation }) : null);
+    if (result){
+      if (result.orientation) st.orientation = result.orientation;
+      if (typeof result.dir === 'number') st.dir = result.dir < 0 ? -1 : 1;
+      if (result.tint) st.stateTint = parseTint(result.tint, result.tintAlpha ?? cfg.tintAlpha ?? 0.35);
+      if (result.scale != null) st.stateScale = result.scale;
+      if (result.bobMul != null) st.stateBob = result.bobMul;
+      if (result.skin) st.stateSkin = result.skin;
+      if (result.flip != null) st.stateFlip = result.flip;
+      if (result.state) desired = result.state;
+    } else if (cfg.states){
+      if (moving){
+        if (st.orientation === 'up') desired = 'walk_up';
+        else if (st.orientation === 'side') desired = 'walk_side';
+        else desired = 'walk_down';
+      } else {
+        desired = 'idle';
+      }
+    }
+    if (cfg.stateFallback) {
+      const alt = cfg.stateFallback(st, desired, e);
+      if (alt) desired = alt;
+    }
+    if (desired !== st.state){
+      st.state = desired;
+      st.stateTime = 0;
+      if (cfg.onStateChange) cfg.onStateChange(st, e, desired);
+    } else {
+      st.stateTime += dt;
+    }
   }
 
   function drawWalker(ctx, cam, e, st, cfg){
     const [cx, cy, sc] = toScreen(cam, e);
-    const totalScale = sc * (cfg.spriteScale ?? 1) * st.scale;
-    const w = (cfg.spriteWidth ?? (e.w || 32)) * totalScale;
-    const h = (cfg.spriteHeight ?? (e.h || 48)) * totalScale;
+    const stateInfo = pickStateInfo(cfg, st) || {};
+    const scaleMul = (stateInfo.scale ?? 1) * (st.stateScale ?? 1);
+    const baseW = stateInfo.spriteWidth ?? cfg.spriteWidth ?? (e.w || 32);
+    const baseH = stateInfo.spriteHeight ?? cfg.spriteHeight ?? (e.h || 48);
+    const totalScale = sc * (cfg.spriteScale ?? 1) * st.scale * scaleMul;
+    const w = baseW * totalScale;
+    const h = baseH * totalScale;
+    const bobMul = (stateInfo.bobMul ?? 1) * (st.stateBob ?? 1);
+    const offsetY = ((cfg.offsetY ?? 0) + (stateInfo.offsetY ?? 0)) * totalScale;
+    const tint = stateInfo.tint ? parseTint(stateInfo.tint, stateInfo.tintAlpha ?? cfg.tintAlpha ?? 0.35)
+                                : (st.stateTint || st.tint);
+    let skin = st.stateSkin || stateInfo.skin || st.skin || cfg.skin;
+    if (skin && typeof skin === 'object' && !Array.isArray(skin)){
+      const ori = st.orientation || 'down';
+      skin = skin[ori] || skin[`${ori}_${st.dir < 0 ? 'left' : 'right'}`] || skin.default || skin.down || skin.side || st.skin || cfg.skin;
+    }
+    const flipOverride = (st.stateFlip != null) ? st.stateFlip : stateInfo.flip;
+    const shadowRadius = stateInfo.shadowRadius ?? cfg.shadowRadius ?? (Math.max(baseW, baseH) * 0.18);
+    const shadowFlatten = stateInfo.shadowFlatten ?? cfg.shadowFlatten ?? 0.32;
+    const shadowAlpha = stateInfo.shadowAlpha ?? cfg.shadowAlpha ?? 0.22;
     ctx.save();
     ctx.translate(cx, cy);
-    drawShadow(ctx, cfg.shadowRadius ?? (Math.max(w, h) * 0.18), totalScale, cfg.shadowFlatten ?? 0.32, cfg.shadowAlpha ?? 0.22);
-    ctx.translate(0, -h * 0.5 + (cfg.offsetY ?? 0) * totalScale + st.bob + (cfg.hover ?? 0));
-    if (cfg.applyLean !== false) ctx.rotate(st.lean + (st.erratic || 0) + (st.micro || 0));
-    ctx.translate(st.sway + (st.hip || 0), 0);
-    ctx.scale(st.dir < 0 ? -1 : 1, 1);
-    drawSprite(ctx, st.skin || cfg.skin, w, h, cfg.fallbackColor || '#bcbec7', st.tint);
+    drawShadow(ctx, shadowRadius, totalScale, shadowFlatten, shadowAlpha);
+    ctx.translate(0, -h * 0.5 + offsetY + st.bob * bobMul + (cfg.hover ?? 0));
+    if (cfg.applyLean !== false){
+      ctx.rotate((st.lean || 0) + (st.erratic || 0) + (st.micro || 0) + (stateInfo.lean || 0));
+    }
+    ctx.translate((st.sway + (st.hip || 0)) * (stateInfo.swayMul ?? 1), stateInfo.offsetX ?? 0);
+    const flip = flipOverride != null ? !!flipOverride : (st.dir < 0);
+    ctx.scale(flip ? -1 : 1, 1);
+    drawSprite(ctx, skin, w, h, cfg.fallbackColor || stateInfo.fallbackColor || '#bcbec7', tint);
     if (cfg.overlay) cfg.overlay(ctx, totalScale, st, e);
+    if (stateInfo.overlay) stateInfo.overlay(ctx, totalScale, st, e);
     ctx.restore();
   }
 
@@ -169,44 +291,132 @@
     });
   }
 
+  function resolveHeroState(st, e){
+    let orientation = st.orientation || 'down';
+    const pushing = e?.pushing === true || (typeof e?.pushAnimT === 'number' && e.pushAnimT > 0.05) || e?.state === 'pushing';
+    const attacking = (e?.attackTimer || 0) > 0 || e?.isAttacking === true;
+    if (e?.isTalking) return { state: 'talk', orientation };
+    if (attacking) return { state: 'attack', orientation, bobMul: 0.5 };
+    if (pushing && (st.moving || (e?.pushAnimT || 0) > 0.01)){
+      if (orientation === 'up') orientation = 'down';
+      return { state: 'push', orientation, bobMul: 0.45 };
+    }
+    if (st.moving){
+      if (orientation === 'up') return 'walk_up';
+      if (orientation === 'side') return { state: 'walk_side', dir: st.dir, orientation };
+      return 'walk_down';
+    }
+    return { state: 'idle', orientation, bobMul: 0.7 };
+  }
+
+  function makeHeroStates(front, back){
+    const frontSkin = front.endsWith('.png') ? front : `${front}.png`;
+    const backSkin = back || frontSkin;
+    return {
+      idle: {
+        skin: { down: frontSkin, up: backSkin, side: frontSkin },
+        bobMul: 0.7
+      },
+      walk_down: {
+        skin: frontSkin,
+        bobMul: 1.0
+      },
+      walk_up: {
+        skin: backSkin,
+        bobMul: 0.9
+      },
+      walk_side: {
+        skin: frontSkin,
+        bobMul: 1.05
+      },
+      push: {
+        skin: { down: frontSkin, up: backSkin, side: frontSkin },
+        bobMul: 0.4,
+        offsetY: -2
+      },
+      attack: {
+        skin: frontSkin,
+        tint: { color: 'rgba(255,214,120,1)', alpha: 0.24 },
+        bobMul: 0.55
+      },
+      talk: {
+        skin: { down: frontSkin, up: backSkin, side: frontSkin },
+        bobMul: 0.5,
+        tint: { color: 'rgba(230,240,255,1)', alpha: 0.18 }
+      }
+    };
+  }
+
+  function makeNPCStates(front, back){
+    const frontSkin = front.endsWith('.png') ? front : `${front}.png`;
+    const backSkin = back ? (back.endsWith('.png') ? back : `${back}.png`) : frontSkin;
+    return {
+      idle: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.75 },
+      walk_down: { skin: frontSkin, bobMul: 0.95 },
+      walk_up: { skin: backSkin, bobMul: 0.9 },
+      walk_side: { skin: frontSkin, bobMul: 1.0 },
+      talk: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.5, tint: { color: 'rgba(240,250,255,1)', alpha: 0.14 } }
+    };
+  }
+
+  function resolveNPCState(st, e){
+    const orientation = st.orientation || 'down';
+    if (e?.isTalking) return { state: 'talk', orientation };
+    if (st.moving){
+      if (orientation === 'up') return 'walk_up';
+      if (orientation === 'side') return { state: 'walk_side', dir: st.dir };
+      return 'walk_down';
+    }
+    return { state: 'idle', orientation };
+  }
+
   // ───────────────────────────── HEROES ─────────────────────────────
   registerWalkerRig('hero_enrique', {
     skin: 'enrique.png',
     scale: 1.1,
-    walkCycle: 6.5,
+    walkCycle: 8.5,
+    idleCycle: 2.6,
     walkBob: 4.6,
     idleBob: 1.6,
     swayFreq: 1.1,
     swayAmp: 0.6,
     lean: 0.18,
     shadowRadius: 14,
-    offsetY: -6
+    offsetY: -6,
+    states: makeHeroStates('enrique', 'enrique_back.png'),
+    resolveState: resolveHeroState
   });
 
   registerWalkerRig('hero_roberto', {
     skin: 'roberto.png',
     scale: 0.975,
-    walkCycle: 7.8,
+    walkCycle: 10.1,
+    idleCycle: 2.5,
     walkBob: 3.1,
     idleBob: 1.1,
     swayFreq: 1.8,
     swayAmp: 1.1,
     lean: 0.1,
     shadowRadius: 13,
-    offsetY: -4
+    offsetY: -4,
+    states: makeHeroStates('roberto', 'roberto_back.png'),
+    resolveState: resolveHeroState
   });
 
   registerWalkerRig('hero_francesco', {
     skin: 'francesco.png',
     scale: 1.0,
-    walkCycle: 6.8,
+    walkCycle: 8.9,
+    idleCycle: 2.4,
     walkBob: 3.6,
     idleBob: 1.3,
     swayFreq: 1.5,
     swayAmp: 0.8,
     lean: 0.12,
     shadowRadius: 13,
-    offsetY: -5
+    offsetY: -5,
+    states: makeHeroStates('francesco', 'francesco_back.png'),
+    resolveState: resolveHeroState
   });
 
   // ───────────────────────────── NPCs ──────────────────────────────
@@ -218,7 +428,14 @@
     swayAmp: 0.4,
     lean: 0.05,
     shadowRadius: 12,
-    offsetY: -5
+    offsetY: -5,
+    states: Object.assign(makeNPCStates('celador.png'), {
+      push: { skin: { down: 'celador.png', side: 'celador.png' }, bobMul: 0.45, tint: { color: 'rgba(120,255,210,1)', alpha: 0.16 } }
+    }),
+    resolveState(st, e){
+      if (e?.mode === 'PUSH') return { state: 'push', orientation: st.orientation === 'up' ? 'down' : st.orientation };
+      return resolveNPCState(st, e);
+    }
   });
 
   registerWalkerRig('npc_chica_limpieza', {
@@ -230,7 +447,9 @@
     swayAmp: 1.2,
     lean: 0.08,
     shadowRadius: 11,
-    offsetY: -4
+    offsetY: -4,
+    states: makeNPCStates('chica_limpieza.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_guardia', {
@@ -241,7 +460,9 @@
     swayAmp: 0.4,
     lean: 0.06,
     shadowRadius: 13,
-    offsetY: -5
+    offsetY: -5,
+    states: makeNPCStates('guardia.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_medico', {
@@ -253,7 +474,9 @@
     swayAmp: 0.5,
     headTilt: { freq: 1.3, amp: 0.04 },
     shadowRadius: 12,
-    offsetY: -4
+    offsetY: -4,
+    states: makeNPCStates('medico.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_supervisora', {
@@ -266,7 +489,9 @@
     hipSway: { freq: 1.8, amp: 1.1 },
     lean: 0.05,
     shadowRadius: 12,
-    offsetY: -4
+    offsetY: -4,
+    states: makeNPCStates('supervisora.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_tcae', {
@@ -277,7 +502,9 @@
     swayAmp: 0.6,
     lean: 0.06,
     shadowRadius: 12,
-    offsetY: -4
+    offsetY: -4,
+    states: makeNPCStates('TCAE.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_jefe_servicio', {
@@ -302,7 +529,9 @@
       ctx.restore();
     },
     shadowRadius: 14,
-    offsetY: -6
+    offsetY: -6,
+    states: makeNPCStates('jefe_servicio.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_enfermera_sexy', {
@@ -314,7 +543,9 @@
     hipSway: { freq: 1.6, amp: 1.5 },
     lean: 0.09,
     shadowRadius: 12,
-    offsetY: -4
+    offsetY: -4,
+    states: makeNPCStates('enfermera_sexy.png'),
+    resolveState: resolveNPCState
   });
 
   registerWalkerRig('npc_familiar_molesto', {
@@ -326,7 +557,9 @@
     erratic: { speed: 3.2, amp: 0.08 },
     microTurn: { speed: 2.3, amp: 0.1 },
     shadowRadius: 11,
-    offsetY: -5
+    offsetY: -5,
+    states: makeNPCStates('familiar_molesto.png'),
+    resolveState: resolveNPCState
   });
 
   // ───────────────────────────── PACIENTES ──────────────────────────
@@ -341,13 +574,33 @@
           time: 0,
           skin,
           tint,
-          scale: (typeof data.scale === 'number') ? data.scale : (cfg.scale ?? 1)
+          scale: (typeof data.scale === 'number') ? data.scale : (cfg.scale ?? 1),
+          state: 'idle_bed',
+          stateTime: 0,
+          fade: 0
         };
       },
       update(st, e, dt){
         st.time += dt;
         st.phase = (st.phase + dt * (cfg.speed ?? 1.4)) % TAU;
         st.offset = Math.sin(st.phase) * (cfg.amp ?? 2) * st.scale;
+        const attended = !!(e?.attended || e?.delivered || e?.dead || e?.hidden);
+        const ringing = !!e?.ringing;
+        let next = 'idle_bed';
+        if (attended) next = 'disappear_on_cure';
+        else if (ringing) next = 'pain';
+        if (next !== st.state){
+          st.state = next;
+          st.stateTime = 0;
+        } else {
+          st.stateTime += dt;
+        }
+        if (st.state === 'disappear_on_cure'){
+          const fadeDur = cfg.disappearMs ? cfg.disappearMs / 1000 : 0.65;
+          st.fade = Math.min(1, st.fade + dt / Math.max(0.01, fadeDur));
+        } else {
+          st.fade = Math.max(0, st.fade - dt * 0.8);
+        }
       },
       draw(ctx, cam, e, st){
         const [cx, cy, sc] = toScreen(cam, e);
@@ -356,10 +609,30 @@
         const h = (cfg.spriteHeight ?? (e.h || 48)) * totalScale;
         ctx.save();
         ctx.translate(cx, cy);
-        drawShadow(ctx, cfg.shadowRadius ?? (w * 0.35), totalScale, 0.28, cfg.shadowAlpha ?? 0.25);
+        const fade = Math.max(0, Math.min(1, st.fade || 0));
+        drawShadow(ctx, cfg.shadowRadius ?? (w * 0.35), totalScale, 0.28, (cfg.shadowAlpha ?? 0.25) * (1 - fade * 0.7));
         ctx.translate(0, -h * 0.5 + (cfg.offsetY ?? 0) * totalScale + st.offset);
-        drawSprite(ctx, st.skin || cfg.skin, w, h, cfg.fallbackColor || '#d8d0c8', st.tint);
+        const baseTint = st.tint;
+        let tint = baseTint;
+        if (st.state === 'pain'){
+          tint = parseTint({ color: 'rgba(255,120,120,1)', alpha: 0.35 });
+        }
+        ctx.globalAlpha = 1 - fade;
+        drawSprite(ctx, st.skin || cfg.skin, w, h, cfg.fallbackColor || '#d8d0c8', tint);
         ctx.restore();
+        if (st.state === 'pain' && fade < 0.95){
+          ctx.save();
+          ctx.translate(cx, cy - h * 0.6);
+          ctx.globalAlpha = 0.4 + 0.4 * Math.sin(st.time * 8);
+          ctx.fillStyle = 'rgba(255,80,80,1)';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, w * 0.25, h * 0.18, 0, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+        }
+        if (fade >= 0.99){
+          try { e.rigOk = true; e._disappeared = true; } catch (_) {}
+        }
       }
     });
   }
@@ -382,7 +655,28 @@
     swayAmp: 0.9,
     lean: 0.18,
     shadowRadius: 12,
-    offsetY: -5
+    offsetY: -5,
+    states: {
+      idle: { skin: { down: 'paciente_furiosa.png', up: 'paciente_furiosa.png', side: 'paciente_furiosa.png' }, bobMul: 0.9 },
+      walk_down: { skin: 'paciente_furiosa.png', bobMul: 1.1 },
+      walk_up: { skin: 'paciente_furiosa.png', bobMul: 1.05 },
+      walk_side: { skin: 'paciente_furiosa.png', bobMul: 1.2 },
+      attack: { skin: 'paciente_furiosa.png', tint: { color: 'rgba(255,80,80,1)', alpha: 0.32 }, bobMul: 1.3 },
+      hurt: { skin: 'paciente_furiosa.png', tint: { color: 'rgba(255,200,200,1)', alpha: 0.28 }, bobMul: 0.4 },
+      down: { skin: 'paciente_furiosa.png', tint: { color: 'rgba(40,20,20,1)', alpha: 0.55 }, scale: 0.9, shadowAlpha: 0.12, bobMul: 0 }
+    },
+    resolveState(st, e){
+      if (e?.dead) return { state: 'down', orientation: 'down', bobMul: 0 };
+      const cd = e?.touchCD || 0;
+      if (cd > 0.45) return { state: 'attack', orientation: st.orientation };
+      if (cd > 0.05) return { state: 'hurt', orientation: st.orientation };
+      if (st.moving){
+        if (st.orientation === 'up') return 'walk_up';
+        if (st.orientation === 'side') return { state: 'walk_side', dir: st.dir };
+        return 'walk_down';
+      }
+      return { state: 'idle', orientation: st.orientation };
+    }
   });
 
   // ───────────────────────────── ENEMIGOS ───────────────────────────

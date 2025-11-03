@@ -35,6 +35,13 @@
     return puppet;
   }
 
+  function bind(entity, rigName, opts={}){
+    if (!entity) return null;
+    const puppet = attach(entity, { ...opts, rig: rigName });
+    if (entity) entity.rigOk = !!puppet;
+    return puppet;
+  }
+
   function sortPuppets(){
     if (!needsSort) return;
     puppets.sort((a, b) => {
@@ -160,6 +167,7 @@
   window.PuppetAPI = {
     registerRig,
     attach,
+    bind,
     detach,
     updateAll,
     drawAll,
@@ -169,4 +177,6 @@
     setHeroHead,
     toggleDebug
   };
+  window.Puppet = window.Puppet || {};
+  window.Puppet.bind = bind;
 })();

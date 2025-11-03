@@ -34,6 +34,146 @@
     gameover:    (typeof document !== 'undefined') ? document.getElementById('game-over-screen') : null
   };
 
+  let readyOverlayEl = null;
+  let readyContentEl = null;
+  const readyTimers = [];
+  let readyActive = false;
+  const raf = (typeof W.requestAnimationFrame === 'function')
+    ? W.requestAnimationFrame.bind(W)
+    : (fn) => setTimeout(fn, 16);
+
+  function ensureReadyOverlay(){
+    if (readyOverlayEl || typeof document === 'undefined') return readyOverlayEl;
+    const overlay = document.createElement('div');
+    overlay.id = 'ready-overlay';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      inset: '0',
+      display: 'none',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(8,12,18,0.45)',
+      backdropFilter: 'blur(2px)',
+      zIndex: 40000,
+      pointerEvents: 'none',
+      opacity: '0'
+    });
+
+    const card = document.createElement('div');
+    card.className = 'ready-card';
+    Object.assign(card.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '18px',
+      padding: '18px 36px',
+      borderRadius: '22px',
+      border: '2px solid #19c37d',
+      background: 'rgba(12,16,24,0.92)',
+      boxShadow: '0 24px 48px rgba(0,0,0,0.45)',
+      transform: 'translateX(120vw)'
+    });
+
+    const img = document.createElement('img');
+    img.src = './assets/images/enfermera_sexy.png';
+    Object.assign(img.style, {
+      width: '104px',
+      height: '104px',
+      objectFit: 'contain',
+      filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.45))'
+    });
+
+    const text = document.createElement('div');
+    text.textContent = 'READY?';
+    Object.assign(text.style, {
+      fontFamily: '"IBM Plex Sans", Inter, system-ui, sans-serif',
+      fontSize: '64px',
+      fontWeight: '700',
+      color: '#f8fcff',
+      letterSpacing: '4px',
+      textShadow: '0 4px 18px rgba(0,0,0,0.6)'
+    });
+
+    card.appendChild(img);
+    card.appendChild(text);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    readyOverlayEl = overlay;
+    readyContentEl = card;
+    return readyOverlayEl;
+  }
+
+  function clearReadyOverlayTimers(){
+    while (readyTimers.length){
+      const id = readyTimers.pop();
+      clearTimeout(id);
+    }
+  }
+
+  function hideReadyOverlayImmediate(){
+    readyActive = false;
+    S.readyOverlayActive = false;
+    const overlay = readyOverlayEl || ensureReadyOverlay();
+    if (!overlay) return;
+    clearReadyOverlayTimers();
+    overlay.style.transition = 'none';
+    overlay.style.opacity = '0';
+    overlay.style.display = 'none';
+    overlay.style.pointerEvents = 'none';
+    if (readyContentEl){
+      readyContentEl.style.transition = 'none';
+      readyContentEl.style.transform = 'translateX(120vw)';
+    }
+  }
+
+  function triggerReadyOverlay(opts = {}){
+    const overlay = ensureReadyOverlay();
+    if (!overlay || readyActive) return false;
+    readyActive = true;
+    S.readyOverlayActive = true;
+    overlay.style.display = 'flex';
+    overlay.style.transition = 'opacity 180ms ease-out';
+    overlay.style.opacity = '0';
+    overlay.style.pointerEvents = 'auto';
+    readyContentEl.style.transition = 'none';
+    readyContentEl.style.transform = 'translateX(120vw)';
+    clearReadyOverlayTimers();
+
+    raf(() => {
+      overlay.style.opacity = '1';
+      // Force layout to apply initial transform
+      void readyContentEl.offsetWidth;
+      readyContentEl.style.transition = 'transform 650ms cubic-bezier(0.19,0.7,0.32,1)';
+      readyContentEl.style.transform = 'translateX(0)';
+      const pauseTimer = setTimeout(() => {
+        readyContentEl.style.transition = 'transform 550ms cubic-bezier(0.55,0,0.85,0.36)';
+        readyContentEl.style.transform = 'translateX(-120vw)';
+        const exitTimer = setTimeout(() => {
+          overlay.style.transition = 'opacity 200ms ease-in';
+          overlay.style.opacity = '0';
+          const doneTimer = setTimeout(() => {
+            overlay.style.display = 'none';
+            overlay.style.pointerEvents = 'none';
+            readyActive = false;
+            S.readyOverlayActive = false;
+            readyTimers.length = 0;
+            if (typeof opts.onComplete === 'function') opts.onComplete();
+          }, 210);
+          readyTimers.push(doneTimer);
+        }, 550);
+        readyTimers.push(exitTimer);
+      }, 650 + 350);
+      readyTimers.push(pauseTimer);
+    });
+
+    return true;
+  }
+
+  function readyOverlayIsActive(){
+    return readyActive;
+  }
+
+
   // Estado interno
   const S = {
     G: null,
@@ -66,7 +206,8 @@
       holdOnBossMs: 900,
       zoomBackMs: 900,
       cartBossTiles: 2.0
-    }
+    },
+    readyOverlayActive: false
   };
 
   // API pública
@@ -79,6 +220,7 @@
       if (opts.zoomBackMs) S.opts.zoomBackMs = opts.zoomBackMs;
       if (opts.cartBossTiles) S.opts.cartBossTiles = opts.cartBossTiles;
       // Reinicia contadores de nivel si ya hay mapa
+      hideReadyOverlayImmediate();
       resetLevelState();
       S.running = true;
       return GameFlow;
@@ -87,6 +229,7 @@
     // Llamar cuando cargues o reinicies un nivel
     startLevel(levelNumber) {
       S.level = (typeof levelNumber === 'number') ? clamp(levelNumber, 1, S.maxLevels) : S.level;
+      hideReadyOverlayImmediate();
       resetLevelState();
       S.running = true;
       S.victory = false;
@@ -196,13 +339,27 @@
         finalPillSpawned: S.finalPillSpawned,
         finalDelivered: S.finalDelivered,
         victory: S.victory,
-        gameOver: S.gameOver
+        gameOver: S.gameOver,
+        readyOverlayActive: S.readyOverlayActive
       };
+    },
+
+    playReadyOverlay(opts){
+      return triggerReadyOverlay(opts);
+    },
+
+    cancelReadyOverlay(){
+      hideReadyOverlayImmediate();
+    },
+
+    isReadyOverlayActive(){
+      return readyOverlayIsActive();
     }
   };
 
   // Estado interno por nivel
   function resetLevelState() {
+    hideReadyOverlayImmediate();
     S.totalPatients = 0;
     S.deliveredPatients = 0;
     S.allDelivered = false;
@@ -219,6 +376,7 @@
     S.bossDoor = null;
     S.emergencyCart = null;
     S.urgenciasOpen = false;
+    S.readyOverlayActive = false;
     const G = S.G || window.G || {};
     if (G) {
       G.__placementsApplied = false;
