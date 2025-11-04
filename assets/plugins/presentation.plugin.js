@@ -364,55 +364,93 @@ function finish(){
     return D.getElementById('ready-overlay');
   }
 
-  function runLevelIntro(level, done){
-    const overlayReady = ensureReadyOverlay();
-    if (!overlayReady){ done && done(); return; }
-    const levelEl = overlayReady.querySelector('#ready-level');
-    const countEl = overlayReady.querySelector('#ready-count');
-    const msgEl   = overlayReady.querySelector('#ready-message');
-    if (levelEl) levelEl.textContent = `Turno ${level}`;
-    overlayReady.classList.remove('hidden');
-    overlayReady.classList.add('ready-visible');
+function runLevelIntro(level, done){
+  const overlayReady = ensureReadyOverlay();
+  if (!overlayReady){ done && done(); return; }
 
-    const phases = [
-      { count: '3', message: '¡Preparados!' },
-      { count: '2', message: '¡Listos!' },
-      { count: '1', message: '¡Ya casi!' },
-      { count: '¡YA!', message: '¡A atender!' }
-    ];
+  const levelEl = overlayReady.querySelector('#ready-level');
+  const countEl = overlayReady.querySelector('#ready-count');
+  const msgEl   = overlayReady.querySelector('#ready-message');
+  if (levelEl) levelEl.textContent = `Turno ${level}`;
+  overlayReady.classList.remove('hidden');
+  overlayReady.classList.add('ready-visible');
 
-    let idx = 0;
-    function showPhase(){
-      const phase = phases[idx++];
-      if (!phase){ return finishIntro(); }
-      if (countEl){
-        countEl.textContent = phase.count;
-        countEl.classList.remove('animate');
-        void countEl.offsetWidth; // reflow para reiniciar animación
-        countEl.classList.add('animate');
-      }
-      if (msgEl) msgEl.textContent = phase.message;
-      const delay = idx === phases.length ? 720 : 560;
-      setTimeout(() => {
-        if (idx >= phases.length){
-          finishIntro();
-        } else {
-          showPhase();
-        }
-      }, delay);
-    }
-
-    function finishIntro(){
-      setTimeout(() => {
-        countEl?.classList.remove('animate');
-        overlayReady.classList.add('hidden');
-        overlayReady.classList.remove('ready-visible');
-        done && done();
-      }, 360);
-    }
-
-    showPhase();
+  // --- crea la tarjeta con la enfermera (ready.jpg) si no existe ---
+  let card = overlayReady.querySelector('.ready-card');
+  if (!card){
+    card = document.createElement('div');
+    card.className = 'ready-card';
+    Object.assign(card.style, {
+      position: 'absolute',
+      top: '50%',
+      left: '100%',                 // arrancar fuera por la derecha
+      transform: 'translate(0,-50%)',
+      width: '380px',
+      height: '560px',
+      backgroundImage: 'url("./assets/images/ready.jpg")',
+      backgroundRepeat: 'no-repeat',
+      backgroundPosition: 'center',
+      backgroundSize: 'contain',
+      transition: 'transform 620ms cubic-bezier(.2,.8,.2,1)',
+      pointerEvents: 'none',
+      zIndex: 5
+    });
+    overlayReady.appendChild(card);
   }
+
+  // --- cuenta atrás ---
+  const phases = [
+    { count: '3', message: '¡Preparados!' },
+    { count: '2', message: '¡Listos!' },
+    { count: '1', message: '¡Ya casi!' },
+    { count: '¡YA!', message: '¡A atender!' }
+  ];
+
+  let idx = 0;
+  function showPhase(){
+    const phase = phases[idx++];
+    if (!phase){ return finishIntro(); }
+    if (countEl){
+      countEl.textContent = phase.count;
+      countEl.classList.remove('animate');
+      void countEl.offsetWidth; // reflow para reiniciar animación
+      countEl.classList.add('animate');
+    }
+    if (msgEl) msgEl.textContent = phase.message;
+    const delay = (idx === phases.length) ? 720 : 560;
+    setTimeout(() => (idx >= phases.length ? finishIntro() : showPhase()), delay);
+  }
+
+  // --- animación de la tarjeta: derecha -> centro (pausa) -> izquierda ---
+  function slideCardSequence(cb){
+    // entrar
+    requestAnimationFrame(() => {
+      card.style.transform = 'translate(-60vw,-50%)';  // entra desde la derecha hasta el centro
+      setTimeout(() => {
+        // pausa breve en centro
+        setTimeout(() => {
+          // salir a la izquierda
+          card.style.transform = 'translate(-160vw,-50%)';
+          setTimeout(() => cb && cb(), 640);
+        }, 380);
+      }, 640);
+    });
+  }
+
+  function finishIntro(){
+    countEl?.classList.remove('animate');
+    slideCardSequence(() => {
+      overlayReady.classList.add('hidden');
+      overlayReady.classList.remove('ready-visible');
+      done && done();
+    });
+  }
+
+  showPhase();
+
+  // expón global para poder llamarla desde otros archivos si hace falta
+  try { window.runLevelIntro = runLevelIntro; } catch(_){}
+}
 
   function runScoreboard(level, data, proceed){
     const overlay = D.getElementById('level-complete-screen');

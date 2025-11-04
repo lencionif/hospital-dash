@@ -2195,6 +2195,21 @@ function drawEntities(c2){
     if (window.Minimap && typeof window.Minimap.refresh === 'function') {
       window.Minimap.refresh();
     }
+    // ---- activar IA de entidades y refrescar minimapa (tras siembra) ----
+    try {
+      if (Array.isArray(G.entities)) {
+        for (const e of G.entities) {
+          if (e && typeof e.aiUpdate === 'function') {
+            // registra en el sistema de IA si existe
+            try { window.AI?.register?.(e); } catch (_) {}
+          }
+        }
+      }
+      // fuerza refresco del minimapa para que aparezcan marcadores
+      try { window.Minimap?.refresh?.(); } catch (_) {}
+    } catch (err) {
+      console.warn('[postPlacement] activar IA / refresh minimapa falló', err);
+    }
   }
 
   function setGameState(next){
@@ -2354,9 +2369,8 @@ function drawEntities(c2){
     pausedScreen.classList.add('hidden');
     levelCompleteScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
-    // Oculta el overlay del minimapa para que empiece en versión pequeña
-    const minimapOverlay = document.getElementById('minimapOverlay');
-    if (minimapOverlay) minimapOverlay.classList.add('hidden');
+    document.getElementById('minimapOverlay')?.classList.add('hidden');
+    document.getElementById('minimap')?.classList.remove('expanded');
 
 
     window.__toggleMinimap?.(false);
@@ -2438,7 +2452,13 @@ function drawEntities(c2){
       startBtn.addEventListener('click', () => {
         ensureHeroSelected();
         window.GameFlowAPI?.primeReadyOverlay?.();
-        requestAnimationFrame(() => startGame());
+        // espera a la intro READY y luego arranca el nivel
+        if (typeof window.runLevelIntro === 'function') {
+          window.runLevelIntro(G.level || 1, () => startGame());
+        } else {
+          // respaldo: si no existe la intro, arrancar directo
+          startGame();
+        }
       });
     }
     document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
