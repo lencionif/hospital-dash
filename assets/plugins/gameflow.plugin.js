@@ -231,7 +231,7 @@
       if (opts.cartBossTiles) S.opts.cartBossTiles = opts.cartBossTiles;
       // Reinicia contadores de nivel si ya hay mapa
       hideReadyOverlayImmediate();
-      resetLevelState();
+      //resetLevelState();
       S.running = true;
       return GameFlow;
     },
@@ -396,6 +396,20 @@
     const G = S.G || window.G || {};
     if (G) {
       G.__placementsApplied = false;
+        // Limpiar TODAS las entidades del nivel anterior (evita duplicados al reiniciar)
+        if (Array.isArray(G.entities)) {
+          for (const e of G.entities) {
+            try {
+              if (e && typeof e.despawn === 'function') e.despawn()
+            } catch(_) {}
+          }
+          G.entities.length = 0
+        }
+
+        // Reiniciar estadísticas si existen
+        if (!G.stats) G.stats = {}
+        G.stats.spawns = 0
+        G.stats.duplicates = 0
     }
     autoScanReferences();
     recountPatients();

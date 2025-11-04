@@ -2308,6 +2308,8 @@ function drawEntities(c2){
   }
 
   function startGame(levelNumber){
+      // Limpieza completa de nivel antes de construir/sembrar
+    if (typeof resetLevelState === 'function') resetLevelState();
     const targetLevel = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
     const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
     G.level = targetLevel;
@@ -2428,6 +2430,21 @@ function drawEntities(c2){
       window.GameFlowAPI?.primeReadyOverlay?.();
       startGame();
     });
+  }
+
+  // Limpia entidades y reinicia banderas para un nuevo nivel
+  function resetLevelState() {
+    // 1) Eliminar todas las entidades actuales
+    if (Array.isArray(G.entities)) {
+      for (const e of G.entities) {
+        if (e && typeof e.despawn === 'function') e.despawn();
+      }
+      G.entities.length = 0;
+    }
+    // 2) Resetear flag de siembra
+    G.__placementsApplied = false;
+    // 3) Reiniciar estadísticas (si usas G.stats)
+    G.stats = {}; // o los campos que tengas: { spawns:0, duplicates:0, … }
   }
 
   function runBootstrapDiagnostics(){
