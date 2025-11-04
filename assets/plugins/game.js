@@ -2471,10 +2471,9 @@ function drawEntities(c2){
       window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
     }
     requestAnimationFrame(loop);
+    // El juego no arranca automáticamente: solo desde "Empezar turno"
     if (DEBUG_MAP_MODE){
-      ensureHeroSelected();
-      window.LOG?.debug?.('[autostart] map=debug → start automático');
-      requestAnimationFrame(() => startGame());
+      window.LOG?.debug?.('[debug] Modo mapa: espera al botón de inicio');
     }
   }
 
