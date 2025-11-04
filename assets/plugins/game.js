@@ -2183,6 +2183,18 @@ function drawEntities(c2){
       G.healthMax = (G.player.hpMax|0) * 2;
       G.health    = Math.min(G.healthMax, (G.player.hp|0) * 2);
     }
+    // Activa la IA de todas las entidades que tengan aiUpdate y refresca el minimapa
+    if (Array.isArray(G.entities)) {
+      for (const e of G.entities) {
+        if (e && typeof e.aiUpdate === 'function' && window.AI && typeof window.AI.register === 'function') {
+          window.AI.register(e);
+        }
+      }
+    }
+    // Refresca el minimapa para que aparezcan las nuevas entidades
+    if (window.Minimap && typeof window.Minimap.refresh === 'function') {
+      window.Minimap.refresh();
+    }
   }
 
   function setGameState(next){
@@ -2342,6 +2354,10 @@ function drawEntities(c2){
     pausedScreen.classList.add('hidden');
     levelCompleteScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
+    // Oculta el overlay del minimapa para que empiece en versión pequeña
+    const minimapOverlay = document.getElementById('minimapOverlay');
+    if (minimapOverlay) minimapOverlay.classList.add('hidden');
+
 
     window.__toggleMinimap?.(false);
 
