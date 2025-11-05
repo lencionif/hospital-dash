@@ -38,6 +38,7 @@
   let readyContentEl = null;
   const readyTimers = [];
   let readyActive = false;
+  let readyPrimed = false;
   const raf = (typeof W.requestAnimationFrame === 'function')
     ? W.requestAnimationFrame.bind(W)
     : (fn) => setTimeout(fn, 16);
@@ -73,13 +74,15 @@
       transform: 'translateX(120vw)'
     });
 
-    const img = document.createElement('img');
-    img.src = './assets/images/enfermera_sexy.png';
-    Object.assign(img.style, {
-      width: '104px',
-      height: '104px',
-      objectFit: 'contain',
-      filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.45))'
+    const art = document.createElement('div');
+    Object.assign(art.style, {
+      width: '140px',
+      height: '120px',
+      borderRadius: '16px',
+      backgroundImage: 'url("./assets/images/ready.jpg")',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      boxShadow: '0 16px 32px rgba(0,0,0,0.55)'
     });
 
     const text = document.createElement('div');
@@ -93,7 +96,7 @@
       textShadow: '0 4px 18px rgba(0,0,0,0.6)'
     });
 
-    card.appendChild(img);
+    card.appendChild(art);
     card.appendChild(text);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
@@ -113,6 +116,7 @@
   function hideReadyOverlayImmediate(){
     readyActive = false;
     S.readyOverlayActive = false;
+    readyPrimed = false;
     const overlay = readyOverlayEl || ensureReadyOverlay();
     if (!overlay) return;
     clearReadyOverlayTimers();
@@ -129,6 +133,8 @@
   function triggerReadyOverlay(opts = {}){
     const overlay = ensureReadyOverlay();
     if (!overlay || readyActive) return false;
+    if (!readyPrimed && !opts.force) return false;
+    readyPrimed = false;
     readyActive = true;
     S.readyOverlayActive = true;
     overlay.style.display = 'flex';
@@ -139,14 +145,18 @@
     readyContentEl.style.transform = 'translateX(120vw)';
     clearReadyOverlayTimers();
 
+    const enterMs = opts.enterMs ?? (600 + Math.random() * 100);
+    const holdMs = opts.holdMs ?? (300 + Math.random() * 100);
+    const exitMs = opts.exitMs ?? (500 + Math.random() * 100);
+
     raf(() => {
       overlay.style.opacity = '1';
       // Force layout to apply initial transform
       void readyContentEl.offsetWidth;
-      readyContentEl.style.transition = 'transform 650ms cubic-bezier(0.19,0.7,0.32,1)';
+      readyContentEl.style.transition = `transform ${enterMs}ms cubic-bezier(0.19,0.7,0.32,1)`;
       readyContentEl.style.transform = 'translateX(0)';
       const pauseTimer = setTimeout(() => {
-        readyContentEl.style.transition = 'transform 550ms cubic-bezier(0.55,0,0.85,0.36)';
+        readyContentEl.style.transition = `transform ${exitMs}ms cubic-bezier(0.55,0,0.85,0.36)`;
         readyContentEl.style.transform = 'translateX(-120vw)';
         const exitTimer = setTimeout(() => {
           overlay.style.transition = 'opacity 200ms ease-in';
@@ -160,9 +170,9 @@
             if (typeof opts.onComplete === 'function') opts.onComplete();
           }, 210);
           readyTimers.push(doneTimer);
-        }, 550);
+        }, exitMs);
         readyTimers.push(exitTimer);
-      }, 650 + 350);
+      }, enterMs + holdMs);
       readyTimers.push(pauseTimer);
     });
 
@@ -221,7 +231,7 @@
       if (opts.cartBossTiles) S.opts.cartBossTiles = opts.cartBossTiles;
       // Reinicia contadores de nivel si ya hay mapa
       hideReadyOverlayImmediate();
-      resetLevelState();
+      //resetLevelState();
       S.running = true;
       return GameFlow;
     },
@@ -348,6 +358,11 @@
       return triggerReadyOverlay(opts);
     },
 
+    primeReadyOverlay(){
+      readyPrimed = true;
+      return true;
+    },
+
     cancelReadyOverlay(){
       hideReadyOverlayImmediate();
     },
@@ -377,9 +392,24 @@
     S.emergencyCart = null;
     S.urgenciasOpen = false;
     S.readyOverlayActive = false;
+    readyPrimed = false;
     const G = S.G || window.G || {};
     if (G) {
       G.__placementsApplied = false;
+        // Limpiar TODAS las entidades del nivel anterior (evita duplicados al reiniciar)
+        if (Array.isArray(G.entities)) {
+          for (const e of G.entities) {
+            try {
+              if (e && typeof e.despawn === 'function') e.despawn()
+            } catch(_) {}
+          }
+          G.entities.length = 0
+        }
+
+        // Reiniciar estadísticas si existen
+        if (!G.stats) G.stats = {}
+        G.stats.spawns = 0
+        G.stats.duplicates = 0
     }
     autoScanReferences();
     recountPatients();
