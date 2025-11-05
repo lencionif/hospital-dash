@@ -28,7 +28,7 @@
   const TILE = 32;
   const VIEW_W = 960;
   const VIEW_H = 540;
-  const FORCE_PLAYER = 40.0;
+  const FORCE_PLAYER = 100.0;
 
   const ENT = {
     PLAYER: 1,
@@ -770,7 +770,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     p.facing = 'S';
     p.pushAnimT = 0;
     p.skin = key;
-    p.maxSpeed = 240;
+    p.maxSpeed = 440;
     p.accel = 1000;
 
     // === Giro más sensible por defecto ===
@@ -1964,7 +1964,7 @@ function drawEntities(c2){
           G.entities.push(e); G.boss = e;
         }
         else if (p.type === 'cart') {
-          const e = makeRect(p.x|0, p.y|0, T, T, ENT.CART, '#b0956c', true, true, {mass:6,rest:0.35,mu:0.06});
+          const e = makeRect(p.x|0, p.y|0, T, T, ENT.CART, '#b0956c', true, true, {mass:3.5,rest:0.12,mu:0.02});
           G.entities.push(e); G.movers.push(e); G.cart = e;
         }
       }

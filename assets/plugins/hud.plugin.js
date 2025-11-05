@@ -366,7 +366,8 @@
       ctx.fillText(furLine, cursor, statsY);
       cursor += ctx.measureText(furLine).width + 16;
       ctx.fillStyle = urgOpen ? THEME.ok : THEME.warn;
-      ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, cursor, statsY);
+      // pinta en la línea siguiente para que no se solape
+      ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, statsX, statsY + 18);
 
       ctx.textAlign = 'right';
       ctx.fillStyle = THEME.text;

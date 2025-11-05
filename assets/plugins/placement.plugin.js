@@ -339,6 +339,7 @@
         const patient = W.Entities?.Patient?.spawn?.(px, py, {}) || null;
         if (patient) {
           ensureOnLists(patient);
+          try { W.GameFlowAPI?.onPatientCreated?.(patient); } catch(_) {}
           try { W.PatientsAPI?.createPillForPatient?.(patient, 'near'); } catch (_) {}
         }
       }
@@ -726,7 +727,7 @@ function ensureOnLists(e){
         }
         if (target && PAPI?.createPillForPatient){
           e = PAPI.createPillForPatient(target, 'near');
-          if (e){ ensureOnLists(e); logOk('PILL',e.x,e.y,e); return; }
+          if (e){ ensureOnLists(e); try { W.GameFlowAPI?.onPatientCreated?.(e); } catch(_) {} logOk('PILL',e.x,e.y,e); return; }
         }
         // 3) Último recurso visible
         e = { id:'PILL_'+Math.random().toString(36).slice(2), kind:W.ENT?.PILL, x:x|0, y:y|0, w:(W.TILE_SIZE||32)*0.5, h:(W.TILE_SIZE||32)*0.5, name:(p?.sub||'azul'), skin:('pastilla_'+(p?.sub||'azul')) };
