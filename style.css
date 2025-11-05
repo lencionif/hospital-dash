@@ -711,11 +711,11 @@ button:active { transform: translateY(1px); }
    - assets/ui/level_complete.png
    ======================================================================= */
 #game-over-screen{
-  background: url("./assets/images/gameover.jpg") center / cover no-repeat;
+  background: url("./assets/images/gameover.jpg") center / contain no-repeat;
 }
 
 #level-complete-screen{
-  background: url("./assets/level_complete.png") center / cover no-repeat;
+  background: url("./assets/level_complete.png") center / contain no-repeat;
 }
 
 /* La caja del menú no tapa la ilustración en estas pantallas */

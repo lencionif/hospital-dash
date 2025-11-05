@@ -74,7 +74,7 @@
     });
 
     const img = document.createElement('img');
-    img.src = './assets/images/enfermera_sexy.png';
+    img.src = './assets/images/ready.jpg';
     Object.assign(img.style, {
       width: '104px',
       height: '104px',
@@ -83,7 +83,6 @@
     });
 
     const text = document.createElement('div');
-    text.textContent = 'READY?';
     Object.assign(text.style, {
       fontFamily: '"IBM Plex Sans", Inter, system-ui, sans-serif',
       fontSize: '64px',

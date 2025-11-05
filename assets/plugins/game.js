@@ -631,7 +631,7 @@ document.addEventListener('keydown', (e)=>{
     // Mapa por defecto (inmutable)
     const DEFAULT_ASCII_MAP = [
     "##############################",
-    "#............m...............#",
+    "#............................#",
     "#....####............####....#",
     "#......S#....P.I#....#X.#....#",
     "#....#..#.......#....#..D....#",
@@ -640,7 +640,7 @@ document.addEventListener('keydown', (e)=>{
     "#...............#............#",
     "#............####............#",
     "#............#..#............#",
-    "#..............r#............#",
+    "#...............#............#",
     "#............####............#",
     "##############################",
     ];
@@ -2302,6 +2302,11 @@ function drawEntities(c2){
     levelCompleteScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
 
+    // ⬇️ asegura minimapa pequeño por defecto
+    document.getElementById('minimapOverlay')?.classList.add('hidden');
+    document.getElementById('minimap')?.classList.remove('expanded');
+
+    // ⬇️ modo mini al arrancar
     window.__toggleMinimap?.(false);
 
     G.time = 0;
