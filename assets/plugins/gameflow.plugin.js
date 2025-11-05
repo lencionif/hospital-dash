@@ -65,19 +65,29 @@
       display: 'flex',
       alignItems: 'center',
       gap: '18px',
-      padding: '18px 36px',
       borderRadius: '22px',
       border: '2px solid #19c37d',
       background: 'rgba(12,16,24,0.92)',
       boxShadow: '0 24px 48px rgba(0,0,0,0.45)',
+      src: './assets/images/ready.jpg', // no 'enfermera_sexy.png'
+      alt: 'READY',
+      loading: 'eager',
+      decoding: 'sync',
+      objectFit: 'contain',
+      width: '48vw',  // antes ~22vw
+      height: '64vw',
+      maxWidth: '720px',
+      padding: '12px 18px',
+      borderRadius: '16px',
+      translate: '0 0', // la animación ya modifica translateX
       transform: 'translateX(120vw)'
     });
 
     const img = document.createElement('img');
     img.src = './assets/images/ready.jpg';
     Object.assign(img.style, {
-      width: '104px',
-      height: '104px',
+      width: '52vw',
+      height: '56vw',
       objectFit: 'contain',
       filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.45))'
     });

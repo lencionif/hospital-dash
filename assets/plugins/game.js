@@ -2129,7 +2129,7 @@ function drawEntities(c2){
 
     try {
       Physics.init({
-        restitution: 0.12,
+        restitution: 0.22,
         friction: 0.045,
         slideFriction: 0.020,
         crushImpulse: 110,
@@ -2162,7 +2162,9 @@ function drawEntities(c2){
 
     switch (G.state){
       case 'READY': {
-        window.__toggleMinimap?.(false);
+        // Minimap pequeño y visible al comenzar el turno
+        window.__setMinimapMode?.('small');
+        window.__toggleMinimap?.(true);
         startScreen.classList.add('hidden');
         pausedScreen.classList.add('hidden');
         levelCompleteScreen.classList.add('hidden');
@@ -2262,7 +2264,9 @@ function drawEntities(c2){
         break;
       }
       default: {
-        window.__toggleMinimap?.(false);
+        // Minimap pequeño y visible al comenzar el turno
+        window.__setMinimapMode?.('small');
+        window.__toggleMinimap?.(true);
         break;
       }
     }
@@ -2307,7 +2311,9 @@ function drawEntities(c2){
     document.getElementById('minimap')?.classList.remove('expanded');
 
     // ⬇️ modo mini al arrancar
-    window.__toggleMinimap?.(false);
+    // Minimap pequeño y visible al comenzar el turno
+    window.__setMinimapMode?.('small');
+    window.__toggleMinimap?.(true);
 
     G.time = 0;
     G.cycleSeconds = 0;
@@ -2510,8 +2516,9 @@ function drawEntities(c2){
     updateVisibility();
   };
 
-  minimapMode = window.__setMinimapMode(window.__initialMinimapMode || 'small');
-  minimapVisible = (window.G?.state === 'PLAYING');
+  // Arranca siempre en modo pequeño y visible; el overlay grande se alterna con clic/espacio
+  minimapMode = window.__setMinimapMode('small');
+  minimapVisible = true;
   updateVisibility();
 
   mm.addEventListener('click', (ev) => {
