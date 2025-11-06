@@ -15,6 +15,19 @@
     return performance.now() / 1000;
   }
 
+  const getPhysicsDefaults = () => (window.Physics && window.Physics.DEFAULTS)
+    ? window.Physics.DEFAULTS
+    : { hurtImpulse: 45 };
+
+  function knockback(target, from, power = getPhysicsDefaults().hurtImpulse){
+    if (!target || !from || !window.Physics || typeof window.Physics.applyImpulse !== 'function') return;
+    const dx = (target.x + target.w * 0.5) - (from.x + from.w * 0.5);
+    const dy = (target.y + target.h * 0.5) - (from.y + from.h * 0.5);
+    const L = Math.hypot(dx, dy) || 1;
+    const scale = (power != null ? power : getPhysicsDefaults().hurtImpulse) / Math.max(1, (target.mass || 1));
+    window.Physics.applyImpulse(target, (dx / L) * scale, (dy / L) * scale);
+  }
+
   function getId(ent){
     if (!ent) return null;
     if (ent.id != null) return ent.id;
@@ -83,16 +96,7 @@
       }
 
       if (ent && typeof ent.x === 'number'){
-        const px = (player.x || 0) + (player.w || 0) * 0.5;
-        const py = (player.y || 0) + (player.h || 0) * 0.5;
-        const ex = (ent.x || 0) + (ent.w || 0) * 0.5;
-        const ey = (ent.y || 0) + (ent.h || 0) * 0.5;
-        const dx = px - ex;
-        const dy = py - ey;
-        const len = Math.hypot(dx, dy) || 1;
-        const force = 140;
-        player.vx = (player.vx || 0) + (dx / len) * force;
-        player.vy = (player.vy || 0) + (dy / len) * force;
+        knockback(player, ent);
       }
 
       window.LOG?.event?.('HIT', {

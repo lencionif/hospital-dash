@@ -2155,12 +2155,9 @@ function drawEntities(c2){
 
     try {
       Physics.init({
-        restitution: 0.22,
-        friction: 0.045,
-        slideFriction: 0.020,
-        crushImpulse: 110,
-        hurtImpulse: 45,
-        explodeImpulse: 170
+        restitution: 0.18,
+        friction: 0.04,
+        slideFriction: 0.018
       }).bindGame(G);
     } catch (err){
       console.warn('[Physics] init error', err);
