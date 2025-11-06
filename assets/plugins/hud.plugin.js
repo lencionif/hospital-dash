@@ -271,7 +271,7 @@
     const cured = snap.cured || 0;
     const total = snap.total || 0;
     const furiosas = snap.furious || 0;
-    const urgOpen = remaining === 0 && furiosas === 0;
+    const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
     const r = { x: 12, y: 12, w: 260, h: 96 };
     ctx.save();
     ctx.globalAlpha = 0.82;
@@ -306,6 +306,12 @@
       window.addEventListener('keydown', (e) => {
         if (e.key === 'h' || e.key === 'H') HUD.togglePosition();
       });
+      const G = getG();
+      if (G && typeof G === 'object' && typeof G.onUrgenciasStateChanged !== 'function') {
+        G.onUrgenciasStateChanged = (open) => {
+          G.urgenciasOpen = !!open;
+        };
+      }
     },
 
     // Render principal del HUD como BARRA superior o inferior
@@ -365,7 +371,7 @@
       const cured = snap.cured || 0;
       const total = snap.total || 0;
       const furiosas = snap.furious || 0;
-      const urgOpen = remaining === 0 && furiosas === 0;
+      const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
 
       const statsX = heartsX + 22 * maxHearts + 20;
       const statsY = panelY + 20;

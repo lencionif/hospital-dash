@@ -28,39 +28,137 @@
     },
 
     // Convierte un paciente en furiosa
-    spawnFromPatient(patient){
+    spawnFromPatient(patient, opts = {}){
       if (!patient || patient.dead) return null;
-      // quita paciente
-      patient.dead = true;
-      this.G.entities = this.G.entities.filter(x => x !== patient);
-      this.G.patients = (this.G.patients || []).filter(x => x !== patient);
-      this.G.npcs     = (this.G.npcs || []).filter(x => x !== patient);
+      this.init(this.G || window.G || (window.G = {}));
+      this._cleanupPatientArtifacts(patient);
+      const G = this.G;
+      const skipCounters = !!(opts.skipCounters || patient.__convertedViaPatientsAPI);
+      if (!Array.isArray(G.entities)) G.entities = [];
+      if (!Array.isArray(G.patients)) G.patients = [];
+      if (!Array.isArray(G.npcs)) G.npcs = [];
+      if (!Array.isArray(G.movers)) G.movers = [];
 
-      const ENT = this.G.ENT || {};
+      const px = patient.x;
+      const py = patient.y;
+      const pw = patient.w;
+      const ph = patient.h;
+
+      patient.dead = true;
+      G.entities = G.entities.filter((x) => x !== patient);
+      G.patients = G.patients.filter((x) => x !== patient);
+      G.npcs = G.npcs.filter((x) => x !== patient);
+      G.movers = G.movers.filter((x) => x !== patient);
+      if (G._patientsByKey instanceof Map && patient.keyName) {
+        G._patientsByKey.delete(patient.keyName);
+      }
+
+      if (!skipCounters) {
+        const stats = G.stats || (G.stats = {});
+        stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
+        stats.activeFuriosas = (stats.activeFuriosas || 0) + 1;
+        if (Number.isFinite(G.patientsPending)) {
+          G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
+        } else if (typeof G.patientsPending !== 'number') {
+          G.patientsPending = Math.max(0, stats.remainingPatients || 0);
+        }
+        if (Number.isFinite(G.patientsFurious)) {
+          G.patientsFurious = (G.patientsFurious | 0) + 1;
+        } else {
+          G.patientsFurious = (G.patientsFurious | 0) + 1;
+        }
+      }
+
+      delete patient.__convertedViaPatientsAPI;
+
+      const ENT = G.ENT || {};
       const e = {
         kind: ENT.FURIOUS || 'furious',
-        x: patient.x, y: patient.y, w: patient.w, h: patient.h,
-        vx: 0, vy: 0,
-        mass: 130, dynamic: true, solid: true, pushable: true,
+        x: px,
+        y: py,
+        w: pw,
+        h: ph,
+        vx: 0,
+        vy: 0,
+        mass: 130,
+        dynamic: true,
+        solid: true,
+        pushable: true,
         color: '#ff2f4f',
-        t: 0, touchCD: 0,
+        t: 0,
+        touchCD: 0,
         ai: { lastX: 0, lastY: 1 },
         aiId: 'FURIOUS'
       };
       try { window.AI?.attach?.(e, 'FURIOUS'); } catch (_) {}
-      this.G.entities.push(e);
-      this.G.enemies.push(e);
+      G.entities.push(e);
+      G.enemies.push(e);
       this.live.add(e);
 
       if (window.Physics && Physics.registerEntity) Physics.registerEntity(e);
-      if (window.AudioAPI) AudioAPI.play('furious_spawn', { at:{x:e.x,y:e.y}, volume:1.0 });
+      if (window.AudioAPI) AudioAPI.play('furious_spawn', { at: { x: e.x, y: e.y }, volume: 1.0 });
 
-      // luz rojiza tenue (opcional)
       if (window.LightingAPI) {
-        const id = LightingAPI.addLight({ x:e.x+e.w/2, y:e.y+e.h/2, radius:this.TILE*3.5, color:'rgba(255,80,100,0.35)', owner:e });
+        const id = LightingAPI.addLight({ x: e.x + e.w / 2, y: e.y + e.h / 2, radius: this.TILE * 3.5, color: 'rgba(255,80,100,0.35)', owner: e });
         e._lightId = id;
       }
+      if (!skipCounters) {
+        try { window.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+      }
       return e;
+    },
+
+    transformToFurious(patient) {
+      if (!patient) return null;
+      if (window.PatientsAPI && typeof window.PatientsAPI.toFurious === 'function') {
+        try {
+          const spawned = window.PatientsAPI.toFurious(patient);
+          if (spawned) return spawned;
+        } catch (err) {
+          console.warn('[FuriousAPI] PatientsAPI.toFurious', err);
+        }
+      }
+      return this.spawnFromPatient(patient, { skipCounters: false });
+    },
+
+    _cleanupPatientArtifacts(patient) {
+      if (!patient) return;
+      const G = this.G || window.G || {};
+      const removeRefs = new Set();
+      if (Array.isArray(G.pills)) {
+        const keep = [];
+        for (const pill of G.pills) {
+          if (!pill) continue;
+          const matchesId = patient.pillId && pill.id === patient.pillId;
+          const matchesPatient = patient.id && (pill.patientId === patient.id || pill.forPatientId === patient.id);
+          const matchesKey = patient.keyName && pill.pairName === patient.keyName;
+          if (matchesId || matchesPatient || matchesKey) {
+            removeRefs.add(pill);
+            continue;
+          }
+          keep.push(pill);
+        }
+        G.pills = keep;
+      }
+      if (removeRefs.size) {
+        if (Array.isArray(G.entities)) G.entities = G.entities.filter((ent) => !removeRefs.has(ent));
+        if (Array.isArray(G.movers)) G.movers = G.movers.filter((ent) => !removeRefs.has(ent));
+      }
+      if (patient.keyName && G._patientsByKey instanceof Map) {
+        G._patientsByKey.delete(patient.keyName);
+      }
+      if (patient.pillId) patient.pillId = null;
+      if (G.carry && typeof G.carry === 'object') {
+        const carry = G.carry;
+        const samePatient = patient.id && (carry.patientId === patient.id || carry.forPatientId === patient.id);
+        const sameKey = patient.keyName && carry.pairName === patient.keyName;
+        const sameName = patient.name && carry.patientName === patient.name;
+        if (samePatient || sameKey || sameName) {
+          G.carry = null;
+          if (G.player && G.player.carry === carry) G.player.carry = null;
+          try { window.ArrowGuide?.clearTarget?.(); } catch (_) {}
+        }
+      }
     },
 
     // Llamar por frame
