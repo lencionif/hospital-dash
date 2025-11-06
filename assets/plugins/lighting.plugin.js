@@ -14,9 +14,19 @@
   // ─────────────────────────────────────────────────────
   // LightingAPI
   // ─────────────────────────────────────────────────────
+  const LIGHT_PRESETS = {
+    broken: {
+      palette: ['#ffd46b', '#ffdd85', '#ffc862'],
+      radius: 150,
+      intensityRange: [0.4, 0.9],
+      flickerSpeed: 7.5,
+      softness: 0.75
+    }
+  };
+
   const LightingAPI = {
     _c:null,_ctx:null,_game:null,_cont:null,_w:0,_h:0,
-    _tile:32,_rays:96,_lights:new Map(),_flash:[],_nextId:1,_enabled:true,
+    _tile:32,_rays:96,_lights:new Map(),_flash:[],_nextId:1,_enabled:true,_lastT:null,
 
     // ─ Ambient global (compat con game.js) ─
     _ambient: 0,
@@ -54,16 +64,73 @@
       this._w=this._c.width; this._h=this._c.height;
     },
 
+    _preset(kind){
+      return kind && LIGHT_PRESETS[kind] ? { ...LIGHT_PRESETS[kind] } : null;
+    },
+
     addLight({ x=0,y=0,radius=160,intensity=0.6,color='#fff2c0',type='room',broken=false,
-               owner=null, coneDeg=0, dirRad=null }={}){
+               owner=null, coneDeg=0, dirRad=null, kind=null, innerRadius=null,
+               softness=null }={}){
+      const preset = this._preset(kind);
+      const palette = preset?.palette;
+      const finalColor = color || (Array.isArray(palette)
+        ? palette[(Math.random()*palette.length)|0]
+        : '#fff2c0');
+      const presetRadius = preset?.radius != null ? preset.radius : radius;
+      const presetSoft = preset?.softness;
+      const range = preset?.intensityRange;
+      const baseIntensity = clamp(
+        (typeof intensity === 'number' ? intensity
+          : (range ? (range[0] + range[1]) * 0.5 : 0.6)),
+        0, 1
+      );
+      const flickerRange = Array.isArray(range) && range.length === 2
+        ? [Math.min(range[0], range[1]), Math.max(range[0], range[1])]
+        : (broken ? [0.4, 0.9] : null);
       const id=this._nextId++;
       this._lights.set(id,{
-        id,x,y,radius,baseIntensity:clamp(intensity,0,1),color,type,broken,owner,
-        coneDeg: Math.max(0, coneDeg|0), dirRad, flickerPhase:Math.random()*TAU, flickerFreq:4+Math.random()*4, _blinkT:0,_blinkOn:true
+        id,
+        x,y,
+        radius: Math.max(8, presetRadius),
+        baseIntensity,
+        color: finalColor,
+        type,
+        broken: broken || kind === 'broken',
+        owner,
+        coneDeg: Math.max(0, coneDeg|0),
+        dirRad,
+        kind,
+        innerRadius,
+        softness: (typeof softness === 'number') ? clamp(softness, 0.05, 0.95)
+          : (typeof presetSoft === 'number' ? clamp(presetSoft, 0.05, 0.95) : null),
+        flickerRange,
+        _flickerValue: null,
+        _flickerTarget: null,
+        _flickerTimer: 0,
+        flickerSpeed: preset?.flickerSpeed || 6,
+        flickerPhase:Math.random()*TAU, flickerFreq:4+Math.random()*4, _blinkT:0,_blinkOn:true
       });
       return id;
     },
-    updateLight(id,props){ const L=this._lights.get(id); if(L) Object.assign(L,props||{}); },
+    updateLight(id,props){
+      const L=this._lights.get(id);
+      if(!L || !props) return;
+      const upd={...props};
+      if ('intensity' in upd && typeof upd.intensity === 'number'){
+        const ci = clamp(upd.intensity, 0, 1);
+        upd.baseIntensity = ci;
+        upd.intensity = ci;
+        if (Array.isArray(L.flickerRange)){
+          L._flickerValue = clamp(ci, L.flickerRange[0], L.flickerRange[1]);
+          L._flickerTarget = L._flickerValue;
+        }
+      }
+      if ('radius' in upd){ upd.radius = Math.max(8, Number(upd.radius)||8); }
+      if ('softness' in upd && typeof upd.softness === 'number'){
+        upd.softness = clamp(upd.softness, 0.05, 0.95);
+      }
+      Object.assign(L, upd);
+    },
     removeLight(id){ this._lights.delete(id); },
     clear(){ this._lights.clear(); this._ctx?.clearRect(0,0,this._w,this._h); },
 
@@ -78,6 +145,10 @@
           // 1) si está apagado -> sal sin crashear
           if(!this._enabled){ return; }
 
+          const now = (performance?.now?.() || Date.now()) * 0.001;
+          const dt = this._lastT == null ? 1/60 : Math.min(0.2, Math.max(0, now - this._lastT));
+          this._lastT = now;
+
           // 2) tinte ambiental opcional (día/noche/tormenta)
           if (this._ambient > 0){
             ctx.globalCompositeOperation='source-over';
@@ -88,44 +159,145 @@
             ctx.fillRect(0,0,w,h);
           }
 
-          // 3) si no hay linternas aún, no pintes nada más (pero no crashees)
-          if (!Array.isArray(this._flash) || this._flash.length===0){ return; }
+          const hasStatic = this._lights.size > 0;
+          const hasFlash  = Array.isArray(this._flash) && this._flash.length > 0;
+          if (!hasStatic && !hasFlash){ return; }
 
-          // 4) pinta conos aditivos (más luz donde haya solapes)
           ctx.globalCompositeOperation='lighter';
 
-          for (const L of this._flash){
-            if(!L) continue;
-            const px=(L.x - camera.x)*camera.zoom + w/2;
-            const py=(L.y - camera.y)*camera.zoom + h/2;
-            const ang= +L.angle || 0;
-            const dist = Math.max(24, (L.dist||600)) * camera.zoom;
-            const fov  = Math.max(0.05, Math.min(Math.PI, L.fov || Math.PI*0.5));
-            const soft = Math.max(0.05, Math.min(0.95, L.softness || 0.7));
+          if (hasStatic){
+            const t = now;
+            for (const L of this._lights.values()){
+              if(!L) continue;
+              let dir = (typeof L.dirRad === 'number' && isFinite(L.dirRad)) ? L.dirRad : null;
+              if (L.owner){
+                try {
+                  const o=L.owner;
+                  if (o){
+                    const cx = (o.x||0) + (o.w||0)/2 + (L.offsetX||0);
+                    const cy = (o.y||0) + (o.h||0)/2 + (L.offsetY||0);
+                    L.x=cx; L.y=cy;
+                    let ownerDir = null;
+                    if (typeof o.lookAngle === 'number') ownerDir = o.lookAngle;
+                    else if (typeof o.facingAngle === 'number') ownerDir = o.facingAngle;
+                    else if (typeof o.facing === 'string'){
+                      const f=o.facing.toUpperCase();
+                      ownerDir = (f==='E')?0:(f==='S')?Math.PI/2:(f==='W')?Math.PI:-Math.PI/2;
+                    } else if (Math.abs(o.vx||0)+Math.abs(o.vy||0)>0.001){
+                      ownerDir = Math.atan2(o.vy||0,o.vx||0);
+                    }
+                    if (ownerDir != null && isFinite(ownerDir)) dir = ownerDir;
+                  }
+                } catch(_){}
+              }
 
-            ctx.save();
-            ctx.translate(px,py);
-            ctx.rotate(ang + Math.PI);
+              const px=(L.x - camera.x)*camera.zoom + w/2;
+              const py=(L.y - camera.y)*camera.zoom + h/2;
+              if (!isFinite(px) || !isFinite(py)) continue;
 
-            const rx = dist * 1.00, ry = dist * 0.42;
-            const gx = rx * 0.70;
-            const inner = Math.max(6, rx*(1-soft));
-            const intensity = (typeof L.intensity === 'number') ? clamp(L.intensity, 0, 1) : 0.6;
-            const g = ctx.createRadialGradient(gx,0,inner, gx,0, rx);
-            const baseColor = L.color || 'rgba(255,255,200,1)';
-            g.addColorStop(0, applyIntensity(baseColor, intensity));
-            g.addColorStop(1, applyIntensity(baseColor, 0));
-            ctx.fillStyle = g;
+              const worldRadius = Math.max(8, (L.radius||160));
+              const radius = worldRadius * camera.zoom;
+              const baseSoft = (typeof L.softness === 'number') ? L.softness : 0.72;
+              const softness = clamp(baseSoft, 0.05, 0.95);
+              const worldInner = (L.innerRadius != null)
+                ? Math.max(4, L.innerRadius)
+                : Math.max(4, worldRadius * (1 - softness));
+              const innerRad = Math.min(radius * 0.98, Math.max(2, worldInner * camera.zoom));
 
-            // Cono: elipse recortada por FOV
-            ctx.beginPath();
-            const a0 = -fov*0.5, a1 = fov*0.5;
-            ctx.moveTo(0,0);
-            ctx.ellipse(gx, 0, rx, ry, 0, a0, a1);
-            ctx.closePath();
-            ctx.fill();
+              let intensity = (typeof L.intensity === 'number') ? clamp(L.intensity,0,1)
+                : (typeof L.baseIntensity === 'number' ? clamp(L.baseIntensity,0,1) : 0.6);
 
-            ctx.restore();
+              if (Array.isArray(L.flickerRange)){
+                const [lo,hi] = L.flickerRange;
+                if (L._flickerValue == null){
+                  const init = clamp(intensity, lo, hi);
+                  L._flickerValue = init;
+                  L._flickerTarget = init;
+                  L._flickerTimer = 0;
+                }
+                L._flickerTimer -= dt;
+                if (L._flickerTimer <= 0){
+                  L._flickerTimer = 0.08 + Math.random()*0.22;
+                  L._flickerTarget = lo + Math.random()*(Math.max(hi - lo, 0.001));
+                }
+                const speed = Math.max(0.5, L.flickerSpeed || 6);
+                const lerp = 1 - Math.exp(-speed*dt);
+                L._flickerValue = L._flickerValue + (L._flickerTarget - L._flickerValue)*lerp;
+                intensity = clamp(L._flickerValue, lo, hi);
+              }
+
+              const baseColor = resolveColor(L, intensity, t);
+
+              ctx.save();
+              ctx.translate(px,py);
+
+              if (L.coneDeg>0){
+                const dist = Math.max(radius, 24);
+                const fov = Math.max(0.05, Math.min(Math.PI, (L.coneDeg||0)*Math.PI/180));
+                const gx = dist * 0.70;
+                const ry = dist * 0.42;
+                const g = ctx.createRadialGradient(gx,0,innerRad, gx,0, dist);
+                g.addColorStop(0, applyIntensity(baseColor, intensity));
+                g.addColorStop(1, applyIntensity(baseColor, 0));
+                ctx.fillStyle = g;
+
+                const ang = (typeof dir === 'number' && isFinite(dir)) ? dir : 0;
+                ctx.rotate(ang + Math.PI);
+
+                ctx.beginPath();
+                const a0 = -fov*0.5, a1 = fov*0.5;
+                ctx.moveTo(0,0);
+                ctx.ellipse(gx, 0, dist, ry, 0, a0, a1);
+                ctx.closePath();
+                ctx.fill();
+              } else {
+                const g = ctx.createRadialGradient(0,0,innerRad, 0,0, radius);
+                g.addColorStop(0, applyIntensity(baseColor, intensity));
+                g.addColorStop(1, applyIntensity(baseColor, 0));
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(0,0,radius,0,TAU);
+                ctx.fill();
+              }
+
+              ctx.restore();
+            }
+          }
+
+          if (hasFlash){
+            for (const L of this._flash){
+              if(!L) continue;
+              const px=(L.x - camera.x)*camera.zoom + w/2;
+              const py=(L.y - camera.y)*camera.zoom + h/2;
+              const ang= +L.angle || 0;
+              const dist = Math.max(24, (L.dist||600)) * camera.zoom;
+              const fov  = Math.max(0.05, Math.min(Math.PI, L.fov || Math.PI*0.5));
+              const soft = Math.max(0.05, Math.min(0.95, L.softness || 0.7));
+
+              ctx.save();
+              ctx.translate(px,py);
+              ctx.rotate(ang + Math.PI);
+
+              const rx = dist * 1.00, ry = dist * 0.42;
+              const gx = rx * 0.70;
+              const inner = Math.max(6, rx*(1-soft));
+              const intensity = (typeof L.intensity === 'number') ? clamp(L.intensity, 0, 1) : 0.6;
+              const g = ctx.createRadialGradient(gx,0,inner, gx,0, rx);
+              const baseColor = L.color || 'rgba(255,255,200,1)';
+              g.addColorStop(0, applyIntensity(baseColor, intensity));
+              g.addColorStop(1, applyIntensity(baseColor, 0));
+              ctx.fillStyle = g;
+
+              // Cono: elipse recortada por FOV
+              ctx.beginPath();
+              const a0 = -fov*0.5, a1 = fov*0.5;
+              ctx.moveTo(0,0);
+              ctx.ellipse(gx, 0, rx, ry, 0, a0, a1);
+              ctx.closePath();
+              ctx.fill();
+
+              ctx.restore();
+            }
           }
 
           ctx.globalCompositeOperation='source-over';
@@ -167,8 +339,37 @@
     const r=parseInt(c[0],16)||255,g=parseInt(c[1],16)||240,b=parseInt(c[2],16)||200; return `rgba(${r},${g},${b},${clamp(a,0,1)})`; }
   function applyIntensity(css,a){ return withAlpha(css, clamp(a,0,1)); }
   function bossColor(t,I){ const k=(Math.sin(t*2.2)+1)*0.5; const r=Math.round(120+135*k), b=Math.round(120+135*(1-k)); return `rgba(${r},60,${b},${clamp(I,0,1)})`; }
+  function resolveColor(L, intensity, t){
+    const col = L?.color;
+    if (typeof col === 'function'){
+      try { const v = col(t, intensity); if (v) return v; }
+      catch(_){}
+    }
+    if (String(col).toLowerCase() === 'dynamic_boss'){
+      return bossColor(t, intensity);
+    }
+    return col || '#fff2c0';
+  }
 
   W.LightingAPI = LightingAPI;
+
+  const Lighting = {
+    presets: LIGHT_PRESETS,
+    addLight(x, y, opts={}){
+      if (typeof x === 'object' && x !== null){
+        return W.LightingAPI?.addLight?.(x) ?? null;
+      }
+      const payload = { ...opts, x, y };
+      return W.LightingAPI?.addLight?.(payload) ?? null;
+    },
+    updateLight(id, props){
+      return W.LightingAPI?.updateLight?.(id, props);
+    },
+    removeLight(id){
+      return W.LightingAPI?.removeLight?.(id);
+    }
+  };
+  W.Lighting = Lighting;
 
   // ─────────────────────────────────────────────────────
   // FogAPI (niebla direccional negra + linterna elíptica)
