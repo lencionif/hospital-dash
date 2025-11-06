@@ -897,6 +897,58 @@ function ensureOnLists(e){
 
 window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
 
+  function clamp(value, min, max) {
+    if (!Number.isFinite(value)) return min;
+    if (min >= max) return min;
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function buildDefaultNormalPlacements(G) {
+    const tile = TILE || 32;
+    const mapArray = Array.isArray(G?.map) ? G.map : null;
+    const inferredWidth = Number.isFinite(G?.mapW) && G.mapW > 0
+      ? G.mapW
+      : (mapArray && Array.isArray(mapArray[0]) ? mapArray[0].length : 40);
+    const inferredHeight = Number.isFinite(G?.mapH) && G.mapH > 0
+      ? G.mapH
+      : (mapArray ? mapArray.length : 30);
+
+    const clampTx = (tx) => clamp(tx, 1, Math.max(1, inferredWidth - 2));
+    const clampTy = (ty) => clamp(ty, 1, Math.max(1, inferredHeight - 2));
+    const centerTx = clampTx(Math.floor(inferredWidth / 2));
+    const centerTy = clampTy(Math.floor(inferredHeight / 2));
+
+    const toPx = (tx, ty) => ({
+      x: tx * tile + tile / 2,
+      y: ty * tile + tile / 2
+    });
+
+    const place = (type, dx, dy, extra = {}) => {
+      const tx = clampTx(centerTx + dx);
+      const ty = clampTy(centerTy + dy);
+      return { type, _units: 'px', ...toPx(tx, ty), ...extra };
+    };
+
+    const patientId = 'patient_fallback';
+    return [
+      place('player', 0, 0, { id: 'fallback_player' }),
+      place('light', 0, -2, { color: '#fef2c0' }),
+      place('patient', 2, 0, { id: patientId, name: 'Paciente Demo' }),
+      place('bell', 1, 0, { link: patientId }),
+      place('pill', 3, 0, { targetName: patientId, sub: 'azul' }),
+      place('cart', 0, 2, { sub: 'med' }),
+      place('spawn_mosquito', -2, 2),
+      place('spawn_rat', 2, 2),
+      place('door', -3, 0, { locked: false }),
+      place('elevator', -4, 2, { active: true }),
+      place('npc', 1, 1, { sub: 'medico' }),
+      place('npc', -1, 1, { sub: 'guardia' }),
+      place('boss', 5, 0, { tier: 1 }),
+      place('light', 2, -2, { broken: true }),
+      place('light', -2, -2)
+    ];
+  }
+
   function resolvePlacementList(levelCfg, G) {
     if (Array.isArray(levelCfg?.placements) && levelCfg.placements.length) {
       return { list: levelCfg.placements, allowAscii: !!levelCfg.allowAscii };
@@ -934,14 +986,33 @@ window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
       W.G = levelCfg.G;
     }
     const mode = levelCfg.mode || (G.debugMap ? 'debug' : 'normal');
-    const { list, allowAscii } = resolvePlacementList(levelCfg, G);
-    const summary = computeSummary(list);
-    lastSummary = summary;
+    let { list, allowAscii } = resolvePlacementList(levelCfg, G);
 
     const runGuard = W.__placementShouldRun || (() => true);
     if (!runGuard(mode, { G, mode })) {
-      return { applied: false, skipped: true, reason: 'guard', summary };
+      const summaryGuard = computeSummary(list);
+      lastSummary = summaryGuard;
+      return { applied: false, skipped: true, reason: 'guard', summary: summaryGuard };
     }
+
+    let usedFallbackTemplate = false;
+    if (!Array.isArray(list) || list.length === 0) {
+      if (mode === 'normal') {
+        list = buildDefaultNormalPlacements(G);
+        allowAscii = false;
+        usedFallbackTemplate = Array.isArray(list) && list.length > 0;
+        if (usedFallbackTemplate) {
+          try {
+            console.info('[Placement] usando plantilla por defecto (normal)');
+          } catch (_) {}
+          try { window.LOG?.event?.('PLACEMENT_FALLBACK', { mode, template: 'default-normal' }); } catch (_) {}
+        }
+      }
+    }
+
+    const summary = computeSummary(list);
+    lastSummary = summary;
+
     if (!Array.isArray(list) || list.length === 0) {
       return { applied: false, skipped: true, reason: 'empty', summary };
     }
@@ -960,6 +1031,9 @@ window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
       }
     }
     const response = (result && typeof result === 'object') ? { ...result } : { applied: true };
+    if (usedFallbackTemplate) {
+      response.fallback = 'default-normal';
+    }
     response.summary = summary;
     response.applied = response.skipped ? false : response.applied !== false;
     return response;

@@ -43,7 +43,12 @@
     ? location.search
     : '';
   const MAP_PARAMS = new URLSearchParams(rawSearch || '');
-  const MAP_MODE = (MAP_PARAMS.get('map') || '').trim().toLowerCase() || 'normal';
+  const hasMapParam = MAP_PARAMS.has('map');
+  const requestedMode = hasMapParam
+    ? (MAP_PARAMS.get('map') || '').trim().toLowerCase()
+    : '';
+  const MAP_MODE = requestedMode || 'normal';
+  const usingDefaultMapMode = !hasMapParam || !requestedMode;
   if (!W.__MAP_MODE) {
     W.__MAP_MODE = MAP_MODE;
   }
@@ -54,7 +59,7 @@
     W.DEBUG_MINIMAP = true;
   }
   try {
-    console.log('%cMAP_MODE', 'color:#0bf', MAP_MODE);
+    console.log('%cMAP_MODE', 'color:#0bf', MAP_MODE, usingDefaultMapMode ? '(default)' : '(query)');
   } catch (_) {}
 
   // --- REGLAS DE GENERACIÓN (mapa) ---
