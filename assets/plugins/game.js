@@ -120,6 +120,10 @@
     delivered: 0,
     lastPushDir: { x: 1, y: 0 },
     carry: null,      // <- lo que llevas en la mano (pastilla)
+    patientsTotal: 0,
+    patientsPending: 0,
+    patientsCured: 0,
+    patientsFurious: 0,
     cycleSeconds: 0
   };
   window.G = G; // (expuesto)
@@ -812,6 +816,10 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // Limpieza de estado como haces al cargar ASCII
     G.entities = []; G.movers = []; G.enemies = []; G.npcs = [];
     G.patients = []; G.pills = []; G.map = []; G.mapW = dims.w; G.mapH = dims.h;
+    G.patientsTotal = 0;
+    G.patientsPending = 0;
+    G.patientsCured = 0;
+    G.patientsFurious = 0;
     G.player = null; G.cart = null; G.door = null; G.boss = null;
 
     MapGen.init(G);                               // vincula el estado del juego
@@ -1552,17 +1560,25 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   // ------------------------------------------------------------
   function gameplay(dt){
     // 1) Recoger píldora (ENT.PILL)
-    if (!G.carry) {
+    const hero = G.player || null;
+    if (!hero?.carry && !G.carry) {
       for (const e of [...G.entities]) {
         if (!e || e.dead || e.kind !== ENT.PILL) continue;
         if (!AABB(G.player, e)) continue;
-        G.carry = {
+        const carry = {
+          type: 'PILL',
+          id: e.id,
           label: e.label || 'Pastilla',
-          patientName: e.targetName || null,
+          patientName: e.targetName || e.patientName || null,
           pairName: e.pairName || null,
-          anagram: e.anagram || null
+          anagram: e.anagram || null,
+          forPatientId: e.forPatientId || e.patientId || null,
+          patientId: e.patientId || e.forPatientId || null,
         };
-        try { window.ArrowGuide?.setTargetByKeyName?.(G.carry.pairName); } catch (_) {}
+        if (hero) hero.carry = carry;
+        G.carry = carry;
+        try { window.ArrowGuide?.setTargetByKeyName?.(carry.pairName); } catch (_) {}
+        try { window.LOG?.event?.('PILL_PICKUP', { pill: e.id, for: carry.forPatientId || null }); } catch (_) {}
         G.entities = G.entities.filter(x => x !== e);
         G.movers   = G.movers.filter(x => x !== e);
         G.pills    = (G.pills || []).filter(x => x !== e);
@@ -1571,26 +1587,36 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     }
 
     // 2) Entregar al paciente correcto tocándolo (ENT.PATIENT)
-    if (G.carry) {
+    const carrying = hero?.carry || G.carry;
+    if (carrying) {
       for (const pac of [...G.patients]) {
         if (!pac || pac.dead || pac.attended) continue;
         if (!nearAABB(G.player, pac, 12)) continue;
-        const matchesKey = G.carry.pairName && pac.keyName && pac.keyName === G.carry.pairName;
-        const matchesName = !G.carry.pairName && G.carry.patientName && pac.name === G.carry.patientName;
-        if (matchesKey || matchesName) {
-          window.PatientsAPI?.deliver?.(pac, null);
+        const delivered = window.PatientsAPI?.deliverPill?.(hero, pac);
+        if (delivered) {
           G.carry = null;
           G.delivered = (G.delivered || 0) + 1;
           const stats = G.stats || {};
-          if ((stats.remainingPatients || 0) === 0 && (stats.activeFuriosas || 0) === 0) {
+          const pending = (window.patientsSnapshot ? window.patientsSnapshot().pending : stats.remainingPatients || 0);
+          const furious = (window.patientsSnapshot ? window.patientsSnapshot().furious : stats.activeFuriosas || 0);
+          if (pending === 0 && furious === 0) {
             try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
-          } else {
-            try { window.ArrowGuide?.clearTarget?.(); } catch (_) {}
           }
           break;
+        }
+        const canDeliverFn = window.PatientsAPI?.canDeliver;
+        if (typeof canDeliverFn === 'function') {
+          if (!canDeliverFn(hero, pac)) {
+            window.PatientsAPI?.wrongDelivery?.(pac);
+            break;
+          }
         } else {
-          window.PatientsAPI?.wrongDelivery?.(pac);
-          break;
+          const matchesKey = carrying.pairName && pac.keyName && pac.keyName === carrying.pairName;
+          const matchesName = !carrying.pairName && carrying.patientName && pac.name === carrying.patientName;
+          if (!matchesKey && !matchesName) {
+            window.PatientsAPI?.wrongDelivery?.(pac);
+            break;
+          }
         }
       }
     }

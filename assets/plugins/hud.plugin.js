@@ -63,16 +63,17 @@
     }
 
     // 2) Si llevas una pastilla → entregarla a su paciente
-    if (G.carry && (G.carry.label || G.carry.patientName)) {
-      const pill = G.carry.label || 'la pastilla';
-      const who  = G.carry.patientName || 'el paciente asignado';
+    const carry = G.player?.carry || G.carry;
+    if (carry && (carry.label || carry.patientName)) {
+      const pill = carry.label || 'la pastilla';
+      const who  = carry.patientName || 'el paciente asignado';
       return `Objetivo: entrega ${pill} a ${who}`;
     }
 
     // 3) Si no llevas → buscar una para un paciente (usa vínculos si existen)
     const hayPacientes = Array.isArray(G.patients) && G.patients.length > 0;
     const hayPills     = Array.isArray(G.pills)     && G.pills.length     > 0;
-    if (!G.carry && hayPacientes) {
+    if (!carry && hayPacientes) {
       if (hayPills) {
         const linked = G.pills.find(p => p.targetName || p.label) || G.pills[0];
         const pill = linked?.label || 'la pastilla';
@@ -260,10 +261,15 @@
   }
 
   function drawPatientsCounterPanel(ctx, G) {
-    const stats = G?.stats || {};
-    const remaining = stats.remainingPatients || 0;
-    const total = stats.totalPatients || 0;
-    const furiosas = stats.activeFuriosas || 0;
+    const snap = window.patientsSnapshot ? window.patientsSnapshot() : {
+      total: G?.stats?.totalPatients || 0,
+      pending: G?.stats?.remainingPatients || 0,
+      cured: G?.stats?.furiosasNeutralized || 0,
+      furious: G?.stats?.activeFuriosas || 0,
+    };
+    const remaining = snap.pending || 0;
+    const total = snap.total || 0;
+    const furiosas = snap.furious || 0;
     const urgOpen = remaining === 0 && furiosas === 0;
     const r = { x: 12, y: 12, w: 260, h: 64 };
     ctx.save();
@@ -346,10 +352,15 @@
       const heartsY = panelY + 18;
       drawHearts(ctx, heartsX, heartsY, halves, maxHearts, scaleX, scaleY, glow);
 
-      const stats = G.stats || {};
-      const remaining = stats.remainingPatients || 0;
-      const total = stats.totalPatients || 0;
-      const furiosas = stats.activeFuriosas || 0;
+      const snap = window.patientsSnapshot ? window.patientsSnapshot() : {
+        total: G.stats?.totalPatients || 0,
+        pending: G.stats?.remainingPatients || 0,
+        cured: G.stats?.furiosasNeutralized || 0,
+        furious: G.stats?.activeFuriosas || 0,
+      };
+      const remaining = snap.pending || 0;
+      const total = snap.total || 0;
+      const furiosas = snap.furious || 0;
       const urgOpen = remaining === 0 && furiosas === 0;
 
       const statsX = heartsX + 22 * maxHearts + 20;
@@ -376,17 +387,18 @@
 
       const infoWidth = panelX + panelWidth - statsX - 24;
       let infoY = statsY + 24;
-      if (infoWidth > 40 && G.carry){
+      const carry = G.player?.carry || G.carry;
+      if (infoWidth > 40 && carry){
         ctx.fillStyle = THEME.text;
-        const c1 = ellipsize(ctx, `Llevas: ${G.carry.label || '—'}`, infoWidth);
+        const c1 = ellipsize(ctx, `Llevas: ${carry.label || '—'}`, infoWidth);
         ctx.fillText(c1, statsX, infoY);
         infoY += 18;
-        const c2 = ellipsize(ctx, `→ Para: ${G.carry.patientName || G.carry.pairName || '—'}`, infoWidth);
+        const c2 = ellipsize(ctx, `→ Para: ${carry.patientName || carry.pairName || '—'}`, infoWidth);
         ctx.fillText(c2, statsX, infoY);
         infoY += 18;
-        if (G.carry.anagram){
+        if (carry.anagram){
           ctx.fillStyle = '#9fb0cc';
-          ctx.fillText(ellipsize(ctx, `Pista: ${G.carry.anagram}`, infoWidth), statsX, infoY);
+          ctx.fillText(ellipsize(ctx, `Pista: ${carry.anagram}`, infoWidth), statsX, infoY);
           ctx.fillStyle = THEME.text;
           infoY += 18;
         }

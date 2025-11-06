@@ -314,6 +314,66 @@
 
 
   // API público
+  function patientsCountersSnapshot() {
+    return (window.patientsSnapshot ? window.patientsSnapshot() : {
+      total: G.patientsTotal | 0,
+      pending: G.patientsPending | 0,
+      cured: G.patientsCured | 0,
+      furious: G.patientsFurious | 0,
+    });
+  }
+
+  function ensurePatientCounters() {
+    if (!Number.isFinite(G.patientsTotal)) G.patientsTotal = 0;
+    if (!Number.isFinite(G.patientsPending)) G.patientsPending = 0;
+    if (!Number.isFinite(G.patientsCured)) G.patientsCured = 0;
+    if (!Number.isFinite(G.patientsFurious)) G.patientsFurious = 0;
+  }
+
+  function spawnPillFor(patient) {
+    if (!patient) return null;
+    try {
+      const pill = (window.PatientsAPI?.createPillForPatient?.(patient, 'near')
+        || window.Patients?.createPillForPatient?.(patient, 'near')) || null;
+      if (pill) {
+        pill.forPatientId = patient.id;
+        ensureOnLists(pill);
+      }
+      return pill;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function spawnBellNear(patient) {
+    if (!patient) return null;
+    if (window.BellsAPI?.spawnBellNear) {
+      try {
+        return window.BellsAPI.spawnBellNear(patient);
+      } catch (_) {}
+    }
+    const x = (patient.x || 0) + (patient.w || TILE) + 8;
+    const y = patient.y || 0;
+    const opts = { patient, forPatientId: patient.id, link: patient.id };
+    try {
+      const bell = window.BellsAPI?.spawnBell?.(x, y, opts)
+        || window.spawnBell?.(x, y, opts)
+        || null;
+      if (bell) {
+        bell.forPatientId = patient.id;
+        ensureOnLists(bell);
+      }
+      return bell;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  window.spawnPillFor = spawnPillFor;
+  if (!window.spawnBellNear) {
+    window.spawnBellNear = spawnBellNear;
+  }
+
   const MapPlacementAPI = {
     // constraints example:
     // { avoidRects:[controlRoomRect, bossRoomRect], minDistFrom:{x:spawnTx,y:spawnTy,d:15} }
@@ -336,11 +396,47 @@
         if (!spot) break;
         const px = spot.tx * TILE + TILE * 0.1;
         const py = spot.ty * TILE + TILE * 0.1;
+        ensurePatientCounters();
+        const beforeTotal = G.patientsTotal | 0;
+        const beforePending = G.patientsPending | 0;
+        let manualIncrement = false;
         const patient = W.Entities?.Patient?.spawn?.(px, py, {}) || null;
         if (patient) {
           ensureOnLists(patient);
+          patient.kind = ENT.PATIENT;
+          patient.id = patient.id || `PAT_${Math.random().toString(36).slice(2)}`;
+          if (!G.entities.includes(patient)) G.entities.push(patient);
+          if (!G.patients.includes(patient)) G.patients.push(patient);
+          if (!G.allPatients.includes(patient)) G.allPatients.push(patient);
+          if ((G.patientsTotal | 0) === beforeTotal) {
+            G.patientsTotal = beforeTotal + 1;
+            manualIncrement = true;
+          }
+          if ((G.patientsPending | 0) === beforePending) {
+            G.patientsPending = beforePending + 1;
+            manualIncrement = true;
+          }
+          const pill = spawnPillFor(patient);
+          if (pill) {
+            pill.forPatientId = patient.id;
+            if (!pill.__creationLogged) {
+              try { W.LOG?.event?.('PILL_CREATE', { pill: pill.id, forPatient: patient.id }); } catch (_) {}
+              pill.__creationLogged = true;
+            }
+          }
+          const bell = spawnBellNear(patient);
+          if (bell) {
+            bell.forPatientId = patient.id;
+            try { W.LOG?.event?.('BELL_CREATE', { bell: bell.id, forPatient: patient.id }); } catch (_) {}
+          }
           try { W.GameFlowAPI?.onPatientCreated?.(patient); } catch(_) {}
-          try { W.PatientsAPI?.createPillForPatient?.(patient, 'near'); } catch (_) {}
+          if (!patient.__creationLogged) {
+            try { W.LOG?.event?.('PATIENT_CREATE', { patient: patient.id }); } catch (_) {}
+            patient.__creationLogged = true;
+          }
+          if (manualIncrement) {
+            try { W.LOG?.event?.('PATIENTS_COUNTER', patientsCountersSnapshot()); } catch (_) {}
+          }
         }
       }
       // Boss inmóvil en su sala
@@ -412,6 +508,9 @@ window.applyPlacementsFromMapgen = function(arr, ctx){
     G.elevators = G.elevators || [];
     G.movers    = G.movers    || [];
     G.patients  = G.patients  || [];
+    G.allPatients = G.allPatients || [];
+    G.pills     = G.pills     || [];
+    G.bells     = G.bells     || [];
     G.pushables = G.pushables || [];
   }
   ensureLists();
@@ -419,6 +518,17 @@ window.applyPlacementsFromMapgen = function(arr, ctx){
 function ensureOnLists(e){
   if (!e) return;
   pushUnique(G.entities, e);
+  if (e.kind === ENT.PATIENT) {
+    pushUnique(G.patients, e);
+    pushUnique(G.allPatients, e);
+  }
+  if (e.kind === ENT.PILL) {
+    pushUnique(G.pills, e);
+  }
+  if (e.kind === ENT.BELL) {
+    G.bells = G.bells || [];
+    pushUnique(G.bells, e);
+  }
   if (e.isNPC === true || e.kind === ENT.NPC)            pushUnique(G.npcs, e);
   if (e.isEnemy === true ||
       e.kind === (ENT.MOSQUITO||-999) ||

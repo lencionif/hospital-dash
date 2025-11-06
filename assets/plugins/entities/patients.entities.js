@@ -27,6 +27,27 @@
     G.pills = Array.isArray(G.pills) ? G.pills : (G.pills = []);
     G.npcs = Array.isArray(G.npcs) ? G.npcs : (G.npcs = []);
     G._patientsByKey = G._patientsByKey || new Map();
+    ensurePatientCounters();
+  }
+
+  function ensurePatientCounters() {
+    if (!Number.isFinite(G.patientsTotal)) G.patientsTotal = 0;
+    if (!Number.isFinite(G.patientsPending)) G.patientsPending = 0;
+    if (!Number.isFinite(G.patientsCured)) G.patientsCured = 0;
+    if (!Number.isFinite(G.patientsFurious)) G.patientsFurious = 0;
+  }
+
+  function snapshotCounters() {
+    return (W.patientsSnapshot ? W.patientsSnapshot() : {
+      total: G.patientsTotal | 0,
+      pending: G.patientsPending | 0,
+      cured: G.patientsCured | 0,
+      furious: G.patientsFurious | 0
+    });
+  }
+
+  function emitPatientsCounter() {
+    try { W.LOG?.event?.('PATIENTS_COUNTER', snapshotCounters()); } catch (_) {}
   }
 
   const PILL_SKINS = [
@@ -113,6 +134,15 @@
     const stats = ensureStats();
     stats.totalPatients = Math.min(35, (stats.totalPatients || 0) + 1);
     stats.remainingPatients = Math.min(35, (stats.remainingPatients || 0) + 1);
+    ensurePatientCounters();
+    if (!e.__countersRegistered) {
+      e.__countersRegistered = true;
+      G.patientsTotal = (G.patientsTotal | 0) + 1;
+      G.patientsPending = (G.patientsPending | 0) + 1;
+      emitPatientsCounter();
+      try { W.LOG?.event?.('PATIENT_CREATE', { patient: e.id }); } catch (_) {}
+      e.__creationLogged = true;
+    }
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
   }
 
@@ -211,6 +241,9 @@
       pairName: patient.keyName,
       targetName: patient.displayName,
       anagram: patient.anagram,
+      forPatientId: patient.id,
+      patientId: patient.id,
+      patientName: patient.displayName,
       spriteKey: 'pill.generic',
       skin: pillSkin
     };
@@ -223,12 +256,46 @@
     }
     addEntity(pill);
     if (!G.pills.includes(pill)) G.pills.push(pill);
+    try { W.LOG?.event?.('PILL_CREATE', { pill: pill.id, forPatient: patient.id }); } catch (_) {}
+    pill.__creationLogged = true;
     return pill;
   }
 
-  function deliver(patient, pill) {
+  function getCarry(hero) {
+    if (hero?.carry) return hero.carry;
+    if (hero && !hero.carry && G.carry && hero === (G.player || null)) return G.carry;
+    return G.carry;
+  }
+
+  function canDeliver(hero, patient) {
     if (!patient || patient.attended) return false;
-    ensureStats();
+    const carry = getCarry(hero);
+    if (!carry || (carry.type && carry.type !== 'PILL')) return false;
+    if (carry?.forPatientId && patient.id) return carry.forPatientId === patient.id;
+    if (carry?.patientId && patient.id) return carry.patientId === patient.id;
+    if (carry?.pairName && patient.keyName) return carry.pairName === patient.keyName;
+    if (carry?.patientName && patient.name) return carry.patientName === patient.name;
+    return false;
+  }
+
+  function clearCarry(hero) {
+    if (hero && hero.carry) hero.carry = null;
+    if (G.carry) G.carry = null;
+    try { W.ArrowGuide?.clearTarget?.(); } catch (_) {}
+  }
+
+  function deliverPill(hero, patient) {
+    if (!patient || patient.attended) return false;
+    const carrier = hero || G.player || null;
+    if (!canDeliver(carrier, patient)) return false;
+    const carry = getCarry(carrier);
+    if (carry?.id && Array.isArray(G.pills)) {
+      G.pills = G.pills.filter((p) => p && p.id !== carry.id);
+    }
+    clearCarry(carrier);
+    const stats = ensureStats();
+    stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
+    patient.state = 'disappear_on_cure';
     patient.attended = true;
     patient.furious = false;
     patient.solid = false;
@@ -238,14 +305,22 @@
     patient.delivered = true;
     patient.pillSatisfied = true;
     if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
-    removeEntity(patient);
-    if (pill) removeEntity(pill);
-    const stats = ensureStats();
-    stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
+    ensurePatientCounters();
+    G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
+    G.patientsCured = (G.patientsCured | 0) + 1;
+    emitPatientsCounter();
     try { W.GameFlowAPI?.notifyPatientDelivered?.(patient); } catch (_) {}
     try { W.ScoreAPI?.addScore?.(100, 'deliver_patient', { patient: patient.displayName }); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+    try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
+    setTimeout(() => removeEntity(patient), 250);
+    try { window.Doors?.openUrgencias?.(); } catch (_) {}
     return true;
+  }
+
+  function deliver(patient, pill, hero) {
+    if (pill) removeEntity(pill);
+    return deliverPill(hero, patient);
   }
 
   function wrongDelivery(patient) {
@@ -283,6 +358,10 @@
     const stats = ensureStats();
     stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
     stats.activeFuriosas = (stats.activeFuriosas || 0) + 1;
+    ensurePatientCounters();
+    G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
+    G.patientsFurious = (G.patientsFurious | 0) + 1;
+    emitPatientsCounter();
     removeEntity(patient);
     let furiosa = null;
     if (W.FuriousAPI && typeof W.FuriousAPI.spawnFromPatient === 'function') {
@@ -323,6 +402,9 @@
     const stats = ensureStats();
     stats.activeFuriosas = Math.max(0, (stats.activeFuriosas || 0) - 1);
     stats.furiosasNeutralized = (stats.furiosasNeutralized || 0) + 1;
+    ensurePatientCounters();
+    G.patientsFurious = Math.max(0, (G.patientsFurious | 0) - 1);
+    emitPatientsCounter();
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
   }
 
@@ -369,6 +451,8 @@
     createPatient,
     createPillForPatient,
     deliver,
+    deliverPill,
+    canDeliver,
     wrongDelivery,
     toFurious: convertToFuriosa,
     onFuriosaNeutralized,
