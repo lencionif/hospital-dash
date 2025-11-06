@@ -176,6 +176,28 @@
       return bell;
     },
 
+    spawnBellNear(patient, opts = {}) {
+      if (!patient) return null;
+      const pad = Number.isFinite(opts.offsetX) ? opts.offsetX : 8;
+      const x = Number.isFinite(opts.x)
+        ? opts.x
+        : (patient.x || 0) + (patient.w || this.TILE || 32) + pad;
+      const y = Number.isFinite(opts.y) ? opts.y : (patient.y || 0);
+      const bell = this.spawnBell(x, y, {
+        ...opts,
+        patient,
+        link: opts.link || patient.id,
+        pairName: opts.pairName || patient.id,
+        forPatientId: patient.id,
+      });
+      if (bell) {
+        bell.forPatientId = patient.id;
+        bell.pairName = bell.pairName || patient.id;
+        bell.anchorPatient = bell.anchorPatient || patient;
+      }
+      return bell;
+    },
+
     // Llamar desde parseMap al ver 'T' (timbre): registra la entidad
     registerBellEntity(bellEnt) {
       // bellEnt: entidad con kind ENT.BELL, x,y,w,h
@@ -338,6 +360,9 @@
   };
 
   window.BellsAPI = BellsAPI;
+  window.spawnBellNear = function (patient, opts) {
+    return BellsAPI.spawnBellNear(patient, opts || {});
+  };
   window.spawnBell = function (x, y, opts) {
     return BellsAPI.spawnBell(x, y, opts || {});
   };

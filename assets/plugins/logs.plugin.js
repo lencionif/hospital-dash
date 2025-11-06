@@ -4,6 +4,22 @@
 (function (W) {
   'use strict';
 
+  W.LOG = W.LOG || {};
+  W.LOG.counter = W.LOG.counter || function counter(_k, _v) {};
+  W.LOG.event = W.LOG.event || function event(_tag, _payload) {};
+
+  function patientsSnapshot() {
+    const G = W.G || {};
+    return {
+      total: G.patientsTotal | 0,
+      pending: G.patientsPending | 0,
+      cured: G.patientsCured | 0,
+      furious: G.patientsFurious | 0,
+    };
+  }
+
+  W.patientsSnapshot = patientsSnapshot;
+
   if (W.LOG && typeof W.LOG.init === 'function' && W.LOG.__hdDiagnostics === true) {
     return; // ya instalado
   }
