@@ -37,17 +37,17 @@
     if (!Number.isFinite(G.patientsFurious)) G.patientsFurious = 0;
   }
 
-  function snapshotCounters() {
-    return (W.patientsSnapshot ? W.patientsSnapshot() : {
+  function counterSnapshot() {
+    return {
       total: G.patientsTotal | 0,
       pending: G.patientsPending | 0,
       cured: G.patientsCured | 0,
       furious: G.patientsFurious | 0
-    });
+    };
   }
 
   function emitPatientsCounter() {
-    try { W.LOG?.event?.('PATIENTS_COUNTER', snapshotCounters()); } catch (_) {}
+    try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
   }
 
   const PILL_SKINS = [
@@ -140,7 +140,7 @@
       G.patientsTotal = (G.patientsTotal | 0) + 1;
       G.patientsPending = (G.patientsPending | 0) + 1;
       emitPatientsCounter();
-      try { W.LOG?.event?.('PATIENT_CREATE', { patient: e.id }); } catch (_) {}
+      try { W.LOG?.event?.('PATIENT_CREATE', { id: e.id }); } catch (_) {}
       e.__creationLogged = true;
     }
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
@@ -176,6 +176,7 @@
       spriteKey: opts.spriteKey || 'patient',
       skin: skinName,
       bellId: null,
+      pillId: null,
       ringing: false
     };
 
@@ -256,6 +257,9 @@
     }
     addEntity(pill);
     if (!G.pills.includes(pill)) G.pills.push(pill);
+    if (patient && !patient.pillId) {
+      patient.pillId = pill.id;
+    }
     try { W.LOG?.event?.('PILL_CREATE', { pill: pill.id, forPatient: patient.id }); } catch (_) {}
     pill.__creationLogged = true;
     return pill;
@@ -463,10 +467,18 @@
     findByKeyName,
     generateSet,
     ensureStats,
-    ensureCollections
+    ensureCollections,
+    counterSnapshot
   };
 
   W.PatientsAPI = PatientsAPI;
+
+  if (typeof W.patientsSnapshot !== 'function') {
+    W.patientsSnapshot = () => counterSnapshot();
+  }
+  if (!W.counterSnapshot) {
+    W.counterSnapshot = () => counterSnapshot();
+  }
 
   W.Entities = W.Entities || {};
   W.Entities.Patient = W.Entities.Patient || {};

@@ -9,6 +9,11 @@
   W.LOG.event = W.LOG.event || function event(_tag, _payload) {};
 
   function patientsSnapshot() {
+    try {
+      if (typeof W.PatientsAPI?.counterSnapshot === 'function') {
+        return W.PatientsAPI.counterSnapshot();
+      }
+    } catch (_) {}
     const G = W.G || {};
     return {
       total: G.patientsTotal | 0,
@@ -655,11 +660,44 @@
   function event(tag, data) {
     record('info', [`[${tag}]`, data], { tag: tag || null, data, source: 'event' });
     const norm = (tag || '').toString().toUpperCase();
-    if (norm === 'SPAWN') {
-      bumpCounter('spawns', 1, 0);
-    } else if (norm === 'DESPAWN') {
-      const next = bumpCounter('spawns', -1, 0);
-      if (next < 0) counter('spawns', 0);
+    switch (norm) {
+      case 'SPAWN':
+        bumpCounter('spawns', 1, 0);
+        break;
+      case 'DESPAWN': {
+        const next = bumpCounter('spawns', -1, 0);
+        if (next < 0) counter('spawns', 0);
+        break;
+      }
+      case 'PILL_PICKUP':
+        bumpCounter('pills.pickup', 1, 0);
+        break;
+      case 'PILL_DELIVER':
+        bumpCounter('pills.deliver', 1, 0);
+        break;
+      case 'BELL_ON':
+        bumpCounter('bells.ringing', 1, 0);
+        break;
+      case 'BELL_OFF': {
+        const next = bumpCounter('bells.ringing', -1, 0);
+        if (next < 0) counter('bells.ringing', 0);
+        break;
+      }
+      case 'PATIENT_CREATE':
+        bumpCounter('patients.total', 1, 0);
+        break;
+      case 'PATIENTS_COUNTER':
+        if (data && typeof data === 'object') {
+          counter('patients.pending', coerceNumber(data.pending, 0));
+          counter('patients.cured', coerceNumber(data.cured, 0));
+          counter('patients.furious', coerceNumber(data.furious, 0));
+          if (Object.prototype.hasOwnProperty.call(data, 'total')) {
+            counter('patients.total', coerceNumber(data.total, 0));
+          }
+        }
+        break;
+      default:
+        break;
     }
     if (data && typeof data === 'object' && data.duplicatePlacement) {
       bumpCounter('duplicates', 1, 0);

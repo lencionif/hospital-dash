@@ -268,10 +268,11 @@
       furious: G?.stats?.activeFuriosas || 0,
     };
     const remaining = snap.pending || 0;
+    const cured = snap.cured || 0;
     const total = snap.total || 0;
     const furiosas = snap.furious || 0;
     const urgOpen = remaining === 0 && furiosas === 0;
-    const r = { x: 12, y: 12, w: 260, h: 64 };
+    const r = { x: 12, y: 12, w: 260, h: 96 };
     ctx.save();
     ctx.globalAlpha = 0.82;
     ctx.fillStyle = '#05070b';
@@ -283,11 +284,13 @@
     ctx.font = 'bold 15px sans-serif';
     ctx.fillStyle = '#e6edf3';
     ctx.textAlign = 'left';
-    ctx.fillText(`Pacientes restantes: ${remaining} / ${total}`, r.x + 12, r.y + 24);
+    ctx.fillText(`Pacientes: ${cured} / ${total}`, r.x + 12, r.y + 24);
+    ctx.fillStyle = '#9aa6b1';
+    ctx.fillText(`Pendientes: ${remaining}`, r.x + 12, r.y + 42);
     ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : '#9aa6b1';
-    ctx.fillText(`Furiosas activas: ${furiosas}`, r.x + 12, r.y + 42);
+    ctx.fillText(`Furiosas activas: ${furiosas}`, r.x + 12, r.y + 60);
     ctx.fillStyle = urgOpen ? '#ffd166' : '#9aa6b1';
-    ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, r.x + 12, r.y + 60);
+    ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, r.x + 12, r.y + 78);
     ctx.restore();
   }
 
@@ -359,6 +362,7 @@
         furious: G.stats?.activeFuriosas || 0,
       };
       const remaining = snap.pending || 0;
+      const cured = snap.cured || 0;
       const total = snap.total || 0;
       const furiosas = snap.furious || 0;
       const urgOpen = remaining === 0 && furiosas === 0;
@@ -369,9 +373,13 @@
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
       ctx.fillStyle = THEME.text;
-      const pacLine = `Pacientes: ${remaining}/${total}`;
+      const pacLine = `Pacientes: ${cured}/${total}`;
       ctx.fillText(pacLine, statsX, statsY);
       let cursor = statsX + ctx.measureText(pacLine).width + 16;
+      ctx.fillStyle = THEME.text;
+      const pendLine = `Pendientes: ${remaining}`;
+      ctx.fillText(pendLine, cursor, statsY);
+      cursor += ctx.measureText(pendLine).width + 16;
       ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : THEME.text;
       const furLine = `Furiosas: ${furiosas}`;
       ctx.fillText(furLine, cursor, statsY);
