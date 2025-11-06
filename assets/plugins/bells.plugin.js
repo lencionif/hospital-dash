@@ -33,6 +33,7 @@
     bells: [], // {e:ENT, patient, nextAt, state:'idle'|'ringing', tLeft}
     now: 0,
     _initialized: false,
+    _boundInteract: null,
 
     init(Gref, opts = {}) {
       this.G = Gref || window.G || (window.G = {});
@@ -48,6 +49,13 @@
       if (!this.G.ENT) this.G.ENT = window.ENT || {};
       if (this.G.ENT && typeof this.G.ENT.BELL === 'undefined') {
         this.G.ENT.BELL = (typeof window.ENT?.BELL !== 'undefined') ? window.ENT.BELL : 'BELL';
+      }
+      if (!Array.isArray(this.G.onInteract)) this.G.onInteract = [];
+      if (!this._boundInteract) {
+        this._boundInteract = () => this.tryInteract();
+      }
+      if (!this.G.onInteract.includes(this._boundInteract)) {
+        this.G.onInteract.push(this._boundInteract);
       }
       this._initialized = true;
       return this;
@@ -152,6 +160,41 @@
       }
     },
 
+    _resolvePatientId(entry) {
+      const patient = entry?.patient;
+      if (!patient) return entry?.e?.forPatientId || entry?.e?.pairName || null;
+      if (typeof patient === 'object') {
+        return patient.id || patient.forPatientId || patient.pairName || patient.keyName || null;
+      }
+      return patient;
+    },
+
+    _logBellOn(entry) {
+      if (!entry || entry._ringingLogged) return;
+      const bell = entry.e;
+      if (!bell) return;
+      const payload = {
+        bell: bell.id || null,
+        patient: this._resolvePatientId(entry),
+        duration: Number.isFinite(entry.tLeft) ? Number(entry.tLeft.toFixed(2)) : this.cfg.ringDuration,
+      };
+      try { window.LOG?.event?.('BELL_ON', payload); } catch (_) {}
+      entry._ringingLogged = true;
+    },
+
+    _logBellOff(entry, reason) {
+      if (!entry || !entry._ringingLogged) return;
+      const bell = entry.e;
+      if (!bell) return;
+      const payload = {
+        bell: bell.id || null,
+        patient: this._resolvePatientId(entry),
+        reason: reason || 'unknown',
+      };
+      try { window.LOG?.event?.('BELL_OFF', payload); } catch (_) {}
+      entry._ringingLogged = false;
+    },
+
     spawnBell(x, y, opts = {}) {
       const bell = this._createBellEntity(x, y, opts);
       if (!bell) return null;
@@ -169,6 +212,7 @@
           entry.state = 'ringing';
           entry.tLeft = Number.isFinite(opts.initialDuration) ? opts.initialDuration : this.cfg.ringDuration;
           this._applyRingingState(entry, true);
+          this._logBellOn(entry);
         } else {
           this._applyRingingState(entry, false);
         }
@@ -202,9 +246,12 @@
     registerBellEntity(bellEnt) {
       // bellEnt: entidad con kind ENT.BELL, x,y,w,h
       const entry = {
-        e: bellEnt, patient: null,
+        e: bellEnt,
+        patient: null,
         nextAt: this._nextTime(this.cfg.ringMin, this.cfg.ringMax),
-        state: 'idle', tLeft: 0
+        state: 'idle',
+        tLeft: 0,
+        _ringingLogged: false,
       };
       this._applyRingingState(entry, false);
       this.bells.push(entry);
@@ -246,6 +293,9 @@
 
         // Si el paciente ya no existe o ya está satisfecho -> desactiva ese timbre
         if (!b.patient || b.patient.dead || b.patient.satisfied) {
+          if (b.state === 'ringing') {
+            this._logBellOff(b, 'satisfied');
+          }
           if (b.patient && typeof b.patient === 'object' && b.patient.bellId === bell.id) {
             b.patient.bellId = null;
           }
@@ -263,6 +313,7 @@
           if (window.AudioAPI) AudioAPI.play(this.cfg.sfxRing, { at: { x: bell.x, y: bell.y }, volume: 0.9 });
           // Visual opcional: marca
           this._applyRingingState(b, true);
+          this._logBellOn(b);
         }
 
         // 2) Si está sonando, cuenta atrás; si llega a 0 -> convertir paciente en furiosa
@@ -274,13 +325,19 @@
           // Si el jugador está cerca y pulsa E -> apaga
           // (la interacción real se hace por tryInteract(); aquí solo el estado)
           if (b.tLeft <= 0) {
-            // TRANSFORMACIÓN a FURIOSA
-            if (window.FuriousAPI) {
-              FuriousAPI.spawnFromPatient(b.patient);
-            } else {
+            this._logBellOff(b, 'timeout');
+            let converted = false;
+            if (window.PatientsAPI?.toFurious) {
+              try { converted = !!window.PatientsAPI.toFurious(b.patient); }
+              catch (err) { console.warn('[Bells] PatientsAPI.toFurious', err); }
+            }
+            if (!converted && window.FuriousAPI) {
+              try { FuriousAPI.spawnFromPatient(b.patient); converted = true; }
+              catch (err) { console.warn('[Bells] FuriousAPI.spawnFromPatient', err); }
+            }
+            if (!converted) {
               this._transformPatientFallback(b.patient);
             }
-            // El paciente desaparece; resetea timbre
             this._applyRingingState(b, false);
             b.patient = null;
             b.state = 'idle';
@@ -309,6 +366,7 @@
           b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);
           b.tLeft = 0;
           this._applyRingingState(b, false);
+          this._logBellOff(b, 'player');
           if (window.AudioAPI) AudioAPI.play(this.cfg.sfxOff, { at: { x: bell.x, y: bell.y }, volume: 0.9 });
           // bonus opcional:
           if (this.G.addScore) this.G.addScore(50);
@@ -323,6 +381,9 @@
       this._ensureInit();
       for (const b of this.bells) {
         if (!b.e || b.e.dead) continue;
+        if (b.state === 'ringing') {
+          this._logBellOff(b, 'phone');
+        }
         b.state = 'idle';
         b.tLeft = 0;
         b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);

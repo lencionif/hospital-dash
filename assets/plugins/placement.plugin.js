@@ -314,13 +314,22 @@
 
 
   // API público
-  function patientsCountersSnapshot() {
+  function counterSnapshot() {
+    try {
+      if (typeof W.PatientsAPI?.counterSnapshot === 'function') {
+        return W.PatientsAPI.counterSnapshot();
+      }
+    } catch (_) {}
     return (window.patientsSnapshot ? window.patientsSnapshot() : {
       total: G.patientsTotal | 0,
       pending: G.patientsPending | 0,
       cured: G.patientsCured | 0,
       furious: G.patientsFurious | 0,
     });
+  }
+
+  if (!W.counterSnapshot) {
+    W.counterSnapshot = counterSnapshot;
   }
 
   function ensurePatientCounters() {
@@ -418,6 +427,7 @@
           }
           const pill = spawnPillFor(patient);
           if (pill) {
+            patient.pillId = pill.id || pill;
             pill.forPatientId = patient.id;
             if (!pill.__creationLogged) {
               try { W.LOG?.event?.('PILL_CREATE', { pill: pill.id, forPatient: patient.id }); } catch (_) {}
@@ -426,16 +436,17 @@
           }
           const bell = spawnBellNear(patient);
           if (bell) {
+            patient.bellId = bell.id || bell;
             bell.forPatientId = patient.id;
             try { W.LOG?.event?.('BELL_CREATE', { bell: bell.id, forPatient: patient.id }); } catch (_) {}
           }
           try { W.GameFlowAPI?.onPatientCreated?.(patient); } catch(_) {}
           if (!patient.__creationLogged) {
-            try { W.LOG?.event?.('PATIENT_CREATE', { patient: patient.id }); } catch (_) {}
+            try { W.LOG?.event?.('PATIENT_CREATE', { id: patient.id }); } catch (_) {}
             patient.__creationLogged = true;
           }
           if (manualIncrement) {
-            try { W.LOG?.event?.('PATIENTS_COUNTER', patientsCountersSnapshot()); } catch (_) {}
+            try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
           }
         }
       }

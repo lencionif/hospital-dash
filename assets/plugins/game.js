@@ -1361,6 +1361,32 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     if (dx || dy) G.lastPushDir = { x: Math.sign(dx || 0), y: Math.sign(dy || 0) };
   }
 
+  function assignCarryFromPill(hero, pill) {
+    if (!pill || pill.dead) return false;
+    const carrier = hero || G.player || null;
+    if (!carrier) return false;
+    if (carrier.carry || G.carry) return false;
+    const carry = {
+      type: 'PILL',
+      id: pill.id,
+      label: pill.label || 'Pastilla',
+      patientName: pill.targetName || pill.patientName || null,
+      pairName: pill.pairName || null,
+      anagram: pill.anagram || null,
+      forPatientId: pill.forPatientId || pill.patientId || null,
+      patientId: pill.patientId || pill.forPatientId || null,
+    };
+    carrier.carry = carry;
+    G.carry = carry;
+    try { window.ArrowGuide?.setTargetByKeyName?.(carry.pairName); } catch (_) {}
+    try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
+    if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
+    if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== pill);
+    if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== pill);
+    pill.dead = true;
+    return true;
+  }
+
   function doAction() {
     const p = G.player;
     if (!p) return;
@@ -1402,6 +1428,28 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
           });
           return;
         }
+      }
+    }
+
+    if (!p.carry && !G.carry) {
+      const range = Math.max(p.w || 0, p.h || 0, (window.TILE_SIZE || window.TILE || 32) * 0.9);
+      let best = null;
+      let bestDist = Infinity;
+      const hx = p.x + (p.w || 0) * 0.5;
+      const hy = p.y + (p.h || 0) * 0.5;
+      const source = Array.isArray(G.pills) && G.pills.length ? G.pills : G.entities;
+      for (const pill of source || []) {
+        if (!pill || pill.dead || pill.kind !== ENT.PILL) continue;
+        const px = pill.x + (pill.w || 0) * 0.5;
+        const py = pill.y + (pill.h || 0) * 0.5;
+        const dist = Math.hypot(px - hx, py - hy);
+        if (dist <= range && dist < bestDist) {
+          best = pill;
+          bestDist = dist;
+        }
+      }
+      if (best && assignCarryFromPill(p, best)) {
+        return;
       }
     }
 
@@ -1565,24 +1613,9 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       for (const e of [...G.entities]) {
         if (!e || e.dead || e.kind !== ENT.PILL) continue;
         if (!AABB(G.player, e)) continue;
-        const carry = {
-          type: 'PILL',
-          id: e.id,
-          label: e.label || 'Pastilla',
-          patientName: e.targetName || e.patientName || null,
-          pairName: e.pairName || null,
-          anagram: e.anagram || null,
-          forPatientId: e.forPatientId || e.patientId || null,
-          patientId: e.patientId || e.forPatientId || null,
-        };
-        if (hero) hero.carry = carry;
-        G.carry = carry;
-        try { window.ArrowGuide?.setTargetByKeyName?.(carry.pairName); } catch (_) {}
-        try { window.LOG?.event?.('PILL_PICKUP', { pill: e.id, for: carry.forPatientId || null }); } catch (_) {}
-        G.entities = G.entities.filter(x => x !== e);
-        G.movers   = G.movers.filter(x => x !== e);
-        G.pills    = (G.pills || []).filter(x => x !== e);
-        break;
+        if (assignCarryFromPill(hero, e)) {
+          break;
+        }
       }
     }
 
@@ -1706,6 +1739,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // enemigos
     runEntityAI(dt);
     updateEntities(dt);
+
+    if (window.BellsAPI?.update) {
+      try { window.BellsAPI.update(dt); }
+      catch (err) { if (dbg) console.warn('[Bells] update error', err); }
+    }
 
     // integración de movimiento centralizada
     MovementSystem.step(dt);
@@ -2161,6 +2199,12 @@ function drawEntities(c2){
       }).bindGame(G);
     } catch (err){
       console.warn('[Physics] init error', err);
+    }
+
+    try {
+      window.BellsAPI?.init?.(G);
+    } catch (err) {
+      console.warn('[Bells] init error', err);
     }
 
     if (G.player && typeof G.player.hp === 'number') {
