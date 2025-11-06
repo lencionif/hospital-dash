@@ -54,19 +54,77 @@
     );
   }
 
+  function preparePlayerState(state){
+    const player = state && state.player;
+    if (!player) return;
+    if (typeof player.health !== 'number'){
+      const halves = (typeof state.health === 'number')
+        ? state.health
+        : (typeof player.hp === 'number') ? player.hp * 2 : 0;
+      player.health = halves * 0.5;
+    }
+    if (typeof player.invulnUntil !== 'number') player.invulnUntil = 0;
+  }
+
+  function applyDamageToPlayer(state, amount, meta = {}){
+    if (!state || typeof amount !== 'number') return false;
+    const player = state.player;
+    if (!player) return false;
+    const now = getNow();
+    if (!meta.ignoreInvuln && typeof player.invulnUntil === 'number' && now < player.invulnUntil) return false;
+
+    const base = (typeof player.health === 'number')
+      ? player.health
+      : (typeof player.hp === 'number')
+        ? player.hp
+        : (typeof state.health === 'number') ? state.health * 0.5 : 0;
+
+    const newHealth = Math.max(0, base - amount);
+    player.health = newHealth;
+    if (typeof player.hp === 'number') player.hp = Math.max(0, newHealth);
+    state.health = Math.max(0, Math.round(newHealth * 2));
+
+    const invuln = (typeof meta.invuln === 'number') ? Math.max(0, meta.invuln) : 1.0;
+    player.invulnUntil = now + invuln;
+    if (typeof player.invuln === 'number') player.invuln = Math.max(player.invuln, invuln);
+    else player.invuln = invuln;
+
+    if (meta.knockbackFrom){
+      knockback(player, meta.knockbackFrom, meta.knockbackPower);
+    }
+
+    try {
+      window.LOG?.event?.('HIT', {
+        attacker: meta.attackerId || meta.attacker?.id || meta.source || 'UNKNOWN',
+        target: player.id || 'PLAYER',
+        amount,
+        source: meta.source || (meta.attacker?.kindName || meta.attacker?.kind || 'unknown')
+      });
+    } catch (_) {}
+
+    if (typeof meta.onDamage === 'function'){
+      try { meta.onDamage(); } catch (_) {}
+    }
+
+    return true;
+  }
+
   Damage.update = function(state, dt){
     state = ensureState(state);
     const player = state.player;
     if (!player) return;
 
-    if (typeof player.health !== 'number'){
-      const halves = typeof state.health === 'number' ? state.health : (typeof player.hp === 'number' ? player.hp * 2 : 0);
-      player.health = halves * 0.5;
-    }
-    if (typeof player.invulnUntil !== 'number') player.invulnUntil = 0;
+    preparePlayerState(state);
 
     const entities = Array.isArray(state.entities) ? state.entities : [];
     const now = getNow();
+
+    if (window.FireAPI?.update){
+      try { window.FireAPI.update(dt); }
+      catch (err) {
+        if (window.DEBUG_FORCE_ASCII) console.warn('[Fire] update error', err);
+      }
+    }
 
     for (const ent of entities){
       if (!ent || ent.dead) continue;
@@ -76,37 +134,46 @@
       const key = getId(ent);
       const nextHit = cooldownById.get(key) || 0;
       if (now < nextHit) continue;
-      if (now < player.invulnUntil) continue;
-
-      const base = (typeof player.health === 'number')
-        ? player.health
-        : (typeof player.hp === 'number') ? player.hp : ((typeof state.health === 'number') ? state.health * 0.5 : 0);
-      const newHealth = Math.max(0, base - 0.5);
-      player.health = newHealth;
-      if (typeof player.hp === 'number'){
-        player.hp = Math.max(0, newHealth);
-      }
-      state.health = Math.max(0, Math.round(newHealth * 2));
-      cooldownById.set(key, now + 1.0);
-      player.invulnUntil = now + 1.0;
-      if (typeof player.invuln === 'number'){
-        player.invuln = Math.max(player.invuln, 1.0);
-      } else {
-        player.invuln = 1.0;
-      }
-
-      if (ent && typeof ent.x === 'number'){
-        knockback(player, ent);
-      }
-
-      window.LOG?.event?.('HIT', {
-        attacker: ent.id || key,
-        target: player.id || 'PLAYER',
-        amount: 0.5,
+      const applied = applyDamageToPlayer(state, 0.5, {
+        attacker: ent,
+        attackerId: ent.id || key,
+        source: ent.kindName || ent.kind || 'enemy',
+        invuln: 1.0,
+        knockbackFrom: ent
       });
-
+      if (!applied) continue;
+      cooldownById.set(key, now + 1.0);
       if (window.DEBUG_FORCE_ASCII){
-        console.log('[Damage] hit by', ent.kindName || ent.kind || key, 'hp=', player.health.toFixed(2));
+        console.log('[Damage] hit by', ent.kindName || ent.kind || key, 'hp=', (player.health ?? 0).toFixed(2));
+      }
+    }
+
+    const fires = window.FireAPI?.getActive?.();
+    if (Array.isArray(fires) && fires.length){
+      for (const fire of fires){
+        if (!fire || fire.dead) continue;
+        if (!aabb(player, fire)){
+          fire._damageTimer = 0;
+          continue;
+        }
+        const tick = typeof fire.tick === 'number' ? Math.max(0.05, fire.tick) : 0.4;
+        fire._damageTimer = (fire._damageTimer || 0) + dt;
+        if (fire._damageTimer < tick) continue;
+        const amount = typeof fire.damage === 'number'
+          ? fire.damage
+          : (typeof fire.dps === 'number' ? fire.dps * tick : 0.5);
+        const invuln = (typeof fire.invuln === 'number') ? Math.max(0, fire.invuln) : Math.max(0.2, tick * 0.75);
+        const applied = applyDamageToPlayer(state, amount, {
+          attacker: fire,
+          attackerId: fire.id || 'FIRE',
+          source: 'fire',
+          invuln
+        });
+        if (applied){
+          fire._damageTimer -= tick;
+        } else {
+          fire._damageTimer = tick; // intenta de nuevo al acabar la invulnerabilidad
+        }
       }
     }
   };

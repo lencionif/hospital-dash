@@ -16,15 +16,27 @@
     friction: 0.04,
     slideFriction: 0.018,
     crushImpulse: 110,
-    hurtImpulse: 45
+    hurtImpulse: 45,
+    fireImpulse: 240,
+    fireMinMass: 2.5,
+    fireCooldown: 0.4,
+    fireTTL: 4.0,
+    fireExtraTTL: 3.0,
+    fireDamage: 0.5,
+    fireTick: 0.4
   };
 
   function createPhysics(options = {}) {
     const CFG = Object.assign({}, DEFAULTS, options || {});
     let G = null;
     let TILE = window.TILE_SIZE || 32;
+    let lastFireSpawn = -Infinity;
 
     const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
+
+    const nowSeconds = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? (performance.now() / 1000)
+      : (Date.now() / 1000);
 
     const updateTileSize = () => {
       TILE = window.TILE_SIZE || TILE;
@@ -138,6 +150,41 @@
       return 1 / Math.max(0.0001, mass);
     }
 
+    function massOf(e){
+      if (!e) return 0;
+      if (typeof e.mass === 'number') return e.mass;
+      const inv = inverseMass(e);
+      if (!isFinite(inv) || inv <= 0) return e && e.static ? Infinity : 0;
+      return 1 / inv;
+    }
+
+    function maybeSpawnImpactFire(x, y, impulse, meta = {}){
+      const fireAPI = window.FireAPI || window.Entities?.Fire;
+      if (!fireAPI) return;
+      const spawnImpact = typeof fireAPI.spawnImpact === 'function' ? fireAPI.spawnImpact : null;
+      const spawn = typeof fireAPI.spawn === 'function' ? fireAPI.spawn : null;
+      if (!spawnImpact && !spawn) return;
+      const minImpulse = CFG.fireImpulse ?? DEFAULTS.fireImpulse ?? 0;
+      if (!(impulse >= minImpulse)) return;
+      const cooldown = CFG.fireCooldown ?? DEFAULTS.fireCooldown ?? 0;
+      const now = nowSeconds();
+      if (cooldown > 0 && now - lastFireSpawn < cooldown) return;
+      lastFireSpawn = now;
+      if (spawnImpact){
+        spawnImpact.call(fireAPI, x, y, impulse, Object.assign({ threshold: minImpulse }, meta));
+        return;
+      }
+      if (spawn){
+        const base = Math.max(minImpulse, 1);
+        const extraRatio = Math.max(0, (impulse - minImpulse) / base);
+        const ttl = (meta.ttl ?? (CFG.fireTTL ?? DEFAULTS.fireTTL ?? 4)) +
+          (CFG.fireExtraTTL ?? DEFAULTS.fireExtraTTL ?? 0) * Math.min(extraRatio, 3);
+        const damage = meta.damage ?? ((CFG.fireDamage ?? DEFAULTS.fireDamage ?? 0.5) * (1 + Math.min(extraRatio, 2) * 0.5));
+        const tick = meta.tick ?? (CFG.fireTick ?? DEFAULTS.fireTick ?? 0.4);
+        spawn.call(fireAPI, x, y, Object.assign({}, meta, { ttl, damage, tick, impulse }));
+      }
+    }
+
     function applyImpulse(e, ix, iy){
       if (!e || e.static) return;
       const limit = (CFG.crushImpulse ?? DEFAULTS.crushImpulse) / Math.max(1, e.mass || 1);
@@ -160,10 +207,15 @@
       const mu = (e.mu != null) ? e.mu : 0;
       const fr = base * (1 - mu);
       const wr = Math.max(CFG.restitution, e.rest || 0);
+      const entMass = massOf(e);
+      const minFireMass = CFG.fireMinMass ?? DEFAULTS.fireMinMass ?? 0;
+      const allowFireSpawn = !e.static && (Number.isFinite(entMass) ? entMass : minFireMass) >= minFireMass;
       let nx = e.x, ny = e.y;
       for (let i = 0; i < sub; i++){
-        const sx = (e.vx || 0) / sub;
-        const sy = (e.vy || 0) / sub;
+        const vxStep = e.vx || 0;
+        const vyStep = e.vy || 0;
+        const sx = vxStep / sub;
+        const sy = vyStep / sub;
         const pad = (G && e === G.player) ? 6 : 4;
         const cw = Math.max(2, (e.w - pad * 2));
         const ch = Math.max(2, (e.h - pad * 2));
@@ -171,6 +223,17 @@
         if (!isWall(tryX + pad, ny + pad, cw, ch)){
           nx = tryX;
         } else {
+          if (allowFireSpawn && Math.abs(vxStep) > 0.01){
+            const massFactor = Number.isFinite(entMass) ? Math.max(entMass, 1) : Math.max(minFireMass, 1);
+            const contactX = vxStep > 0 ? nx + e.w : nx;
+            const contactY = ny + e.h * 0.5;
+            maybeSpawnImpactFire(contactX, contactY, Math.abs(vxStep) * massFactor, {
+              type: 'wall',
+              axis: 'x',
+              normal: { x: vxStep > 0 ? 1 : -1, y: 0 },
+              entity: e
+            });
+          }
           const v = -(e.vx || 0) * wr;
           e.vx = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vx || 1);
@@ -180,6 +243,17 @@
         if (!isWall(nx + pad, tryY + pad, cw, ch)){
           ny = tryY;
         } else {
+          if (allowFireSpawn && Math.abs(vyStep) > 0.01){
+            const massFactor = Number.isFinite(entMass) ? Math.max(entMass, 1) : Math.max(minFireMass, 1);
+            const contactY = vyStep > 0 ? ny + e.h : ny;
+            const contactX = nx + e.w * 0.5;
+            maybeSpawnImpactFire(contactX, contactY, Math.abs(vyStep) * massFactor, {
+              type: 'wall',
+              axis: 'y',
+              normal: { x: 0, y: vyStep > 0 ? 1 : -1 },
+              entity: e
+            });
+          }
           const v = -(e.vy || 0) * wr;
           e.vy = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vy || 1);
@@ -261,6 +335,27 @@
             const ix = j * nx, iy = j * ny;
             a.vx += ix * invA; a.vy += iy * invA;
             b.vx -= ix * invB; b.vy -= iy * invB;
+            const impact = Math.abs(j);
+            if (impact > 0){
+              const minMass = CFG.fireMinMass ?? DEFAULTS.fireMinMass ?? 0;
+              const massA = a.static ? 0 : massOf(a);
+              const massB = b.static ? 0 : massOf(b);
+              const heavy = Math.max(
+                Number.isFinite(massA) ? massA : 0,
+                Number.isFinite(massB) ? massB : 0
+              );
+              if (heavy >= minMass){
+                const contactX = (ax + bx) * 0.5;
+                const contactY = (ay + by) * 0.5;
+                const axis = Math.abs(nx) > Math.abs(ny) ? 'x' : 'y';
+                maybeSpawnImpactFire(contactX, contactY, impact, {
+                  type: 'entity',
+                  axis,
+                  normal: { x: nx, y: ny },
+                  entities: [a, b]
+                });
+              }
+            }
           }
           if (isWall(a.x, a.y, a.w, a.h)) snapInsideMap(a);
           if (isWall(b.x, b.y, b.w, b.h)) snapInsideMap(b);
