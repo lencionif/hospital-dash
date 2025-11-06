@@ -460,7 +460,7 @@
 
 // === Instanciador NUCLEO único para placements del MapGen ===
 
-window.applyPlacementsFromMapgen = function(arr, ctx){
+function applyPlacementsFromMapgen(arr, ctx){
   const W = window;
   const G = ctx?.G || W.G || (W.G = {});
   if (ctx?.G && W.G !== ctx.G) {
@@ -869,9 +869,9 @@ function ensureOnLists(e){
   }
   try { window.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
   return { applied: true, before, after, delta };
-};
+}
 
-window.applyPlacementsFromMapGen = window.applyPlacementsFromMapgen;
+window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
 
   function resolvePlacementList(levelCfg, G) {
     if (Array.isArray(levelCfg?.placements) && levelCfg.placements.length) {
@@ -928,7 +928,7 @@ window.applyPlacementsFromMapGen = window.applyPlacementsFromMapgen;
         G.__allowASCIIPlacements = true;
       }
       window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__ = true;
-      result = window.applyPlacementsFromMapgen(list, { G, mode });
+      result = applyPlacementsFromMapgen(list, { G, mode });
     } finally {
       delete window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__;
       if (allowAscii) {
@@ -967,6 +967,21 @@ window.applyPlacementsFromMapGen = window.applyPlacementsFromMapgen;
     shouldRun: placementShouldRun,
     summarize: summarizePlacements
   };
+
+  window.applyPlacementsFromMapGen = (arg0, arg1) => {
+    if (Array.isArray(arg0)) {
+      return applyPlacementsFromMapgen(arg0, arg1);
+    }
+    if (typeof arg0 === 'string') {
+      const cfg = (arg1 && typeof arg1 === 'object') ? { ...arg1, ascii: arg0 } : { ascii: arg0 };
+      return window.Placement.applyFromAsciiMap(cfg);
+    }
+    if (arg0 && typeof arg0 === 'object') {
+      return window.Placement.applyFromAsciiMap(arg0);
+    }
+    return window.Placement.applyFromAsciiMap({});
+  };
+  window.shouldRunPlacement = (cfg) => window.Placement.shouldRun(cfg);
 
   // === Hotkeys debug ===
   window.addEventListener('keydown', (ev)=>{
