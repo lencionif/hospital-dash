@@ -857,7 +857,19 @@ window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
     summarize: summarizePlacements
   };
 
-  window.applyPlacementsFromMapGen = (cfg) => window.Placement.applyFromAsciiMap(cfg);
+  window.applyPlacementsFromMapGen = (arg0, arg1) => {
+    if (Array.isArray(arg0)) {
+      return applyPlacementsFromMapgen(arg0, arg1);
+    }
+    if (typeof arg0 === 'string') {
+      const cfg = (arg1 && typeof arg1 === 'object') ? { ...arg1, ascii: arg0 } : { ascii: arg0 };
+      return window.Placement.applyFromAsciiMap(cfg);
+    }
+    if (arg0 && typeof arg0 === 'object') {
+      return window.Placement.applyFromAsciiMap(arg0);
+    }
+    return window.Placement.applyFromAsciiMap({});
+  };
   window.shouldRunPlacement = (cfg) => window.Placement.shouldRun(cfg);
 
   // === Hotkeys debug ===
