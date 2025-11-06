@@ -200,6 +200,9 @@
       ringing: false
     };
 
+    if (!patient.id) patient.id = (Math.random() * 1e9) | 0;
+    patient.state = patient.state || 'idle_bed';
+
     try {
       const puppet = window.Puppet?.bind?.(patient, 'patient_bed', { z: 0, scale: 1, data: { skin: patient.skin } })
         || W.PuppetAPI?.attach?.(patient, { rig: 'patient_bed', z: 0, scale: 1, data: { skin: patient.skin } });
@@ -210,6 +213,32 @@
 
     addEntity(patient);
     registerPatient(patient);
+
+    const prevOnCure = patient.onCure;
+    patient.onCure = function () {
+      ensurePatientCounters();
+      const store = G.patients || {};
+      const snapshot = (typeof W.patientsSnapshot === 'function') ? W.patientsSnapshot() : null;
+      if (snapshot) {
+        store.total = snapshot.total | 0;
+        store.pending = snapshot.pending | 0;
+        store.cured = snapshot.cured | 0;
+        store.furious = snapshot.furious | 0;
+      } else {
+        store.pending = Math.max(0, (store.pending | 0) - 1);
+        store.cured = (store.cured | 0) + 1;
+      }
+      patient.disappear_on_cure = true;
+      patient.dead = true;
+      patient.attended = true;
+      patient.solid = false;
+      patient.furious = false;
+      if (typeof prevOnCure === 'function') {
+        try { prevOnCure.apply(patient, arguments); } catch (_) {}
+      }
+      try { syncPatientArrayCounters(); } catch (_) {}
+    };
+
     return patient;
   }
 

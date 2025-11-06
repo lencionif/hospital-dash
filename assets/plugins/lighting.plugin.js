@@ -12,6 +12,8 @@
   const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
   const ALPHA_HERO = 0.60;
   const ALPHA_NPC  = 0.45;
+  const HERO_RADIUS_FACTOR = 6.5;
+  const RATIO_NPC = 0.55;
 
   // ─────────────────────────────────────────────────────
   // LightingAPI
@@ -139,6 +141,8 @@
     render(camera, G){
           if(!this._c || !this._ctx){ return; }
           this._resize();
+          const tileSize = this._tile || (W.TILE_SIZE || W.TILE || 32);
+          const heroRadiusWorld = HERO_RADIUS_FACTOR * tileSize;
           const ctx=this._ctx, w=this._w, h=this._h;
 
           // 0) limpiar buffer siempre
@@ -197,7 +201,20 @@
               const py=(L.y - camera.y)*camera.zoom + h/2;
               if (!isFinite(px) || !isFinite(py)) continue;
 
-              const worldRadius = Math.max(8, (L.radius||160));
+              const ownerEntity = (typeof L.owner === 'object') ? L.owner : null;
+              const isHeroLight = L.type === 'player' || L.isHero === true || ownerEntity === (G?.player || null);
+              const isNPCLight = !isHeroLight && (
+                L.type === 'npc' ||
+                ownerEntity?.tag === 'npc' ||
+                ownerEntity?.kind === (W.ENT?.NPC) ||
+                (L.owner && typeof L.owner !== 'object')
+              );
+              let worldRadius = Math.max(8, (L.radius || (isHeroLight ? heroRadiusWorld : 160)));
+              if (isHeroLight) {
+                worldRadius = Math.max(worldRadius, heroRadiusWorld);
+              } else if (isNPCLight) {
+                worldRadius = Math.max(worldRadius, heroRadiusWorld * RATIO_NPC);
+              }
               const radius = worldRadius * camera.zoom;
               const baseSoft = (typeof L.softness === 'number') ? L.softness : 0.72;
               const softness = clamp(baseSoft, 0.05, 0.95);
@@ -208,6 +225,8 @@
 
               let intensity = (typeof L.intensity === 'number') ? clamp(L.intensity,0,1)
                 : (typeof L.baseIntensity === 'number' ? clamp(L.baseIntensity,0,1) : 0.6);
+
+              const npcColor = isNPCLight ? npcLightColorFor(ownerEntity, L) : null;
 
               if (Array.isArray(L.flickerRange)){
                 const [lo,hi] = L.flickerRange;
@@ -229,9 +248,24 @@
               }
 
               const baseColor = resolveColor(L, intensity, t);
+              const tintColor = npcColor || baseColor;
 
               ctx.save();
               ctx.translate(px,py);
+
+              let alphaMul = 1;
+              if (isHeroLight) alphaMul = ALPHA_HERO;
+              else if (isNPCLight) alphaMul = ALPHA_NPC;
+
+              if (L.broken || L.isBroken) {
+                if (L._brokenSeed == null) L._brokenSeed = Math.random() * Math.PI * 2;
+                const flickNow = (typeof performance !== 'undefined' && performance.now)
+                  ? performance.now() : Date.now();
+                const flicker = (0.75 + 0.25 * Math.sin(flickNow * 0.003 * 7 + L._brokenSeed)) * 0.7;
+                alphaMul *= flicker;
+              }
+
+              ctx.globalAlpha *= clamp(alphaMul, 0, 1);
 
               if (L.coneDeg>0){
                 const dist = Math.max(radius, 24);
@@ -239,8 +273,8 @@
                 const gx = dist * 0.70;
                 const ry = dist * 0.42;
                 const g = ctx.createRadialGradient(gx,0,innerRad, gx,0, dist);
-                g.addColorStop(0, applyIntensity(baseColor, intensity));
-                g.addColorStop(1, applyIntensity(baseColor, 0));
+                g.addColorStop(0, applyIntensity(tintColor, intensity));
+                g.addColorStop(1, applyIntensity(tintColor, 0));
                 ctx.fillStyle = g;
 
                 const ang = (typeof dir === 'number' && isFinite(dir)) ? dir : 0;
@@ -254,8 +288,8 @@
                 ctx.fill();
               } else {
                 const g = ctx.createRadialGradient(0,0,innerRad, 0,0, radius);
-                g.addColorStop(0, applyIntensity(baseColor, intensity));
-                g.addColorStop(1, applyIntensity(baseColor, 0));
+                g.addColorStop(0, applyIntensity(tintColor, intensity));
+                g.addColorStop(1, applyIntensity(tintColor, 0));
                 ctx.fillStyle = g;
                 ctx.beginPath();
                 ctx.arc(0,0,radius,0,TAU);
@@ -272,14 +306,23 @@
               const px=(L.x - camera.x)*camera.zoom + w/2;
               const py=(L.y - camera.y)*camera.zoom + h/2;
               const ang= +L.angle || 0;
-              const dist = Math.max(24, (L.dist||600)) * camera.zoom;
+              const isHeroFlash = L.isHero || L.type === 'player';
+              const baseFlashRadius = isHeroFlash ? heroRadiusWorld : heroRadiusWorld * RATIO_NPC;
+              const dist = Math.max(24, (L.dist || baseFlashRadius)) * camera.zoom;
               const fov  = Math.max(0.05, Math.min(Math.PI, L.fov || Math.PI*0.5));
               const soft = Math.max(0.05, Math.min(0.95, L.softness || 0.7));
 
               ctx.save();
               ctx.translate(px,py);
               ctx.rotate(ang + Math.PI);
-              ctx.globalAlpha = L.isHero ? ALPHA_HERO : ALPHA_NPC;
+              let flashAlpha = L.isHero ? ALPHA_HERO : ALPHA_NPC;
+              if (L.isBroken) {
+                if (L._brokenSeed == null) L._brokenSeed = Math.random() * Math.PI * 2;
+                const flickNow = (typeof performance !== 'undefined' && performance.now)
+                  ? performance.now() : Date.now();
+                flashAlpha *= (0.75 + 0.25 * Math.sin(flickNow * 0.003 * 7 + L._brokenSeed)) * 0.7;
+              }
+              ctx.globalAlpha = clamp(flashAlpha, 0, 1);
 
               const rx = dist * 1.00, ry = dist * 0.42;
               const gx = rx * 0.70;
@@ -353,6 +396,37 @@
       return bossColor(t, intensity);
     }
     return col || '#fff2c0';
+  }
+
+  function npcLightColorFor(owner, light){
+    const tokens = [];
+    const collect = (value) => {
+      if (typeof value === 'string' && value) tokens.push(value.toLowerCase());
+    };
+    if (owner) {
+      collect(owner.npcType);
+      collect(owner.type);
+      collect(owner.role);
+      collect(owner.sub);
+      collect(owner.name);
+      collect(owner.spriteKey);
+      collect(owner.skin);
+      collect(owner.key);
+    }
+    if (light) {
+      collect(light.npcType);
+      collect(light.type);
+      collect(light.kind);
+      collect(light.ownerType);
+      collect(light.tag);
+    }
+    if (!tokens.length) return null;
+    const joined = tokens.join(' ');
+    if (joined.includes('medico') || joined.includes('doctor')) return '#6bd3ff';
+    if (joined.includes('jefe') || joined.includes('chief')) return '#ffd46b';
+    if (joined.includes('guard')) return '#b9ff6b';
+    if (joined.includes('familiar')) return '#ff6b9a';
+    return null;
   }
 
   W.LightingAPI = LightingAPI;

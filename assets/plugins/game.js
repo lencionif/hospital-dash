@@ -1622,36 +1622,34 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
     // 2) Entregar al paciente correcto tocándolo (ENT.PATIENT)
     const carrying = hero?.carry || G.carry;
-    if (carrying) {
+    const carryingPill = carrying && (carrying.kind === 'PILL' || carrying.type === 'PILL');
+    if (carryingPill) {
       for (const pac of [...G.patients]) {
         if (!pac || pac.dead || pac.attended) continue;
         if (!nearAABB(G.player, pac, 12)) continue;
+        const targetId = pac.id;
+        const pillMatchesId = (carrying.patientId != null && targetId != null)
+          ? carrying.patientId === targetId || carrying.forPatientId === targetId
+          : false;
+        if (!pillMatchesId) {
+          window.PatientsAPI?.wrongDelivery?.(pac);
+          break;
+        }
         const delivered = window.PatientsAPI?.deliverPill?.(hero, pac);
         if (delivered) {
+          if (hero) hero.carry = null;
           G.carry = null;
+          try { pac.onCure?.(); } catch (_) {}
           G.delivered = (G.delivered || 0) + 1;
           const stats = G.stats || {};
-          const pending = (window.patientsSnapshot ? window.patientsSnapshot().pending : stats.remainingPatients || 0);
-          const furious = (window.patientsSnapshot ? window.patientsSnapshot().furious : stats.activeFuriosas || 0);
+          const snapshot = typeof window.patientsSnapshot === 'function' ? window.patientsSnapshot() : null;
+          const pending = snapshot ? snapshot.pending : (stats.remainingPatients || 0);
+          const furious = snapshot ? snapshot.furious : (stats.activeFuriosas || 0);
           if (pending === 0 && furious === 0) {
             try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
           }
-          break;
         }
-        const canDeliverFn = window.PatientsAPI?.canDeliver;
-        if (typeof canDeliverFn === 'function') {
-          if (!canDeliverFn(hero, pac)) {
-            window.PatientsAPI?.wrongDelivery?.(pac);
-            break;
-          }
-        } else {
-          const matchesKey = carrying.pairName && pac.keyName && pac.keyName === carrying.pairName;
-          const matchesName = !carrying.pairName && carrying.patientName && pac.name === carrying.patientName;
-          if (!matchesKey && !matchesName) {
-            window.PatientsAPI?.wrongDelivery?.(pac);
-            break;
-          }
-        }
+        break;
       }
     }
   }
@@ -2235,11 +2233,15 @@ function drawEntities(c2){
     initSpawnersForLevel();
 
     try {
-      Physics.init({
+      const basePhys = (window.Physics && (window.Physics.PHYS || window.Physics.DEFAULTS)) || {
         restitution: 0.18,
-        friction: 0.04,
-        slideFriction: 0.018
-      }).bindGame(G);
+        friction: 0.045,
+        slideFriction: 0.020,
+        crushImpulse: 110,
+        hurtImpulse: 45,
+        explodeImpulse: 170
+      };
+      window.Physics?.init?.(basePhys)?.bindGame(G);
     } catch (err){
       console.warn('[Physics] init error', err);
     }

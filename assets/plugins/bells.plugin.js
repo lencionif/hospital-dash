@@ -158,6 +158,9 @@
           if (patient.ringDeadline) patient.ringDeadline = 0;
         }
       }
+      if (entry.e) {
+        entry.e.on = !!ringing;
+      }
     },
 
     _resolvePatientId(entry) {
