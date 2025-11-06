@@ -29,6 +29,25 @@
     results: null,
   };
 
+  const REQUIRED_PLACEMENT_KEYS = [
+    'HERO',
+    'DOOR_URGENCIAS',
+    'BOSS',
+    'CART',
+    'ELEVATOR',
+    'PATIENT',
+    'NPC_MEDICO',
+    'NPC_JEFE',
+    'NPC_GUARDIA',
+    'NPC_FAMILIAR',
+    'NPC_ENFERMERA',
+    'ENEMY_RAT',
+    'ENEMY_MOSQUITO',
+    'LIGHT_NORMAL',
+    'LIGHT_BROKEN',
+    'LIGHT_BOSS'
+  ];
+
   function ensureOverlay() {
     if (state.overlay) return state.overlay;
     const styleId = 'qa-autotest-style';
@@ -155,6 +174,7 @@
   function classifyEntityForTest(ent) {
     if (!ent) return 'OTHER';
     const G = getGame();
+    const ENT = W.ENT || {};
     const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
     if (ent === G.player || matchesKind(ent, 'PLAYER') || rig.startsWith('hero_')) return 'HERO';
     if (matchesKind(ent, 'BOSS') || ent.isBoss === true || rig.startsWith('boss')) return 'BOSS';
@@ -164,6 +184,19 @@
     if (matchesKind(ent, 'PATIENT') || ent.isPatient || rig.includes('patient')) return 'PATIENT';
     if (rig === 'npc_medico' || matchesKind(ent, 'MEDIC')) return 'NPC_MEDICO';
     if (rig === 'npc_jefe_servicio' || rig === 'npc_supervisora' || matchesKind(ent, 'CHIEF') || matchesKind(ent, 'SUPERVISORA')) return 'NPC_JEFE';
+    if (rig.includes('guardia') || matchesKind(ent, 'GUARDIA')) return 'NPC_GUARDIA';
+    if (rig.includes('familiar') || matchesKind(ent, 'FAMILIAR')) return 'NPC_FAMILIAR';
+    if (rig.includes('enfermera') || matchesKind(ent, 'ENFERMERA')) return 'NPC_ENFERMERA';
+    if (ent.kind === ENT.LIGHT || matchesKind(ent, 'LIGHT')) {
+      const explicit = ent.qaLightKind;
+      if (explicit) return explicit;
+      const ctor = (ent.constructor && ent.constructor.name ? ent.constructor.name.toLowerCase() : '');
+      const puppetData = ent.puppet?.data || {};
+      const broken = puppetData.broken === true;
+      if (ctor.includes('boss')) return 'LIGHT_BOSS';
+      if (broken) return 'LIGHT_BROKEN';
+      return 'LIGHT_NORMAL';
+    }
     if (matchesKind(ent, 'RAT') || rig === 'rat') return 'ENEMY_RAT';
     if (matchesKind(ent, 'MOSQUITO') || rig === 'mosquito') return 'ENEMY_MOSQUITO';
     return 'OTHER';
@@ -175,32 +208,48 @@
     const counts = {};
     for (const item of raw) {
       if (!item) continue;
-      let key = null;
-      if (typeof W.classifyKind === 'function') {
-        key = W.classifyKind(item.type || item.kind || item.k, item);
-      } else {
-        key = String(item.type || item.kind || item.k || '').toUpperCase();
+      const type = String(item.type || item.kind || item.k || '').toLowerCase();
+      const key = (typeof W.classifyKind === 'function')
+        ? W.classifyKind(item.type || item.kind || item.k, item)
+        : String(item.type || item.kind || item.k || '').toUpperCase();
+      if (type === 'light') {
+        const bucket = item.broken ? 'LIGHT_BROKEN' : 'LIGHT_NORMAL';
+        counts[bucket] = (counts[bucket] || 0) + 1;
+        continue;
+      }
+      if (type === 'boss_light') {
+        counts.LIGHT_BOSS = (counts.LIGHT_BOSS || 0) + 1;
+        continue;
+      }
+      if ((type === 'npc' || type === 'npc_unique') && key && key.startsWith('NPC_')) {
+        counts[key] = (counts[key] || 0) + 1;
+        continue;
       }
       if (!key) continue;
       counts[key] = (counts[key] || 0) + 1;
     }
-    const mapped = {};
+    const mapped = Object.fromEntries(REQUIRED_PLACEMENT_KEYS.map((k) => [k, 0]));
     mapped.HERO = counts.HERO || 0;
     mapped.BOSS = counts.BOSS || 0;
     mapped.CART = counts.CART || 0;
-    mapped.DOOR_URGENCIAS = (counts.DOOR || 0);
+    mapped.DOOR_URGENCIAS = counts.DOOR || 0;
     mapped.ELEVATOR = counts.ELEVATOR || 0;
     mapped.PATIENT = counts.PATIENT || 0;
     mapped.NPC_MEDICO = counts.NPC_MEDICO || 0;
     mapped.NPC_JEFE = counts.NPC_CHIEF || 0;
+    mapped.NPC_GUARDIA = counts.NPC_GUARDIA || 0;
+    mapped.NPC_FAMILIAR = counts.NPC_FAMILIAR || 0;
+    mapped.NPC_ENFERMERA = counts.NPC_ENFERMERA || 0;
     mapped.ENEMY_RAT = counts.RAT || 0;
     mapped.ENEMY_MOSQUITO = counts.MOSQUITO || 0;
+    mapped.LIGHT_NORMAL = counts.LIGHT_NORMAL || 0;
+    mapped.LIGHT_BROKEN = counts.LIGHT_BROKEN || 0;
+    mapped.LIGHT_BOSS = counts.LIGHT_BOSS || 0;
     return mapped;
   }
 
   function checkPlacements() {
-    const requiredKeys = ['HERO','DOOR_URGENCIAS','BOSS','CART','ELEVATOR','PATIENT','NPC_MEDICO','NPC_JEFE','ENEMY_RAT','ENEMY_MOSQUITO'];
-    const counts = Object.fromEntries(requiredKeys.map((k) => [k, 0]));
+    const counts = Object.fromEntries(REQUIRED_PLACEMENT_KEYS.map((k) => [k, 0]));
     const asciiCounts = collectAsciiCounts();
     const entities = collectEntities();
     for (const ent of entities) {
@@ -209,10 +258,9 @@
         counts[key] += 1;
       }
     }
-    // Ajusta elevadores si no hay en ASCII
     const missing = [];
     const duplicates = [];
-    for (const key of requiredKeys) {
+    for (const key of REQUIRED_PLACEMENT_KEYS) {
       const ascii = asciiCounts[key] || 0;
       const actual = counts[key] || 0;
       const requiredMin = (key === 'ELEVATOR' && ascii === 0) ? 0 : 1;

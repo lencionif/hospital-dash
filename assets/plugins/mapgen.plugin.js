@@ -818,10 +818,73 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     return base[i % base.length];
   }
 
+  function generateLegendPreset(options={}) {
+    const width = 20;
+    const height = 12;
+    const asciiRows = Array.from({ length: height }, (_, y) => (
+      Array.from({ length: width }, (_, x) => {
+        if (y === 0 || y === height - 1 || x === 0 || x === width - 1) return '#';
+        return '.';
+      })
+    ));
+    asciiRows[1][1] = 'S';
+
+    const placements = [
+      { type: 'door', x: 10, y: 5, locked: true, _units: 'tile' },
+      { type: 'elevator', x: 4, y: 8, active: true, pairId: 1, _units: 'tile' },
+      { type: 'cart', sub: 'medicinas', x: 6, y: 4, _units: 'tile' },
+      { type: 'patient', x: 8, y: 5, id: 'legend_patient', _units: 'tile' },
+      { type: 'pill', sub: 'azul', x: 9, y: 5, targetName: 'legend_patient', _units: 'tile' },
+      { type: 'bell', x: 7, y: 5, link: 'legend_patient', _units: 'tile' },
+      { type: 'boss', x: 16, y: 8, nearWall: true, _units: 'tile' },
+      { type: 'light', x: 3, y: 3, _units: 'tile' },
+      { type: 'light', x: 6, y: 6, broken: true, _units: 'tile' },
+      { type: 'boss_light', x: 16, y: 7, _units: 'tile' },
+      { type: 'npc', sub: 'medico', x: 5, y: 2, _units: 'tile' },
+      { type: 'npc', sub: 'supervisora', x: 12, y: 3, _units: 'tile' },
+      { type: 'npc', sub: 'guardia', x: 4, y: 6, _units: 'tile' },
+      { type: 'npc', sub: 'familiar_molesto', x: 8, y: 7, _units: 'tile' },
+      { type: 'npc', sub: 'enfermera_sexy', x: 10, y: 7, _units: 'tile' },
+      { type: 'enemy', sub: 'rat', x: 14, y: 4, _units: 'tile' },
+      { type: 'enemy', sub: 'mosquito', x: 15, y: 4, _units: 'tile' }
+    ];
+
+    const areas = {
+      control: { x: 1, y: 1, w: 4, h: 4 },
+      boss: { x: 14, y: 6, w: 4, h: 4 }
+    };
+
+    const asciiString = rowsToString(asciiRows);
+    const seed = options.seed ?? 'legend';
+    const charset = { ...CHARSET_DEFAULT, ...(options.charset || {}) };
+    const result = {
+      ascii: asciiString,
+      map: asciiToNumeric(asciiRows),
+      placements,
+      areas,
+      elevators: { activePair: [], closed: [] },
+      report: [{ summary: { ok: true, legend: true, width, height } }],
+      charset,
+      seed,
+      level: 1,
+      width,
+      height
+    };
+
+    try {
+      W.__LEGEND_PRESET = { placements: placements.map(p => ({ ...p })) };
+    } catch (_) {}
+
+    return result;
+  }
+
   // ─────────────────────────────────────────
   // GENERATE (núcleo principal)
   // ─────────────────────────────────────────
   function generate(level=1, options={}){
+    if (MAP_MODE === 'legend') {
+      return generateLegendPreset(options);
+    }
     // salidas básicas para el motor (ASCII + placements)
     const placements = [];
     const lvl = clamp(level|0 || 1, 1, 3);
