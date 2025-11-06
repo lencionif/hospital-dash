@@ -11,6 +11,8 @@
 (function (global) {
   'use strict';
 
+  const TAU = Math.PI * 2;
+
   const Sprites = {
     _opts: { basePath: './assets/images/', tile: 32 },
     _imgs: Object.create(null),       // mapa: key -> HTMLImageElement/Canvas
@@ -114,7 +116,15 @@
 
     _keyFromUrl(src) {
       const file = src.split('/').pop().split('?')[0];
-      return file.replace(/\.(png|jpg|jpeg|gif)$/i, '');
+      return file.replace(/\.(png|jpg|jpeg|gif)$/i, '').toLowerCase();
+    },
+
+    _normalizeKey(name) {
+      if (!name) return '';
+      const str = String(name).trim();
+      if (!str) return '';
+      const file = str.split('/').pop().split('?')[0];
+      return file.replace(/\.(png|jpg|jpeg|gif)$/i, '').toLowerCase();
     },
 
     _makePlaceholder(color = '#777') {
@@ -170,20 +180,41 @@
     drawEntity(ctx, e) {
       if (!e || e.dead) return;
 
-      const T = (this._opts.tile|0) || (global.TILE_SIZE|0) || 32;
-      const key = this._keyForEntity(e) || '';
+      const rawKey = this._keyForEntity(e) || '';
+      const key = this._normalizeKey(rawKey);
       const img = this._imgs[key];
 
       // Fallback seguro si no hay sprite
       if (!img) {
-        ctx.fillStyle = e.color || '#888';
-        ctx.fillRect(e.x|0, e.y|0, e.w|0, e.h|0);
-        // contorno suave
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-        ctx.strokeRect(e.x|0+0.5, e.y|0+0.5, e.w|0-1, e.h|0-1);
+        this._drawVectorFallback(ctx, e);
         return;
       }
       ctx.drawImage(img, e.x|0, e.y|0, e.w|0, e.h|0);
+    },
+
+    _drawVectorFallback(ctx, e) {
+      const w = (e.w || this._opts.tile || 32);
+      const h = (e.h || Math.max(36, w * 1.4));
+      const cx = (e.x || 0) + w * 0.5;
+      const cy = (e.y || 0) + h * 0.5;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = e.color || '#566074';
+      ctx.beginPath();
+      ctx.ellipse(0, -h * 0.25, w * 0.28, h * 0.32, 0, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.26, -h * 0.08);
+      ctx.quadraticCurveTo(0, h * 0.12, w * 0.26, -h * 0.08);
+      ctx.quadraticCurveTo(w * 0.3, h * 0.32, 0, h * 0.4);
+      ctx.quadraticCurveTo(-w * 0.3, h * 0.32, -w * 0.26, -h * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(0, h * 0.45, w * 0.34, h * 0.18, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
     },
 
     // Mapea entidad → nombre de sprite (por defecto)

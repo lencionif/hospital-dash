@@ -6,6 +6,24 @@
   const Missing = new Set();
 
   const IMG_PATH = (name) => `./assets/images/${name}`;
+  const PNG_EXT = /\.(png|jpg|jpeg|gif)$/i;
+
+  function normalizeSkinAsset(value){
+    if (!value) return value;
+    if (typeof value === 'string'){
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      if (PNG_EXT.test(trimmed)) return trimmed;
+      return `${trimmed}.png`;
+    }
+    if (Array.isArray(value)) return value.map(normalizeSkinAsset);
+    if (typeof value === 'object'){
+      const out = {};
+      for (const key of Object.keys(value)) out[key] = normalizeSkinAsset(value[key]);
+      return out;
+    }
+    return value;
+  }
 
   function load(name){
     if (!name) return null;
@@ -82,11 +100,12 @@
   }
 
   function drawSprite(ctx, skin, w, h, fallbackColor, tint){
-    const img = skin ? load(skin) : null;
+    const normalizedSkin = typeof skin === 'string' ? normalizeSkinAsset(skin) : skin;
+    const img = (typeof normalizedSkin === 'string') ? load(normalizedSkin) : null;
     if (img && hasImage(img)){
       ctx.drawImage(img, -w * 0.5, -h * 0.5, w, h);
     } else {
-      if (skin) logMissing(skin);
+      if (typeof normalizedSkin === 'string') logMissing(normalizedSkin);
       drawSilhouette(ctx, w, h, fallbackColor || '#566074');
     }
     if (tint){
@@ -157,7 +176,7 @@
     const data = e?.puppet?.data || {};
     const tint = parseTint(data.tint || cfg.tint);
     const scale = (typeof data.scale === 'number' ? data.scale : (cfg.scale ?? 1));
-    const skin = data.skin || e.skin || cfg.skin;
+    const skin = normalizeSkinAsset(data.skin || e.skin || cfg.skin);
     return {
       phase: Math.random() * TAU,
       swayPhase: Math.random() * TAU,
@@ -276,6 +295,7 @@
       const ori = st.orientation || 'down';
       skin = skin[ori] || skin[`${ori}_${st.dir < 0 ? 'left' : 'right'}`] || skin.default || skin.down || skin.side || st.skin || cfg.skin;
     }
+    skin = normalizeSkinAsset(skin);
     const flipOverride = (st.stateFlip != null) ? st.stateFlip : stateInfo.flip;
     const shadowRadius = stateInfo.shadowRadius ?? cfg.shadowRadius ?? (Math.max(baseW, baseH) * 0.18);
     const shadowFlatten = stateInfo.shadowFlatten ?? cfg.shadowFlatten ?? 0.32;
@@ -329,8 +349,8 @@
   }
 
   function makeHeroStates(front, back){
-    const frontSkin = front.endsWith('.png') ? front : `${front}.png`;
-    const backSkin = back || frontSkin;
+    const frontSkin = normalizeSkinAsset(front) || normalizeSkinAsset(back);
+    const backSkin = normalizeSkinAsset(back) || frontSkin;
     return {
       idle: {
         skin: { down: frontSkin, up: backSkin, side: frontSkin },
@@ -367,8 +387,8 @@
   }
 
   function makeNPCStates(front, back){
-    const frontSkin = front.endsWith('.png') ? front : `${front}.png`;
-    const backSkin = back ? (back.endsWith('.png') ? back : `${back}.png`) : frontSkin;
+    const frontSkin = normalizeSkinAsset(front) || normalizeSkinAsset(back);
+    const backSkin = normalizeSkinAsset(back) || frontSkin;
     return {
       idle: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.75 },
       walk_down: { skin: frontSkin, bobMul: 0.95 },
@@ -390,63 +410,72 @@
     return { state: 'idle', orientation };
   }
 
-  // ───────────────────────────── HEROES ─────────────────────────────
-  registerWalkerRig('hero_enrique', {
-    skin: 'enrique.png',
-    scale: 1.08,
-    spriteWidth: 42,
-    spriteHeight: 66,
-    spriteScale: 1.05,
-    walkCycle: 11.1,
-    idleCycle: 3.3,
-    walkBob: 4.6,
-    idleBob: 1.9,
-    swayFreq: 1.1,
-    swayAmp: 0.6,
-    lean: 0.18,
-    shadowRadius: 15,
-    offsetY: -8,
-    states: makeHeroStates('enrique', 'enrique_back.png'),
-    resolveState: resolveHeroState
-  });
+  const HERO_ANIM_SPEED = 1.3;
+  const HERO_RIGS = {
+    enrique: {
+      front: 'enrique',
+      back: 'enrique_back',
+      scale: 1.08,
+      spriteWidth: 42,
+      spriteHeight: 66,
+      spriteScale: 1.05,
+      walkCycle: 11.1,
+      idleCycle: 3.3,
+      walkBob: 4.6,
+      idleBob: 1.9,
+      swayFreq: 1.1,
+      swayAmp: 0.6,
+      lean: 0.18,
+      shadowRadius: 15,
+      offsetY: -8
+    },
+    roberto: {
+      front: 'roberto',
+      back: 'roberto_back',
+      scale: 1.0,
+      spriteWidth: 40,
+      spriteHeight: 64,
+      spriteScale: 1.0,
+      walkCycle: 13.2,
+      idleCycle: 3.2,
+      walkBob: 3.5,
+      idleBob: 1.4,
+      swayFreq: 1.8,
+      swayAmp: 1.1,
+      lean: 0.12,
+      shadowRadius: 14,
+      offsetY: -6
+    },
+    francesco: {
+      front: 'francesco',
+      back: 'francesco_back',
+      scale: 1.02,
+      spriteWidth: 40,
+      spriteHeight: 66,
+      spriteScale: 1.02,
+      walkCycle: 11.6,
+      idleCycle: 3.1,
+      walkBob: 3.9,
+      idleBob: 1.6,
+      swayFreq: 1.5,
+      swayAmp: 0.85,
+      lean: 0.14,
+      shadowRadius: 14,
+      offsetY: -7
+    }
+  };
 
-  registerWalkerRig('hero_roberto', {
-    skin: 'roberto.png',
-    scale: 1.0,
-    spriteWidth: 40,
-    spriteHeight: 64,
-    spriteScale: 1.0,
-    walkCycle: 13.2,
-    idleCycle: 3.2,
-    walkBob: 3.5,
-    idleBob: 1.4,
-    swayFreq: 1.8,
-    swayAmp: 1.1,
-    lean: 0.12,
-    shadowRadius: 14,
-    offsetY: -6,
-    states: makeHeroStates('roberto', 'roberto_back.png'),
-    resolveState: resolveHeroState
-  });
-
-  registerWalkerRig('hero_francesco', {
-    skin: 'francesco.png',
-    scale: 1.02,
-    spriteWidth: 40,
-    spriteHeight: 66,
-    spriteScale: 1.02,
-    walkCycle: 11.6,
-    idleCycle: 3.1,
-    walkBob: 3.9,
-    idleBob: 1.6,
-    swayFreq: 1.5,
-    swayAmp: 0.85,
-    lean: 0.14,
-    shadowRadius: 14,
-    offsetY: -7,
-    states: makeHeroStates('francesco', 'francesco_back.png'),
-    resolveState: resolveHeroState
-  });
+  for (const [hero, cfg] of Object.entries(HERO_RIGS)){
+    const { front, back, walkCycle, idleCycle, ...rest } = cfg;
+    registerWalkerRig(`hero_${hero}`, {
+      ...rest,
+      skin: normalizeSkinAsset(front),
+      walkCycle: (walkCycle ?? 9) * HERO_ANIM_SPEED,
+      idleCycle: (idleCycle ?? 3) * HERO_ANIM_SPEED,
+      states: makeHeroStates(front, back),
+      resolveState: resolveHeroState
+    });
+  }
 
   // ───────────────────────────── NPCs ──────────────────────────────
   registerWalkerRig('npc_celador', {
@@ -596,7 +625,7 @@
     API.registerRig(id, {
       create(e){
         const data = e?.puppet?.data || {};
-        const skin = data.skin || e.skin || cfg.skin;
+        const skin = normalizeSkinAsset(data.skin || e.skin || cfg.skin);
         const tint = parseTint(data.tint || cfg.tint, cfg.tintAlpha ?? 0.45);
         return {
           phase: Math.random() * TAU,
@@ -999,13 +1028,14 @@
 
   // ───────────────────────────── CARROS ─────────────────────────────
   function registerCart(name, skin, cfg){
+    const defaultSkin = normalizeSkinAsset(skin);
     const rig = {
       create(e){
         const data = e?.puppet?.data || {};
         return {
           phase: Math.random() * TAU,
           time: 0,
-          skin: data.skin || e.skin || skin,
+          skin: normalizeSkinAsset(data.skin || e.skin || defaultSkin),
           scale: (typeof data.scale === 'number') ? data.scale : 1
         };
       },
@@ -1023,7 +1053,7 @@
         ctx.translate(cx, cy);
         drawShadow(ctx, cfg.shadowRadius ?? 14, total, 0.32, 0.22);
         ctx.translate(0, -h * 0.5 + (cfg.offsetY ?? 0) * total + st.wobble * total);
-        drawSprite(ctx, st.skin || skin, w, h, '#c5c5c5');
+        drawSprite(ctx, st.skin || defaultSkin, w, h, '#c5c5c5');
         if (cfg.decor) cfg.decor(ctx, total, st);
         ctx.restore();
       }
@@ -1131,7 +1161,7 @@
       const data = e?.puppet?.data || {};
       return {
         phase: Math.random() * TAU,
-        skin: data.skin || e.skin || 'pastilla_generic.png',
+        skin: normalizeSkinAsset(data.skin || e.skin || 'pastilla_generic'),
         scale: (typeof data.scale === 'number') ? data.scale : 1,
         tint: parseTint(data.tint, 0.4)
       };
@@ -1160,7 +1190,7 @@
       const data = e?.puppet?.data || {};
       return {
         phase: Math.random() * TAU,
-        skin: data.skin || e.skin || 'jeringa_roja.png',
+        skin: normalizeSkinAsset(data.skin || e.skin || 'jeringa_roja'),
         scale: (typeof data.scale === 'number') ? data.scale : 1,
         tint: parseTint(data.tint, 0.4)
       };
@@ -1187,7 +1217,7 @@
       const data = e?.puppet?.data || {};
       return {
         phase: Math.random() * TAU,
-        skin: data.skin || e.skin || 'gotero_azul.png',
+        skin: normalizeSkinAsset(data.skin || e.skin || 'gotero_azul'),
         scale: (typeof data.scale === 'number') ? data.scale : 1,
         tint: parseTint(data.tint, 0.4)
       };
@@ -1269,6 +1299,7 @@
   });
 
   function registerSpawnerRig(type, skin){
+    const defaultSkin = normalizeSkinAsset(skin);
     API.registerRig(`spawner_${type}`, {
       create(){ return { phase: Math.random() * TAU }; },
       update(st, e, dt){
@@ -1283,7 +1314,7 @@
         ctx.translate(cx, cy);
         drawShadow(ctx, 9, sc, 0.3, 0.18);
         ctx.translate(0, -h * 0.5);
-        drawSprite(ctx, skin, w * st.pulse, h * st.pulse, '#94b7ff');
+        drawSprite(ctx, defaultSkin, w * st.pulse, h * st.pulse, '#94b7ff');
         ctx.globalAlpha = 0.7;
         ctx.strokeStyle = 'rgba(130,190,255,0.7)';
         ctx.lineWidth = 2 * sc;

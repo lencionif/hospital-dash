@@ -35,6 +35,7 @@
       if (rig) {
         entity.rigName = rig;
       }
+      entity.rigOk = true;
     }
     puppets.push(puppet);
     needsSort = true;
