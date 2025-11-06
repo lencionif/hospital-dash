@@ -332,11 +332,29 @@
     W.counterSnapshot = counterSnapshot;
   }
 
+  function ensurePatientsStore(Gref = G) {
+    let store = Gref.patients;
+    if (Array.isArray(store)) return store;
+    if (store && typeof store === 'object') return store;
+    const arr = [];
+    arr.total = 0;
+    arr.pending = 0;
+    arr.cured = 0;
+    arr.furious = 0;
+    Gref.patients = arr;
+    return arr;
+  }
+
   function ensurePatientCounters() {
     if (!Number.isFinite(G.patientsTotal)) G.patientsTotal = 0;
     if (!Number.isFinite(G.patientsPending)) G.patientsPending = 0;
     if (!Number.isFinite(G.patientsCured)) G.patientsCured = 0;
     if (!Number.isFinite(G.patientsFurious)) G.patientsFurious = 0;
+    const store = ensurePatientsStore();
+    if (typeof store.total !== 'number') store.total = G.patientsTotal;
+    if (typeof store.pending !== 'number') store.pending = G.patientsPending;
+    if (typeof store.cured !== 'number') store.cured = G.patientsCured;
+    if (typeof store.furious !== 'number') store.furious = G.patientsFurious;
   }
 
   function spawnPillFor(patient) {
@@ -979,6 +997,246 @@ window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
     return { countsPorTipo: counts, total };
   }
 
+  function registerSpawnedEntity(G, entity) {
+    if (!entity || !G) return;
+    const ENT = G.ENT || window.ENT || {};
+    const ensureList = (key) => {
+      const list = Array.isArray(G[key]) ? G[key] : (G[key] = []);
+      if (!list.includes(entity)) list.push(entity);
+    };
+    ensureList('entities');
+    if (typeof entity.update === 'function') ensureList('movers');
+    if (entity.pushable === true) ensureList('pushables');
+    const kindName = (entity.kindName || entity.type || '').toString().toUpperCase();
+    const kindValue = entity.kind;
+    const matchesKind = (value) => {
+      if (value == null) return false;
+      if (typeof kindValue === 'string') return kindValue.toUpperCase() === value;
+      if (typeof kindValue === 'number') return ENT && ENT[value] === kindValue;
+      return kindName === value;
+    };
+    if (matchesKind('PATIENT') || kindName === 'PATIENT') {
+      ensureList('patients');
+      ensureList('allPatients');
+    }
+    if (matchesKind('PILL') || kindName === 'PILL' || entity.type === 'pill') {
+      ensureList('pills');
+    }
+    if (matchesKind('BELL') || kindName === 'BELL' || entity.type === 'bell') {
+      ensureList('bells');
+    }
+    if (matchesKind('DOOR') || kindName === 'DOOR') {
+      ensureList('doors');
+    }
+    if (matchesKind('ELEVATOR') || kindName === 'ELEVATOR') {
+      ensureList('elevators');
+    }
+    if (entity.isEnemy === true || kindName === 'ENEMY') {
+      ensureList('enemies');
+    }
+    if (entity.isNPC === true || kindName.startsWith('NPC') || kindName === 'MEDIC' || kindName === 'GUARDIA') {
+      ensureList('npcs');
+    }
+  }
+
+  function syncPatientCounters(G) {
+    ensurePatientCounters();
+    const snapshot = {
+      total: G.patientsTotal | 0,
+      pending: G.patientsPending | 0,
+      cured: G.patientsCured | 0,
+      furious: G.patientsFurious | 0,
+    };
+    const store = ensurePatientsStore(G);
+    store.total = snapshot.total;
+    store.pending = snapshot.pending;
+    store.cured = snapshot.cured;
+    store.furious = snapshot.furious;
+    G.patientsCounters = { ...snapshot };
+    return snapshot;
+  }
+
+  function pickWorldPosition(G, opts = {}) {
+    const base = opts.near;
+    const minDist = opts.minDist || 3;
+    const avoid = Array.isArray(opts.avoidRects) ? opts.avoidRects : null;
+    let tile = null;
+    if (base && Number.isFinite(base.x) && Number.isFinite(base.y)) {
+      const bx = Math.floor(base.x / TILE);
+      const by = Math.floor(base.y / TILE);
+      tile = findFreeTile(G, { minDistFrom: { x: bx, y: by, d: minDist }, avoidRects: avoid });
+    }
+    if (!tile) {
+      tile = findFreeTile(G, { avoidRects: avoid }) || null;
+    }
+    if (!tile) {
+      const fallbackTx = Math.max(1, Math.floor((G.mapW || (G.map?.[0]?.length || 8)) / 2) + (opts.offsetTx || 0));
+      const fallbackTy = Math.max(1, Math.floor((G.mapH || (G.map?.length || 8)) / 2) + (opts.offsetTy || 0));
+      tile = { tx: fallbackTx, ty: fallbackTy };
+    }
+    const anchorX = opts.anchorX != null ? opts.anchorX : 0.1;
+    const anchorY = opts.anchorY != null ? opts.anchorY : 0.1;
+    return {
+      tx: tile.tx,
+      ty: tile.ty,
+      x: tile.tx * TILE + TILE * anchorX,
+      y: tile.ty * TILE + TILE * anchorY,
+    };
+  }
+
+  function ensureHeroEntity(G) {
+    const ENT = G.ENT || window.ENT || {};
+    const heroKind = ENT.PLAYER;
+    if (G.player && !G.player.dead) {
+      G.player.rigOk = G.player.rigOk === true || !!G.player.puppet;
+      return G.player;
+    }
+    const candidates = Array.isArray(G.entities) ? G.entities.filter((e) => e && !e.dead && (e.isPlayer || matchesHeroKind(e))) : [];
+    if (candidates.length) {
+      const hero = candidates[0];
+      G.player = hero;
+      hero.rigOk = hero.rigOk === true || !!hero.puppet;
+      return hero;
+    }
+    const pos = pickWorldPosition(G, {});
+    const hero = window.Entities?.Hero?.spawnPlayer?.(pos.x, pos.y, { units: 'px' }) || null;
+    if (hero) {
+      registerSpawnedEntity(G, hero);
+      G.player = hero;
+      hero.rigOk = hero.rigOk === true || !!hero.puppet;
+      try { window.AI?.register?.(hero); } catch (_) {}
+    }
+    return hero;
+
+    function matchesHeroKind(entity) {
+      if (!entity) return false;
+      if (entity.isPlayer === true) return true;
+      if (entity.kind === heroKind) return true;
+      if (typeof entity.kind === 'string') return entity.kind.toUpperCase() === 'PLAYER';
+      return false;
+    }
+  }
+
+  function ensureDebugPatients(G, hero) {
+    const patients = Array.isArray(G.patients) ? G.patients.filter((p) => p && !p.dead) : [];
+    if (patients.length === 0) {
+      const pos = pickWorldPosition(G, { near: hero, offsetTy: 1, anchorX: 0.2, anchorY: 0.15 });
+      const patient = window.PatientsAPI?.createPatient?.(pos.x, pos.y, {})
+        || window.Entities?.Patient?.spawn?.(pos.x, pos.y, {})
+        || null;
+      if (patient) {
+        registerSpawnedEntity(G, patient);
+        patients.push(patient);
+      }
+    }
+    for (const patient of patients) {
+      if (!patient) continue;
+      if (!patient.pillId) {
+        const pill = window.PatientsAPI?.createPillForPatient?.(patient, 'near') || null;
+        if (pill) {
+          pill.patientId = pill.patientId || patient.id;
+          pill.forPatientId = pill.forPatientId || patient.id;
+          registerSpawnedEntity(G, pill);
+          if (pill.id) patient.pillId = pill.id;
+        }
+      }
+      if (!patient.bellId) {
+        const bell = window.BellsAPI?.spawnBellNear?.(patient, { patientId: patient.id })
+          || window.BellsAPI?.spawnBell?.(patient.x + patient.w * 0.6, patient.y - TILE * 0.5, { patientId: patient.id })
+          || window.spawnBellNear?.(patient, { patientId: patient.id })
+          || null;
+        if (bell) {
+          registerSpawnedEntity(G, bell);
+          if (bell.id) patient.bellId = bell.id;
+        }
+      }
+    }
+    const activePatients = Array.isArray(G.patients) ? G.patients.filter((p) => p && !p.dead) : [];
+    G.patientsTotal = Math.max(G.patientsTotal | 0, activePatients.length);
+    G.patientsPending = Math.max(G.patientsPending | 0, activePatients.length);
+    syncPatientCounters(G);
+  }
+
+  function ensureSupportEntities(G, hero) {
+    const ENT = G.ENT || window.ENT || {};
+    const hasDoor = Array.isArray(G.doors) && G.doors.some((d) => d && (d.bossDoor || d.isBossDoor || d.kind === (ENT.DOOR ?? 'DOOR')));
+    if (!hasDoor) {
+      const pos = pickWorldPosition(G, { near: hero, offsetTy: 3 });
+      const door = window.Entities?.Door?.spawn?.(pos.x, pos.y, { bossDoor: true, locked: true }) || null;
+      if (door) registerSpawnedEntity(G, door);
+    }
+
+    const hasCart = Array.isArray(G.pushables) && G.pushables.some((c) => c && c.pushable);
+    if (!hasCart) {
+      const pos = pickWorldPosition(G, { near: hero, offsetTx: 1, offsetTy: 1 });
+      const cart = window.Entities?.Cart?.spawn?.('urgencias', pos.x, pos.y, {})
+        || window.CartsAPI?.spawn?.('urgencias', pos.x, pos.y, {})
+        || null;
+      if (cart) {
+        cart.pushable = true;
+        registerSpawnedEntity(G, cart);
+      }
+    }
+
+    const hasPhone = Array.isArray(G.entities) && G.entities.some((e) => e && (e.kindName === 'PHONE' || e.type === 'phone'));
+    if (!hasPhone && typeof window.spawnPhone === 'function') {
+      const pos = pickWorldPosition(G, { near: hero, offsetTx: -1, anchorX: 0.35, anchorY: 0.2 });
+      const phone = window.spawnPhone(pos.x, pos.y, {});
+      if (phone) registerSpawnedEntity(G, phone);
+    }
+
+    const hasElevator = Array.isArray(G.elevators) && G.elevators.length > 0;
+    if (!hasElevator) {
+      const pos = pickWorldPosition(G, { near: hero, offsetTx: -2, offsetTy: 2 });
+      const elevator = window.Entities?.Elevator?.spawn?.(pos.x, pos.y, { pairId: 'placement_auto' })
+        || window.ElevatorsAPI?.spawnElevator?.(pos.x, pos.y, { pairId: 'placement_auto' })
+        || null;
+      if (elevator) registerSpawnedEntity(G, elevator);
+    }
+
+    const ensureNpc = (id, spawnFn, offsetIdx) => {
+      const exists = Array.isArray(G.npcs) && G.npcs.some((npc) => {
+        if (!npc) return false;
+        const tag = (npc.aiId || npc.role || npc.kindName || '').toUpperCase();
+        return tag.includes(id);
+      });
+      if (exists) return;
+      const pos = pickWorldPosition(G, { near: hero, offsetTx: 1 + (offsetIdx || 0), offsetTy: 1 + (offsetIdx || 0) * 0.5 });
+      const npc = spawnFn?.(pos.x, pos.y) || null;
+      if (npc) {
+        npc.isNPC = true;
+        registerSpawnedEntity(G, npc);
+        try { window.AI?.register?.(npc); } catch (_) {}
+      }
+    };
+
+    ensureNpc('MEDIC', (x, y) => window.MedicoAPI?.spawn?.(x, y, {}) || window.Entities?.NPC?.spawn?.('medico', x, y, {}), 0);
+    ensureNpc('JEFESERVICIO', (x, y) => window.JefeServicioAPI?.spawn?.(x, y, {}) || window.SupervisoraAPI?.spawn?.(x, y, { role: 'jefe' }), 1);
+    ensureNpc('GUARDIA', (x, y) => window.GuardiaAPI?.spawn?.(x, y, {}) || window.Entities?.NPC?.spawn?.('guardia', x, y, {}), 2);
+    ensureNpc('FAMILIAR', (x, y) => window.FamiliarMolestoAPI?.spawn?.(x, y, {}) || window.Entities?.NPC?.spawn?.('familiar', x, y, {}), 3);
+    ensureNpc('CELADOR', (x, y) => window.CeladorAPI?.spawn?.(x, y, {}) || window.Entities?.NPC?.spawn?.('celador', x, y, {}), 4);
+  }
+
+  function snapshotWorld(G) {
+    const counts = {};
+    const add = (key, value) => {
+      counts[key] = (counts[key] || 0) + value;
+    };
+    if (G.player && !G.player.dead) add('HERO', 1);
+    add('PATIENT', Array.isArray(G.patients) ? G.patients.filter((p) => p && !p.dead).length : 0);
+    add('PILL', Array.isArray(G.pills) ? G.pills.length : 0);
+    add('BELL', Array.isArray(G.bells) ? G.bells.length : 0);
+    add('NPC', Array.isArray(G.npcs) ? G.npcs.length : 0);
+    add('ENEMY', Array.isArray(G.enemies) ? G.enemies.length : 0);
+    add('DOOR', Array.isArray(G.doors) ? G.doors.length : 0);
+    add('ELEVATOR', Array.isArray(G.elevators) ? G.elevators.length : 0);
+    add('CART', Array.isArray(G.pushables) ? G.pushables.filter((e) => e && e.pushable).length : 0);
+    return {
+      countsPorTipo: counts,
+      total: Array.isArray(G.entities) ? G.entities.length : 0,
+    };
+  }
+
   function applyFromAsciiMap(levelCfg = {}) {
     const W = window;
     const G = levelCfg.G || W.G || (W.G = {});
@@ -986,57 +1244,73 @@ window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
       W.G = levelCfg.G;
     }
     const mode = levelCfg.mode || (G.debugMap ? 'debug' : 'normal');
-    let { list, allowAscii } = resolvePlacementList(levelCfg, G);
 
-    const runGuard = W.__placementShouldRun || (() => true);
-    if (!runGuard(mode, { G, mode })) {
-      const summaryGuard = computeSummary(list);
+    if (G.__placementsApplied === true) {
+      const summaryGuard = snapshotWorld(G);
       lastSummary = summaryGuard;
-      return { applied: false, skipped: true, reason: 'guard', summary: summaryGuard };
+      return { applied: false, reason: 'guard', summary: summaryGuard };
     }
 
-    let usedFallbackTemplate = false;
-    if (!Array.isArray(list) || list.length === 0) {
-      if (mode === 'normal') {
-        list = buildDefaultNormalPlacements(G);
+    G._lastLevelCfg = levelCfg;
+
+    let placements = [];
+    let allowAscii = false;
+    try {
+      const resolved = resolvePlacementList(levelCfg, G) || {};
+      placements = Array.isArray(resolved.list) ? resolved.list : [];
+      allowAscii = !!resolved.allowAscii;
+    } catch (err) {
+      console.warn('[Placement] resolvePlacementList error', err);
+    }
+
+    if ((!Array.isArray(placements) || placements.length === 0) && mode === 'normal') {
+      try {
+        placements = buildDefaultNormalPlacements(G);
         allowAscii = false;
-        usedFallbackTemplate = Array.isArray(list) && list.length > 0;
-        if (usedFallbackTemplate) {
-          try {
-            console.info('[Placement] usando plantilla por defecto (normal)');
-          } catch (_) {}
+        if (Array.isArray(placements) && placements.length) {
+          console.info('[Placement] usando plantilla por defecto (normal)');
           try { window.LOG?.event?.('PLACEMENT_FALLBACK', { mode, template: 'default-normal' }); } catch (_) {}
         }
+      } catch (err) {
+        console.warn('[Placement] fallback default-normal error', err);
       }
     }
 
-    const summary = computeSummary(list);
+    let appliedMapgen = false;
+    if (Array.isArray(placements) && placements.length) {
+      try {
+        if (allowAscii) G.__allowASCIIPlacements = true;
+        window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__ = true;
+        const result = applyPlacementsFromMapgen(placements, { G, mode });
+        appliedMapgen = result?.skipped ? false : result?.applied !== false;
+      } catch (err) {
+        console.warn('[Placement] applyFromAsciiMap error', err);
+      } finally {
+        delete window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__;
+        if (allowAscii) delete G.__allowASCIIPlacements;
+      }
+    }
+
+    const hero = ensureHeroEntity(G);
+    if (mode === 'debug') {
+      ensureDebugPatients(G, hero);
+    } else {
+      syncPatientCounters(G);
+    }
+    ensureSupportEntities(G, hero);
+
+    const finalize = window.__placementFinalize || finalizePlacement;
+    finalize(mode, { G });
+
+    G.__placementsApplied = true;
+    G._hasPlaced = true;
+    G._placementMode = mode;
+
+    const summary = snapshotWorld(G);
     lastSummary = summary;
+    try { window.LOG?.event?.('PLACEMENT_SUMMARY', summary); } catch (_) {}
 
-    if (!Array.isArray(list) || list.length === 0) {
-      return { applied: false, skipped: true, reason: 'empty', summary };
-    }
-
-    let result;
-    try {
-      if (allowAscii) {
-        G.__allowASCIIPlacements = true;
-      }
-      window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__ = true;
-      result = applyPlacementsFromMapgen(list, { G, mode });
-    } finally {
-      delete window.__PLACEMENT_SUPPRESS_INTERNAL_SUMMARY__;
-      if (allowAscii) {
-        delete G.__allowASCIIPlacements;
-      }
-    }
-    const response = (result && typeof result === 'object') ? { ...result } : { applied: true };
-    if (usedFallbackTemplate) {
-      response.fallback = 'default-normal';
-    }
-    response.summary = summary;
-    response.applied = response.skipped ? false : response.applied !== false;
-    return response;
+    return { applied: true, summary, hero, mode, mapgen: appliedMapgen };
   }
 
   function placementShouldRun(levelCfg = {}) {
@@ -1046,15 +1320,16 @@ window.applyPlacementsFromMapgen = applyPlacementsFromMapgen;
       W.G = levelCfg.G;
     }
     const mode = levelCfg.mode || (G.debugMap ? 'debug' : 'normal');
+    if (G.__placementsApplied) return false;
     const runGuard = W.__placementShouldRun || (() => true);
-    return runGuard(mode, { G, mode });
+    const allowed = runGuard(mode, { G, mode });
+    return allowed !== false && !G.__placementsApplied;
   }
 
   function summarizePlacements() {
-    const snapshot = {
-      countsPorTipo: { ...lastSummary.countsPorTipo },
-      total: lastSummary.total
-    };
+    const G = window.G || {};
+    const snapshot = snapshotWorld(G);
+    lastSummary = snapshot;
     console.log('PLACEMENT_SUMMARY', snapshot);
     try { window.LOG?.event?.('PLACEMENT_SUMMARY', snapshot); } catch (_) {}
     return snapshot;

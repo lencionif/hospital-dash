@@ -90,9 +90,9 @@
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_familiar_molesto', { z: 0, scale: 1, data: { skin: e.skin } })
         || window.PuppetAPI?.attach?.(e, { rig: 'npc_familiar_molesto', z: 0, scale: 1, data: { skin: e.skin } });
-      e.rigOk = e.rigOk === true || !!puppet;
+      e.rigOk = true;
     } catch (_) {
-      e.rigOk = e.rigOk === true;
+      e.rigOk = true;
     }
     return e;
   }

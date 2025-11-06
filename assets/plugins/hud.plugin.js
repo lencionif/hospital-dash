@@ -260,39 +260,75 @@
     });
   }
 
-  function drawPatientsCounterPanel(ctx, G) {
-    const snap = window.patientsSnapshot ? window.patientsSnapshot() : {
-      total: G?.stats?.totalPatients || 0,
-      pending: G?.stats?.remainingPatients || 0,
-      cured: G?.stats?.furiosasNeutralized || 0,
-      furious: G?.stats?.activeFuriosas || 0,
-    };
-    const remaining = snap.pending || 0;
-    const cured = snap.cured || 0;
-    const total = snap.total || 0;
-    const furiosas = snap.furious || 0;
-    const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
-    const r = { x: 12, y: 12, w: 260, h: 96 };
-    ctx.save();
-    ctx.globalAlpha = 0.82;
-    ctx.fillStyle = '#05070b';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = urgOpen ? '#2ecc71' : '#e67e22';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(r.x, r.y, r.w, r.h);
-    ctx.font = 'bold 15px sans-serif';
-    ctx.fillStyle = '#e6edf3';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Pacientes: ${cured} / ${total}`, r.x + 12, r.y + 24);
-    ctx.fillStyle = '#9aa6b1';
-    ctx.fillText(`Pendientes: ${remaining}`, r.x + 12, r.y + 42);
-    ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : '#9aa6b1';
-    ctx.fillText(`Furiosas activas: ${furiosas}`, r.x + 12, r.y + 60);
-    ctx.fillStyle = urgOpen ? '#ffd166' : '#9aa6b1';
-    ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, r.x + 12, r.y + 78);
-    ctx.restore();
-  }
+    function drawPatientsCounterPanel(ctx, G) {
+      const ensureCounters = () => {
+        let store = G.patients;
+        if (!store) {
+          store = { total: 0, pending: 0, cured: 0, furious: 0 };
+          G.patients = store;
+        }
+        const hasNumbers = (obj) => obj && ['total', 'pending', 'cured', 'furious'].every((k) => typeof obj[k] === 'number');
+        if (!hasNumbers(store)) {
+          const fallback = window.patientsSnapshot ? window.patientsSnapshot() : {
+            total: G?.stats?.totalPatients || 0,
+            pending: G?.stats?.remainingPatients || 0,
+            cured: G?.stats?.furiosasNeutralized || 0,
+            furious: G?.stats?.activeFuriosas || 0,
+          };
+          const target = (() => {
+            if (Array.isArray(store)) return store;
+            if (store && typeof store === 'object') return store;
+            const arr = [];
+            G.patients = arr;
+            return arr;
+          })();
+          target.total = fallback.total | 0;
+          target.pending = fallback.pending | 0;
+          target.cured = fallback.cured | 0;
+          target.furious = fallback.furious | 0;
+          store = target;
+        }
+        return {
+          total: store.total | 0,
+          pending: store.pending | 0,
+          cured: store.cured | 0,
+          furious: store.furious | 0,
+        };
+      };
+
+      const snap = ensureCounters();
+      const remaining = snap.pending || 0;
+      const cured = snap.cured || 0;
+      const total = snap.total || 0;
+      const furiosas = snap.furious || 0;
+      const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
+      const r = { x: 12, y: 12, w: 260, h: 96 };
+      ctx.save();
+      ctx.globalAlpha = 0.82;
+      ctx.fillStyle = '#05070b';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = urgOpen ? '#2ecc71' : '#e67e22';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillStyle = '#e6edf3';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Pacientes: ${cured} / ${total}`, r.x + 12, r.y + 24);
+      ctx.fillStyle = '#9aa6b1';
+      ctx.fillText(`Pendientes: ${remaining}`, r.x + 12, r.y + 42);
+      ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : '#9aa6b1';
+      ctx.fillText(`Furiosas activas: ${furiosas}`, r.x + 12, r.y + 60);
+      const carrying = (G.player?.carry || G.carry || null);
+      if (carrying && carrying.kind === 'PILL') {
+        ctx.fillStyle = '#ffd166';
+        ctx.fillText('Objetivo: entrega Pastilla al paciente asignado', r.x + 12, r.y + 78);
+      } else {
+        ctx.fillStyle = urgOpen ? '#ffd166' : '#9aa6b1';
+        ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, r.x + 12, r.y + 78);
+      }
+      ctx.restore();
+    }
 
   // API pública
   const HUD = {

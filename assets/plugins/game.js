@@ -1368,6 +1368,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     if (carrier.carry || G.carry) return false;
     const carry = {
       type: 'PILL',
+      kind: 'PILL',
       id: pill.id,
       label: pill.label || 'Pastilla',
       patientName: pill.targetName || pill.patientName || null,
@@ -1656,38 +1657,43 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
+    const HERO_LIGHT_ALPHA = 0.60;
+    const NPC_LIGHT_ALPHA = 0.45;
+    const NPC_RADIUS_RATIO = 0.55;
+
     function flashlightColorForHero(e){
       const k = ((e.skin || e.spriteKey || '') + '').toLowerCase();
-      if (k.includes('enrique'))   return 'rgba(255,235,90,0.45)';   // amarillo
-      if (k.includes('roberto'))   return 'rgba(255,170,90,0.45)';   // naranja cálido
-      if (k.includes('francesco')) return 'rgba(80,160,255,0.45)';   // azul frío
-      if (e.isNPC || e.kind === ENT.PATIENT) return 'rgba(255,245,170,0.85)'; // cálida suave
-      return 'rgba(210,230,255,0.85)'; // neutro
+      if (k.includes('enrique'))   return `rgba(255,235,90,${HERO_LIGHT_ALPHA})`;
+      if (k.includes('roberto'))   return `rgba(255,170,90,${HERO_LIGHT_ALPHA})`;
+      if (k.includes('francesco')) return `rgba(80,160,255,${HERO_LIGHT_ALPHA})`;
+      if (e.isNPC || e.kind === ENT.PATIENT) return `rgba(255,245,170,${NPC_LIGHT_ALPHA})`;
+      return `rgba(210,230,255,${HERO_LIGHT_ALPHA})`;
     }
 
     function flashlightProfileForNPC(npc, heroDist){
       const clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
       const id = ((npc.aiId || npc.kindName || npc.kind || npc.role || '') + '').toUpperCase();
-      let color = '#ffd5aa';
-      let ratio = 0.48;
+      let color = `rgba(255,213,170,${NPC_LIGHT_ALPHA})`;
+      let ratio = NPC_RADIUS_RATIO;
       let fov = Math.PI * 0.48;
 
       if (id.includes('MEDIC')) {
-        color = '#6bd3ff';
-        ratio = 0.58;
+        color = `rgba(107,211,255,${NPC_LIGHT_ALPHA})`;
+        ratio = NPC_RADIUS_RATIO * 1.05;
       } else if (id.includes('JEFESERVICIO') || id.includes('BOSS')) {
-        color = '#ffd46b';
-        ratio = 0.6;
+        color = `rgba(255,212,107,${NPC_LIGHT_ALPHA})`;
+        ratio = NPC_RADIUS_RATIO * 1.08;
       } else if (id.includes('GUARDIA')) {
-        color = '#b9ff6b';
-        ratio = 0.5;
+        color = `rgba(185,255,107,${NPC_LIGHT_ALPHA})`;
+        ratio = NPC_RADIUS_RATIO * 0.98;
       } else if (id.includes('FAMILIAR')) {
-        color = '#ff6b9a';
-        ratio = 0.42;
+        color = `rgba(255,107,154,${NPC_LIGHT_ALPHA})`;
+        ratio = NPC_RADIUS_RATIO * 0.9;
         fov = Math.PI * 0.45;
       }
 
-      const dist = clamp(heroDist * ratio, heroDist * 0.4, heroDist * 0.6);
+      const base = heroDist * NPC_RADIUS_RATIO;
+      const dist = clamp(heroDist * ratio, base * 0.85, base * 1.1);
       return { color, dist, fov };
     }
 
@@ -1695,28 +1701,31 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       const list = [];
       const hero = (G.player && !G.player.dead) ? G.player : null;
       const heroDist = hero ? (hero._flashOuter || 740) : 620;
+      const npcRadiusBase = heroDist * NPC_RADIUS_RATIO;
       const computeAngle = (e) => (
         (typeof e.lookAngle === 'number')
           ? e.lookAngle
           : (Math.hypot(e.vx || 0, e.vy || 0) > 0.01 ? Math.atan2(e.vy || 0, e.vx || 0) : Math.PI / 2)
       );
-      const add = (e, fov, dist, color) => {
+      const add = (e, fov, dist, color, opts = {}) => {
         const cx = e.x + e.w*0.5, cy = e.y + e.h*0.5;
         const ang = computeAngle(e);
         list.push({
           x: cx, y: cy, angle: ang,
-          fov, dist, color, softness: 0.70
+          fov, dist, color, softness: 0.70,
+          isHero: opts.isHero === true
         });
       };
 
       if (hero) {
-        add(hero, Math.PI * 0.60, heroDist, flashlightColorForHero(hero));
+        add(hero, Math.PI * 0.60, heroDist, flashlightColorForHero(hero), { isHero: true });
       }
       if (Array.isArray(G.npcs)) {
         for (const npc of G.npcs) {
           if (!npc || npc.dead) continue;
           const profile = flashlightProfileForNPC(npc, heroDist);
-          add(npc, profile.fov || Math.PI * 0.48, profile.dist, profile.color);
+          const npcDist = Number.isFinite(profile?.dist) ? profile.dist : npcRadiusBase;
+          add(npc, profile.fov || Math.PI * 0.48, npcDist, profile.color);
         }
       }
       G.lights = list;
@@ -2428,38 +2437,31 @@ function drawEntities(c2){
 
     buildLevelForCurrentMode(targetLevel);
 
-    let placementApplied = false;
-    const placementAPI = window.Placement;
-    const placementMode = DEBUG_MAP_MODE ? 'debug' : 'normal';
-    if (placementAPI?.applyFromAsciiMap) {
-      const shouldExecute = (typeof placementAPI.shouldRun === 'function')
-        ? placementAPI.shouldRun({ G, mode: placementMode, debug: DEBUG_MAP_MODE }) !== false
-        : true;
-      if (shouldExecute) {
+      // Siembra única con Placement; si no aplica, fallback
+      (function seedOnce(){
+        let placementApplied = false;
+        const levelCfg = G._lastLevelCfg || {
+          G, mode: (DEBUG_MAP_MODE ? 'debug':'normal'), debug: DEBUG_MAP_MODE,
+          asciiMap: ASCII_MAP, ascii: ASCII_MAP, allowAscii: !!ASCII_MAP,
+          map: G.map, areas: G.mapAreas, width: G.mapW, height: G.mapH, level: G.level, seed: G.seed,
+          placements: G.mapgenPlacements
+        };
         try {
-          const placementResult = placementAPI.applyFromAsciiMap({
-            G,
-            mode: placementMode,
-            debug: DEBUG_MAP_MODE
-          });
-          if (placementResult?.applied) {
-            placementApplied = true;
-            try { placementAPI.summarize?.(); } catch (_) {}
-          } else if (placementResult?.reason === 'guard') {
-            placementApplied = true;
+          if (window.Placement?.applyFromAsciiMap) {
+            const r = window.Placement.applyFromAsciiMap(levelCfg);
+            placementApplied = (r?.applied === true || r?.reason === 'guard');
+            if (r?.applied) { try { window.Placement?.summarize?.(); } catch(_){} }
           }
-        } catch (err) {
-          console.warn('[Placement] applyFromAsciiMap falló', err);
-        }
-      } else {
-        placementApplied = true;
-      }
-    }
-    if (!placementApplied) {
-      finalizeLevelBuildOnce({ forceFallback: true });
-    }
+        } catch (err){ console.warn('[Placement] applyFromAsciiMap error', err); }
+        if (!placementApplied) { finalizeLevelBuildOnce({ forceFallback: true }); }
+      })();
+      // Activa IA y refresca minimapa
+      try {
+        if (Array.isArray(G.entities)) for (const e of G.entities) window.AI?.register?.(e);
+        window.Minimap?.refresh?.();
+      } catch(_){ }
 
-    configureLevelSystems();
+      configureLevelSystems();
 
     try {
       window.GameFlowAPI?.startLevel?.(targetLevel);
