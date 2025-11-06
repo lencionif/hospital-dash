@@ -2429,19 +2429,30 @@ function drawEntities(c2){
     buildLevelForCurrentMode(targetLevel);
 
     let placementApplied = false;
-    if (window.Placement?.applyFromAsciiMap) {
-      try {
-        const placementResult = window.Placement.applyFromAsciiMap({
-          G,
-          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
-          debug: DEBUG_MAP_MODE
-        });
-        placementApplied = placementResult?.applied === true || placementResult?.reason === 'guard';
-        if (placementResult?.applied) {
-          try { window.Placement?.summarize?.(); } catch (_) {}
+    const placementAPI = window.Placement;
+    const placementMode = DEBUG_MAP_MODE ? 'debug' : 'normal';
+    if (placementAPI?.applyFromAsciiMap) {
+      const shouldExecute = (typeof placementAPI.shouldRun === 'function')
+        ? placementAPI.shouldRun({ G, mode: placementMode, debug: DEBUG_MAP_MODE }) !== false
+        : true;
+      if (shouldExecute) {
+        try {
+          const placementResult = placementAPI.applyFromAsciiMap({
+            G,
+            mode: placementMode,
+            debug: DEBUG_MAP_MODE
+          });
+          if (placementResult?.applied) {
+            placementApplied = true;
+            try { placementAPI.summarize?.(); } catch (_) {}
+          } else if (placementResult?.reason === 'guard') {
+            placementApplied = true;
+          }
+        } catch (err) {
+          console.warn('[Placement] applyFromAsciiMap falló', err);
         }
-      } catch (err) {
-        console.warn('[Placement] applyFromAsciiMap falló', err);
+      } else {
+        placementApplied = true;
       }
     }
     if (!placementApplied) {
