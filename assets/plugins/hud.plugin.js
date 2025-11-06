@@ -25,6 +25,18 @@
 
   const FloatingMessages = [];
 
+  (function ensurePatientStore(){
+    const G = getG();
+    if (!G) return;
+    if (!Array.isArray(G.patients)) G.patients = G.patients || [];
+    if (typeof G.patients.total !== 'number') {
+      G.patients.total = 0;
+      G.patients.pending = 0;
+      G.patients.cured = 0;
+      G.patients.furious = 0;
+    }
+  })();
+
   function findEntityById(G, id) {
     if (!id) return null;
     if (typeof G?.byId === 'function') {
@@ -63,6 +75,10 @@
     }
 
     // 2) Si llevas una pastilla → entregarla a su paciente
+    const carryingPill = (G.player?.carry?.kind === 'PILL') || (G.carry?.kind === 'PILL');
+    if (carryingPill) {
+      return 'Objetivo: entrega Pastilla al paciente asignado';
+    }
     const carry = G.player?.carry || G.carry;
     if (carry && (carry.label || carry.patientName)) {
       const pill = carry.label || 'la pastilla';

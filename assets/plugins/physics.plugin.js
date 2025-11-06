@@ -11,12 +11,13 @@
     PILL: 0.1
   };
 
-  const DEFAULTS = {
+  const PHYS = {
     restitution: 0.18,
-    friction: 0.04,
-    slideFriction: 0.018,
+    friction: 0.045,
+    slideFriction: 0.020,
     crushImpulse: 110,
     hurtImpulse: 45,
+    explodeImpulse: 170,
     fireImpulse: 240,
     fireMinMass: 2.5,
     fireCooldown: 0.4,
@@ -25,6 +26,8 @@
     fireDamage: 0.5,
     fireTick: 0.4
   };
+
+  const DEFAULTS = { ...PHYS };
 
   function createPhysics(options = {}) {
     const CFG = Object.assign({}, DEFAULTS, options || {});
@@ -406,9 +409,10 @@
     api.init = init;
     api.MASS = MASS;
     api.DEFAULTS = DEFAULTS;
+    api.PHYS = PHYS;
     window.Physics = api;
     return api;
   }
 
-  window.Physics = { MASS, DEFAULTS, init };
+  window.Physics = { MASS, PHYS, DEFAULTS, init };
 })();
