@@ -312,13 +312,19 @@
     ensurePatientCounters();
     G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
     G.patientsCured = (G.patientsCured | 0) + 1;
-    emitPatientsCounter();
+    try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
+    try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientDelivered?.(patient); } catch (_) {}
     try { W.ScoreAPI?.addScore?.(100, 'deliver_patient', { patient: patient.displayName }); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
-    try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
-    setTimeout(() => removeEntity(patient), 250);
-    try { window.Doors?.openUrgencias?.(); } catch (_) {}
+    const fadeMs = Number.isFinite(W.PATIENT_FADE_MS) ? W.PATIENT_FADE_MS : 650;
+    setTimeout(() => {
+      try { W.PuppetAPI?.detach?.(patient); } catch (_) {}
+      removeEntity(patient);
+    }, Math.max(0, fadeMs));
+    if ((G.patientsPending | 0) === 0 && (G.patientsFurious | 0) === 0) {
+      try { window.Doors?.openUrgencias?.(); } catch (_) {}
+    }
     return true;
   }
 
@@ -366,6 +372,7 @@
     G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
     G.patientsFurious = (G.patientsFurious | 0) + 1;
     emitPatientsCounter();
+    patient.__convertedViaPatientsAPI = true;
     removeEntity(patient);
     let furiosa = null;
     if (W.FuriousAPI && typeof W.FuriousAPI.spawnFromPatient === 'function') {

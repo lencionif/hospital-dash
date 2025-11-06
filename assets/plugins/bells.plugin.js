@@ -195,6 +195,23 @@
       entry._ringingLogged = false;
     },
 
+    _transformPatientToFurious(patient) {
+      if (!patient) return null;
+      if (window.FuriousAPI && typeof window.FuriousAPI.transformToFurious === 'function') {
+        try { return window.FuriousAPI.transformToFurious(patient); }
+        catch (err) { console.warn('[Bells] FuriousAPI.transformToFurious', err); }
+      }
+      if (window.PatientsAPI && typeof window.PatientsAPI.toFurious === 'function') {
+        try { return window.PatientsAPI.toFurious(patient); }
+        catch (err) { console.warn('[Bells] PatientsAPI.toFurious', err); }
+      }
+      if (window.FuriousAPI && typeof window.FuriousAPI.spawnFromPatient === 'function') {
+        try { return window.FuriousAPI.spawnFromPatient(patient); }
+        catch (err) { console.warn('[Bells] FuriousAPI.spawnFromPatient', err); }
+      }
+      return this._transformPatientFallback(patient);
+    },
+
     spawnBell(x, y, opts = {}) {
       const bell = this._createBellEntity(x, y, opts);
       if (!bell) return null;
@@ -326,17 +343,15 @@
           // (la interacción real se hace por tryInteract(); aquí solo el estado)
           if (b.tLeft <= 0) {
             this._logBellOff(b, 'timeout');
-            let converted = false;
-            if (window.PatientsAPI?.toFurious) {
-              try { converted = !!window.PatientsAPI.toFurious(b.patient); }
-              catch (err) { console.warn('[Bells] PatientsAPI.toFurious', err); }
-            }
-            if (!converted && window.FuriousAPI) {
-              try { FuriousAPI.spawnFromPatient(b.patient); converted = true; }
-              catch (err) { console.warn('[Bells] FuriousAPI.spawnFromPatient', err); }
-            }
-            if (!converted) {
-              this._transformPatientFallback(b.patient);
+            const patient = b.patient || null;
+            if (patient) {
+              this._transformPatientToFurious(patient);
+              try { window.LOG?.event?.('BELL_TIMEOUT', { patient: patient.id || null }); } catch (_) {}
+              try {
+                if (typeof window.counterSnapshot === 'function') {
+                  window.LOG?.event?.('PATIENTS_COUNTER', window.counterSnapshot());
+                }
+              } catch (_) {}
             }
             this._applyRingingState(b, false);
             b.patient = null;
@@ -377,19 +392,26 @@
     },
 
     // Teléfono de control: apaga TODO y reprograma
-    muteAll() {
+    silenceAllBells() {
       this._ensureInit();
+      let silenced = false;
       for (const b of this.bells) {
         if (!b.e || b.e.dead) continue;
         if (b.state === 'ringing') {
           this._logBellOff(b, 'phone');
+          silenced = true;
         }
         b.state = 'idle';
         b.tLeft = 0;
         b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);
         this._applyRingingState(b, false);
       }
-      if (window.AudioAPI) AudioAPI.play('phone_ok', { volume: 0.8 });
+      if (silenced && window.AudioAPI) AudioAPI.play('phone_ok', { volume: 0.8 });
+      return silenced;
+    },
+
+    muteAll() {
+      return this.silenceAllBells();
     },
 
     // ====== utilidades ======

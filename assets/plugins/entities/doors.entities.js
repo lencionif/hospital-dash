@@ -120,7 +120,48 @@
     return door.state?.open ? closeDoor(door) : openDoor(door);
   }
 
-  window.Doors = { spawn, update, gameflow, open: openDoor, close: closeDoor, toggle: toggleDoor };
+  function openUrgencias(state){
+    state = resolveState(state);
+    let opened = false;
+    const maybeOpen = (door) => {
+      if (!door) return;
+      const isBoss = !!(door.bossDoor || door.isBossDoor || door.tag === 'bossDoor');
+      if (!isBoss) return;
+      door.state = door.state || { open: false, openProgress: 0 };
+      if (!door.state.open || door.solid) {
+        opened = true;
+      }
+      door.state.open = true;
+      door.state.openProgress = 1;
+      door.open = true;
+      door.solid = false;
+      if (door.spriteKey) door.spriteKey = '--sprite-door-open';
+    };
+    if (Array.isArray(state.entities)) {
+      for (const ent of state.entities) {
+        if (isKind(ent, 'DOOR')) maybeOpen(ent);
+      }
+    }
+    if (Array.isArray(state.doors)) {
+      for (const ent of state.doors) {
+        maybeOpen(ent);
+      }
+    }
+    if (state.door && isKind(state.door, 'DOOR')) {
+      maybeOpen(state.door);
+    }
+    if (opened) {
+      state.urgenciasOpen = true;
+      try {
+        const G = window.G || null;
+        if (G && typeof G === 'object') G.urgenciasOpen = true;
+      } catch (_) {}
+      try { window.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+    }
+    return opened;
+  }
+
+  window.Doors = { spawn, update, gameflow, open: openDoor, close: closeDoor, toggle: toggleDoor, openUrgencias };
 
   window.Entities = window.Entities || {};
   window.Entities.Door = {
