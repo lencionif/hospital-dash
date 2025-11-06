@@ -1656,7 +1656,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
-    function flashlightColorFor(e){
+    function flashlightColorForHero(e){
       const k = ((e.skin || e.spriteKey || '') + '').toLowerCase();
       if (k.includes('enrique'))   return 'rgba(255,235,90,0.45)';   // amarillo
       if (k.includes('roberto'))   return 'rgba(255,170,90,0.45)';   // naranja cálido
@@ -1665,25 +1665,59 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       return 'rgba(210,230,255,0.85)'; // neutro
     }
 
+    function flashlightProfileForNPC(npc, heroDist){
+      const clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
+      const id = ((npc.aiId || npc.kindName || npc.kind || npc.role || '') + '').toUpperCase();
+      let color = '#ffd5aa';
+      let ratio = 0.48;
+      let fov = Math.PI * 0.48;
+
+      if (id.includes('MEDIC')) {
+        color = '#6bd3ff';
+        ratio = 0.58;
+      } else if (id.includes('JEFESERVICIO') || id.includes('BOSS')) {
+        color = '#ffd46b';
+        ratio = 0.6;
+      } else if (id.includes('GUARDIA')) {
+        color = '#b9ff6b';
+        ratio = 0.5;
+      } else if (id.includes('FAMILIAR')) {
+        color = '#ff6b9a';
+        ratio = 0.42;
+        fov = Math.PI * 0.45;
+      }
+
+      const dist = clamp(heroDist * ratio, heroDist * 0.4, heroDist * 0.6);
+      return { color, dist, fov };
+    }
+
     function updateEntityFlashlights(){
       const list = [];
-      const add = (e, fov = Math.PI * 0.55, dist = 620) => {
-        const cx = e.x + e.w*0.5, cy = e.y + e.h*0.5;
-        const ang = (typeof e.lookAngle === 'number')
+      const hero = (G.player && !G.player.dead) ? G.player : null;
+      const heroDist = hero ? (hero._flashOuter || 740) : 620;
+      const computeAngle = (e) => (
+        (typeof e.lookAngle === 'number')
           ? e.lookAngle
-          : (Math.hypot(e.vx||0, e.vy||0) > 0.01 ? Math.atan2(e.vy||0, e.vx||0) : Math.PI/2);
+          : (Math.hypot(e.vx || 0, e.vy || 0) > 0.01 ? Math.atan2(e.vy || 0, e.vx || 0) : Math.PI / 2)
+      );
+      const add = (e, fov, dist, color) => {
+        const cx = e.x + e.w*0.5, cy = e.y + e.h*0.5;
+        const ang = computeAngle(e);
         list.push({
           x: cx, y: cy, angle: ang,
-          fov, dist, color: flashlightColorFor(e), softness: 0.70
+          fov, dist, color, softness: 0.70
         });
       };
 
-      if (G.player && !G.player.dead) {
-        const dist = (G.player._flashOuter || 740);   // ← del héroe
-        add(G.player, Math.PI * 0.60, dist);
+      if (hero) {
+        add(hero, Math.PI * 0.60, heroDist, flashlightColorForHero(hero));
       }
       if (Array.isArray(G.npcs)) {
-        for (const npc of G.npcs) { if (npc && !npc.dead) add(npc, Math.PI * 0.50, 520); }
+        for (const npc of G.npcs) {
+          if (!npc || npc.dead) continue;
+          const profile = flashlightProfileForNPC(npc, heroDist);
+          add(npc, profile.fov || Math.PI * 0.48, profile.dist, profile.color);
+        }
       }
       G.lights = list;
 

@@ -1,8 +1,10 @@
 // ./assets/plugins/entities/mosquito.entities.js
 (function(){
-  const SPEED = 49;
-  const WANDER_SPEED = 26;
-  const CHASE_RADIUS = 240;
+  const SPEED = 34;
+  const WANDER_SPEED = 18;
+  const CHASE_RADIUS = 160;
+  const CHASE_COOLDOWN = 1.8;
+  const WANDER_FAR_RADIUS = 320;
   const TAU = Math.PI * 2;
 
   function resolveState(state){
@@ -83,22 +85,50 @@
 
     ent._t = (ent._t || 0) + dt;
 
-    if (!player || dist > CHASE_RADIUS){
-      ent.hostile = dist <= CHASE_RADIUS;
-      ent._aiState = 'WANDER';
+    const wantsChase = !!player && dist <= CHASE_RADIUS;
+    const cooldownReady = (ent._nextChaseAt == null) || (ent._t >= ent._nextChaseAt);
+
+    const wander = (stayHostile) => {
+      ent.hostile = !!stayHostile;
+      ent._aiState = stayHostile ? 'COOLDOWN' : 'WANDER';
       ent._wanderTimer = (ent._wanderTimer || 0) - dt;
       if (ent._wanderTimer <= 0){
-        ent._wanderTimer = 0.8 + Math.random() * 1.6;
+        ent._wanderTimer = 1.1 + Math.random() * 1.8;
         const homeDx = (ent._spawnX || ent.x) - cx;
         const homeDy = (ent._spawnY || ent.y) - cy;
-        const bias = Math.atan2(homeDy, homeDx);
-        const jitter = (Math.random() - 0.5) * Math.PI * 0.6;
+        const homeDist = Math.hypot(homeDx, homeDy);
+        const outward = Math.atan2(-homeDy, -homeDx);
+        const toHome = Math.atan2(homeDy, homeDx);
+        const far = WANDER_FAR_RADIUS;
+        let bias;
+        if (!isFinite(homeDist) || homeDist < 1) {
+          bias = Math.random() * TAU;
+        } else if (homeDist < far * 0.6) {
+          bias = outward;
+        } else if (homeDist > far) {
+          bias = toHome;
+        } else {
+          bias = outward;
+        }
+        const jitter = (Math.random() - 0.5) * Math.PI * 0.5;
         ent._wanderDir = isFinite(bias) ? bias + jitter : Math.random() * TAU;
       }
-      const sway = Math.sin(ent._t * 2.6) * 0.4;
-      const dir = ent._wanderDir + sway * 0.2;
+      const sway = Math.sin(ent._t * 2.0) * 0.35;
+      const dir = (ent._wanderDir || 0) + sway * 0.25;
       ent.vx = Math.cos(dir) * WANDER_SPEED;
       ent.vy = Math.sin(dir) * WANDER_SPEED;
+    };
+
+    if (!wantsChase){
+      if (ent._aiState === 'CHASE') {
+        ent._nextChaseAt = ent._t + CHASE_COOLDOWN;
+      }
+      wander(false);
+      return;
+    }
+
+    if (!cooldownReady){
+      wander(true);
       return;
     }
 
