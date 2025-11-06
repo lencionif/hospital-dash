@@ -35,9 +35,27 @@
     if (!Number.isFinite(G.patientsPending)) G.patientsPending = 0;
     if (!Number.isFinite(G.patientsCured)) G.patientsCured = 0;
     if (!Number.isFinite(G.patientsFurious)) G.patientsFurious = 0;
+    if (!Array.isArray(G.patients)) G.patients = G.patients || [];
+    if (Array.isArray(G.patients)) {
+      G.patients.total = G.patientsTotal | 0;
+      G.patients.pending = G.patientsPending | 0;
+      G.patients.cured = G.patientsCured | 0;
+      G.patients.furious = G.patientsFurious | 0;
+    }
+  }
+
+  function syncPatientArrayCounters() {
+    ensurePatientCounters();
+    if (Array.isArray(G.patients)) {
+      G.patients.total = G.patientsTotal | 0;
+      G.patients.pending = G.patientsPending | 0;
+      G.patients.cured = G.patientsCured | 0;
+      G.patients.furious = G.patientsFurious | 0;
+    }
   }
 
   function counterSnapshot() {
+    syncPatientArrayCounters();
     return {
       total: G.patientsTotal | 0,
       pending: G.patientsPending | 0,
@@ -94,12 +112,13 @@
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== e);
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== e);
     try { W.MovementSystem?.unregister?.(e); } catch (_) {}
-    if (e.id && G._patientsByKey instanceof Map) {
-      for (const [k, v] of [...G._patientsByKey.entries()]) {
-        if (v === e) G._patientsByKey.delete(k);
+      if (e.id && G._patientsByKey instanceof Map) {
+        for (const [k, v] of [...G._patientsByKey.entries()]) {
+          if (v === e) G._patientsByKey.delete(k);
+        }
       }
+      syncPatientArrayCounters();
     }
-  }
 
   function nextIdentity() {
     ensureStats();
@@ -135,16 +154,17 @@
     stats.totalPatients = Math.min(35, (stats.totalPatients || 0) + 1);
     stats.remainingPatients = Math.min(35, (stats.remainingPatients || 0) + 1);
     ensurePatientCounters();
-    if (!e.__countersRegistered) {
-      e.__countersRegistered = true;
-      G.patientsTotal = (G.patientsTotal | 0) + 1;
-      G.patientsPending = (G.patientsPending | 0) + 1;
-      emitPatientsCounter();
-      try { W.LOG?.event?.('PATIENT_CREATE', { id: e.id }); } catch (_) {}
-      e.__creationLogged = true;
+      if (!e.__countersRegistered) {
+        e.__countersRegistered = true;
+        G.patientsTotal = (G.patientsTotal | 0) + 1;
+        G.patientsPending = (G.patientsPending | 0) + 1;
+        emitPatientsCounter();
+        try { W.LOG?.event?.('PATIENT_CREATE', { id: e.id }); } catch (_) {}
+        e.__creationLogged = true;
+      }
+      syncPatientArrayCounters();
+      try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
     }
-    try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
-  }
 
   function createPatient(x, y, opts = {}) {
     ensureCollections();
@@ -307,13 +327,14 @@
     patient.dead = true;
     patient.attendedAndMatched = true;
     patient.delivered = true;
-    patient.pillSatisfied = true;
-    if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
-    ensurePatientCounters();
-    G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
-    G.patientsCured = (G.patientsCured | 0) + 1;
-    try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
-    try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
+      patient.pillSatisfied = true;
+      if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
+      ensurePatientCounters();
+      G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
+      G.patientsCured = (G.patientsCured | 0) + 1;
+      syncPatientArrayCounters();
+      try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
+      try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientDelivered?.(patient); } catch (_) {}
     try { W.ScoreAPI?.addScore?.(100, 'deliver_patient', { patient: patient.displayName }); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
@@ -367,12 +388,13 @@
     if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
     const stats = ensureStats();
     stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
-    stats.activeFuriosas = (stats.activeFuriosas || 0) + 1;
-    ensurePatientCounters();
-    G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
-    G.patientsFurious = (G.patientsFurious | 0) + 1;
-    emitPatientsCounter();
-    patient.__convertedViaPatientsAPI = true;
+      stats.activeFuriosas = (stats.activeFuriosas || 0) + 1;
+      ensurePatientCounters();
+      G.patientsPending = Math.max(0, (G.patientsPending | 0) - 1);
+      G.patientsFurious = (G.patientsFurious | 0) + 1;
+      syncPatientArrayCounters();
+      emitPatientsCounter();
+      patient.__convertedViaPatientsAPI = true;
     removeEntity(patient);
     let furiosa = null;
     if (W.FuriousAPI && typeof W.FuriousAPI.spawnFromPatient === 'function') {
@@ -415,6 +437,7 @@
     stats.furiosasNeutralized = (stats.furiosasNeutralized || 0) + 1;
     ensurePatientCounters();
     G.patientsFurious = Math.max(0, (G.patientsFurious | 0) - 1);
+    syncPatientArrayCounters();
     emitPatientsCounter();
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
   }
@@ -475,7 +498,8 @@
     generateSet,
     ensureStats,
     ensureCollections,
-    counterSnapshot
+    counterSnapshot,
+    syncCounters: syncPatientArrayCounters
   };
 
   W.PatientsAPI = PatientsAPI;

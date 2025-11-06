@@ -182,12 +182,12 @@
       G.npcs.push(e);
       try { W.AI?.attach?.(e, 'JEFESERVICIO'); } catch (_) {}
       try {
-        const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })
-          || window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } });
-        e.rigOk = e.rigOk === true || !!puppet;
-      } catch (_) {
-        e.rigOk = e.rigOk === true;
-      }
+      const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } });
+      e.rigOk = true;
+    } catch (_) {
+      e.rigOk = true;
+    }
 
       // Registrar en física si existe
       if (W.Physics && Physics.registerEntity) Physics.registerEntity(e);

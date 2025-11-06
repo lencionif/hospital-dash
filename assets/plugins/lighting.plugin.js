@@ -10,6 +10,8 @@
 
   const TAU = Math.PI * 2;
   const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+  const ALPHA_HERO = 0.60;
+  const ALPHA_NPC  = 0.45;
 
   // ─────────────────────────────────────────────────────
   // LightingAPI
@@ -277,6 +279,7 @@
               ctx.save();
               ctx.translate(px,py);
               ctx.rotate(ang + Math.PI);
+              ctx.globalAlpha = L.isHero ? ALPHA_HERO : ALPHA_NPC;
 
               const rx = dist * 1.00, ry = dist * 0.42;
               const gx = rx * 0.70;
@@ -296,6 +299,7 @@
               ctx.closePath();
               ctx.fill();
 
+              ctx.globalAlpha = 1;
               ctx.restore();
             }
           }

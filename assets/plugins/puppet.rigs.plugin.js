@@ -334,6 +334,8 @@
     let orientation = st.orientation || 'down';
     const pushing = e?.pushing === true || (typeof e?.pushAnimT === 'number' && e.pushAnimT > 0.05) || e?.state === 'pushing';
     const attacking = (e?.attackTimer || 0) > 0 || e?.isAttacking === true;
+    const hurt = (e?.invuln || 0) > 0 && (Date.now() - (e?._lastHitAt || 0) < 1200);
+    if (hurt) return { state: 'hurt', orientation, bobMul: 0.35 };
     if (e?.isTalking) return { state: 'talk', orientation };
     if (attacking) return { state: 'attack', orientation, bobMul: 0.5 };
     if (pushing && (st.moving || (e?.pushAnimT || 0) > 0.01)){
@@ -378,12 +380,17 @@
         tint: { color: 'rgba(255,214,120,1)', alpha: 0.24 },
         bobMul: 0.55
       },
-      talk: {
-        skin: { down: frontSkin, up: backSkin, side: frontSkin },
-        bobMul: 0.5,
-        tint: { color: 'rgba(230,240,255,1)', alpha: 0.18 }
-      }
-    };
+        talk: {
+          skin: { down: frontSkin, up: backSkin, side: frontSkin },
+          bobMul: 0.5,
+          tint: { color: 'rgba(230,240,255,1)', alpha: 0.18 }
+        },
+        hurt: {
+          skin: { down: frontSkin, up: backSkin, side: frontSkin },
+          bobMul: 0.35,
+          tint: { color: 'rgba(255,120,120,1)', alpha: 0.35 }
+        }
+      };
   }
 
   function makeNPCStates(front, back){
@@ -395,12 +402,16 @@
       walk_up: { skin: backSkin, bobMul: 0.9 },
       walk_side: { skin: frontSkin, bobMul: 1.0 },
       talk: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.5, tint: { color: 'rgba(240,250,255,1)', alpha: 0.18 } },
-      push: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.42, tint: { color: 'rgba(180,255,220,1)', alpha: 0.12 } }
+      push: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.42, tint: { color: 'rgba(180,255,220,1)', alpha: 0.12 } },
+      hurt: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.4, tint: { color: 'rgba(255,120,120,1)', alpha: 0.3 } }
     };
   }
 
   function resolveNPCState(st, e){
     const orientation = st.orientation || 'down';
+    if ((e?.invuln || 0) > 0 && (Date.now() - (e?._lastHitAt || 0) < 1200)) {
+      return { state: 'hurt', orientation };
+    }
     if (e?.isTalking) return { state: 'talk', orientation };
     if (st.moving){
       if (orientation === 'up') return 'walk_up';
@@ -410,7 +421,7 @@
     return { state: 'idle', orientation };
   }
 
-  const HERO_ANIM_SPEED = 1.3;
+  const HERO_ANIM_SPEED = 1.35;
   const HERO_RIGS = {
     enrique: {
       front: 'enrique',
