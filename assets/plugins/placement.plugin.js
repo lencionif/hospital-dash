@@ -823,13 +823,26 @@ function ensureOnLists(e){
 
       // ---------- Luces ----------
       case 'light':
-      case 'boss_light':
-        if (p.type==='boss_light'){
-          return (window.Entities?.spawnFromPlacement_BossLight?.(p) ||
-                  (window.Entities?.BossLight && new window.Entities.BossLight(p)));
+      case 'boss_light': {
+        const isBossLight = (type === 'boss_light') || (p.type === 'boss_light');
+        const payload = { ...p, x, y, _units: 'px' };
+        const light = isBossLight
+          ? (window.Entities?.spawnFromPlacement_BossLight?.(payload)
+            || (window.Entities?.BossLight && new window.Entities.BossLight(payload)))
+          : (window.Entities?.spawnFromPlacement_Light?.(payload)
+            || window.Entities?.Light?.spawn?.(x, y, payload));
+        if (light) {
+          light.qaLightKind = isBossLight ? 'LIGHT_BOSS' : (payload.broken ? 'LIGHT_BROKEN' : 'LIGHT_NORMAL');
+          if (payload.broken === true && light.puppet && light.puppet.data) {
+            light.puppet.data.broken = true;
+          }
+          ensureOnLists(light);
+          logOk(light.qaLightKind || (isBossLight ? 'BOSS_LIGHT' : 'LIGHT'), x, y, light);
+          return;
         }
-        return (window.Entities?.spawnFromPlacement_Light?.(p) ||
-                window.Entities?.Light?.spawn?.(x,y,p));
+        logFail(isBossLight ? 'BOSS_LIGHT' : 'LIGHT', x, y, 'sin API');
+        return;
+      }
 
       // ---------- Objetos varios ----------
       case 'patient': { e = W.Entities?.Patient?.spawn?.(x,y,p); if (e){ ensureOnLists(e); logOk('PATIENT',x,y,e); return; } logFail('PATIENT',x,y,'sin API'); return; }
