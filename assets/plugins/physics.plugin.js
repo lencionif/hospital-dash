@@ -24,6 +24,8 @@
     let G = null;
     let TILE = window.TILE_SIZE || 32;
 
+    const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
+
     const updateTileSize = () => {
       TILE = window.TILE_SIZE || TILE;
     };
@@ -169,9 +171,8 @@
         if (!isWall(tryX + pad, ny + pad, cw, ch)){
           nx = tryX;
         } else {
-          const v = - (e.vx || 0) * wr;
-          const minImpulse = 10;
-          e.vx = (Math.abs(v) < minImpulse) ? (v >= 0 ? minImpulse : -minImpulse) : v;
+          const v = -(e.vx || 0) * wr;
+          e.vx = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vx || 1);
           if (!isWall(nx + s, ny, e.w, e.h)) nx += s;
         }
@@ -179,9 +180,8 @@
         if (!isWall(nx + pad, tryY + pad, cw, ch)){
           ny = tryY;
         } else {
-          const v = - (e.vy || 0) * wr;
-          const minImpulse = 10;
-          e.vy = (Math.abs(v) < minImpulse) ? (v >= 0 ? minImpulse : -minImpulse) : v;
+          const v = -(e.vy || 0) * wr;
+          e.vy = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vy || 1);
           if (!isWall(nx, ny + s, e.w, e.h)) ny += s;
         }
@@ -276,6 +276,8 @@
         if (!e || e.dead || e.static) continue;
         if (!(e.solid || e.pushable || e.dynamic) && Math.abs(e.vx || 0) + Math.abs(e.vy || 0) <= 0) continue;
         collideWithTiles(e);
+        e.vx = clamp(e.vx || 0, -1200, 1200);
+        e.vy = clamp(e.vy || 0, -1200, 1200);
         resolveAgainstSolids(e);
       }
       resolveEntityPairs(dt);
