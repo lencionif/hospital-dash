@@ -1,0 +1,133 @@
+<levels>
+  <!-- ====== GLOBALS ====== -->
+  <globals
+    tileSize="32"
+    defaultLightAlpha="0.6"
+    maxHeroes="2"
+    defaultHero="enrique"
+    massHero="1.0"
+    massCart="3.5"
+    massRat="0.5"
+    massMosquito="0.2"
+    massNPC="1.1"
+    massPill="0.1"
+    restitution="0.12"
+    friction="0.045"
+    slideFriction="0.020"
+    npcLightMedico="#6bd3ff"
+    npcLightJefe="#ffd46b"
+    npcLightGuardia="#b9ff6b"
+    npcLightFamiliar="#ff6b9a"
+  />
+
+  <!-- ====== LEVEL 1 ====== -->
+  <level id="1"
+         mode="normal"
+         seed="auto"
+         heroes="1"
+         width="60" height="40"
+         rooms="8"
+         roomSizeMin="6x6" roomSizeMax="12x10"
+         corridors="true"
+         difficulty="1"
+         boss="hematologico"
+         bossRoom="big">
+    <spawn hero="true" x="auto" y="auto"/>
+    <minimap startVisible="true" startSmall="true"/>
+
+    <!-- Pacientes (crean pill + bell asociadas) -->
+    <rule type="patient" count="3" perRoom="1"
+          names="Dolores de Barriga,Angustias Pérez,Lola Mento"
+          pillNameMode="autoAnagramOrFunny" pillPickup="touchOrE" bell="true"/>
+
+    <!-- NPC genéricos -->
+    <rule type="npc" kind="medico"     perRoom="0-1" count="2" lightAlpha="0.6"/>
+    <rule type="npc" kind="guardia"    perRoom="0-1" count="2" lightAlpha="0.6"/>
+    <rule type="npc" kind="familiar"   perRoom="0-1" count="2" lightAlpha="0.6"/>
+
+    <!-- NPC únicos -->
+    <rule type="npc" kind="jefe"        unique="true" at="room:near_boss"  lightAlpha="0.6"/>
+    <rule type="npc" kind="supervisora" unique="true" at="room:control"    lightAlpha="0.6"/>
+
+    <!-- Enemigos -->
+    <rule type="enemy" kind="rat"       difficulty="1" perRoom="0-2" count="2"/>
+    <rule type="enemy" kind="mosquito"  difficulty="1" perRoom="0-1" count="1" speedScale="0.7" chaseRadius="160"/>
+
+    <!-- Carros -->
+    <rule type="cart"  kind="comida"    perRoom="0-1" count="2"/>
+    <rule type="cart"  kind="medicina"  perRoom="0-1" count="2"/>
+    <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
+
+    <!-- Puerta urgencias -->
+    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
+
+    <!-- Ascensores: prohibido en/hacia bossRoom -->
+    <rule type="elevator" count="1"
+          connect="room:entrance->room:control"
+          forbidIn="bossRoom"
+          forbidTo="bossRoom"/>
+
+    <!-- Teléfono solo control -->
+    <rule type="phone" count="1" at="room:control"/>
+
+    <!-- Luces -->
+    <rule type="light" kind="normal" perRoom="1-3" alpha="0.6"/>
+    <rule type="light" kind="torre"  perRoom="0-1" alpha="0.6"/>
+    <lighting heroAlpha="0.6" npcAlpha="0.6"
+              npcColors="medico:#6bd3ff,jefe:#ffd46b,guardia:#b9ff6b,familiar:#ff6b9a"
+              brokenLights="0.10"/>
+
+    <!-- Leyenda completa para pruebas -->
+    <legend enable="true" include="all"/>
+  </level>
+
+  <!-- ====== LEVEL 2 (coop, más grande) ====== -->
+  <level id="2"
+         mode="normal"
+         seed="auto"
+         heroes="2"
+         width="80" height="56"
+         rooms="12"
+         roomSizeMin="8x8" roomSizeMax="14x12"
+         corridors="true"
+         difficulty="2"
+         boss="quirurgico"
+         bossRoom="big">
+    <spawn hero="true" x="auto" y="auto"/>
+    <minimap startVisible="true" startSmall="true"/>
+
+    <rule type="patient" count="5" perRoom="1-2"
+          names="Dolores,Angustias,Constanza,Raymunda,Flor"
+          pillNameMode="autoAnagramOrFunny" pillPickup="touchOrE" bell="true"/>
+
+    <rule type="npc" kind="medico"     perRoom="0-2" count="3" lightAlpha="0.6"/>
+    <rule type="npc" kind="guardia"    perRoom="0-1" count="2" lightAlpha="0.6"/>
+    <rule type="npc" kind="familiar"   perRoom="0-2" count="3" lightAlpha="0.6"/>
+    <rule type="npc" kind="celador"    perRoom="0-1" count="2" lightAlpha="0.6"/>
+
+    <rule type="npc" kind="jefe"        unique="true" at="room:near_boss"  lightAlpha="0.6"/>
+    <rule type="npc" kind="supervisora" unique="true" at="room:control"    lightAlpha="0.6"/>
+
+    <rule type="enemy" kind="rat"       difficulty="2" perRoom="0-3" count="4"/>
+    <rule type="enemy" kind="mosquito"  difficulty="2" perRoom="0-2" count="3" speedScale="0.7" chaseRadius="170"/>
+
+    <rule type="cart"  kind="comida"    perRoom="0-1" count="3"/>
+    <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
+    <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
+
+    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
+
+    <rule type="elevator" count="2"
+          connect="room:entrance->room:control,room:control->room:ICU"
+          forbidIn="bossRoom"
+          forbidTo="bossRoom"/>
+
+    <rule type="phone" count="1" at="room:control"/>
+
+    <rule type="light" kind="normal" perRoom="2-4" alpha="0.6"/>
+    <rule type="light" kind="torre"  perRoom="0-1" alpha="0.6"/>
+    <lighting heroAlpha="0.6" npcAlpha="0.6" brokenLights="0.15"/>
+
+    <legend enable="true" include="all"/>
+  </level>
+</levels>

@@ -494,8 +494,221 @@ function fixRoomPerimeterGaps(ascii, room, cs){
     return extra;
   }
 
+  function ensureGrid(options = {}){
+    const G = W.G || (W.G = {});
+    const width = clamp(options.width | 0 || 60, 20, 400);
+    const height = clamp(options.height | 0 || 40, 20, 400);
+    const roomsTarget = clamp(options.rooms | 0 || 8, 3, 60);
+    const corridors = options.corridors !== false;
+    const seed = options.seed ?? (G.seed ?? (Date.now() >>> 0));
+    const rng = RNG(seed);
+
+    const sizeMin = parseRoomSize(options.roomSizeMin, { w: 6, h: 6 });
+    const sizeMax = parseRoomSize(options.roomSizeMax, { w: 12, h: 10 });
+
+    const map = Array.from({ length: height }, () => Array(width).fill(1));
+    const rooms = [];
+    const carve = (rect) => {
+      for (let y = rect.y; y < rect.y + rect.h; y++) {
+        for (let x = rect.x; x < rect.x + rect.w; x++) {
+          if (y <= 0 || y >= height - 1 || x <= 0 || x >= width - 1) continue;
+          map[y][x] = 0;
+        }
+      }
+    };
+
+    const attempts = roomsTarget * 30;
+    for (let attempt = 0; attempt < attempts && rooms.length < roomsTarget; attempt++) {
+      const rw = clamp(rng.int(sizeMin.w, sizeMax.w), 3, width - 4);
+      const rh = clamp(rng.int(sizeMin.h, sizeMax.h), 3, height - 4);
+      const rx = clamp(rng.int(1, width - rw - 1), 1, width - rw - 2);
+      const ry = clamp(rng.int(1, height - rh - 1), 1, height - rh - 2);
+      const rect = { x: rx, y: ry, w: rw, h: rh, id: `room_${rooms.length + 1}` };
+      if (rooms.some((other) => roomsOverlap(rect, other, 2))) continue;
+      rooms.push(rect);
+      carve(rect);
+    }
+
+    if (!rooms.length) {
+      const fallback = { x: 2, y: 2, w: width - 4, h: height - 4, id: 'room_1' };
+      rooms.push(fallback);
+      carve(fallback);
+    }
+
+    const centers = rooms.map((r) => ({
+      room: r,
+      x: r.x + Math.floor(r.w / 2),
+      y: r.y + Math.floor(r.h / 2)
+    }));
+
+    if (corridors && rooms.length > 1) {
+      const ordered = [...centers].sort((a, b) => (a.x + a.y * 0.5) - (b.x + b.y * 0.5));
+      for (let i = 1; i < ordered.length; i++) {
+        digCorridor(map, ordered[i - 1], ordered[i]);
+      }
+    }
+
+    sealBorders(map);
+
+    const control = pickControlRoom(rooms, width, height);
+    const entrance = pickEntranceRoom(rooms);
+    const boss = pickBossRoom(rooms, control);
+
+    if (control) control.tag = 'room:control';
+    if (entrance) entrance.tag = 'room:entrance';
+    if (boss) boss.tag = 'bossRoom';
+
+    const bossEntrance = boss
+      ? {
+          tx: clamp(boss.x + Math.floor(boss.w / 2), 1, width - 2),
+          ty: clamp(boss.y + Math.floor(boss.h / 2), 1, height - 2)
+        }
+      : null;
+
+    G.map = map;
+    G.mapW = width;
+    G.mapH = height;
+    G.mapAreas = {
+      rooms,
+      control,
+      entrance,
+      boss,
+      bossEntrance
+    };
+    G.seed = seed;
+
+    return { map, width, height, rooms, control, entrance, boss, bossEntrance, seed };
+  }
+
+  function parseRoomSize(value, fallback) {
+    if (!value || typeof value !== 'string') return { ...fallback };
+    const parts = value.split('x').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n));
+    if (parts.length === 2) {
+      return { w: Math.max(3, parts[0]), h: Math.max(3, parts[1]) };
+    }
+    const num = parseInt(value, 10);
+    if (Number.isFinite(num)) {
+      return { w: Math.max(3, num), h: Math.max(3, num) };
+    }
+    return { ...fallback };
+  }
+
+  function roomsOverlap(a, b, pad = 0) {
+    return !(
+      a.x + a.w + pad <= b.x ||
+      b.x + b.w + pad <= a.x ||
+      a.y + a.h + pad <= b.y ||
+      b.y + b.h + pad <= a.y
+    );
+  }
+
+  function digCorridor(map, from, to) {
+    const path = [];
+    let cx = from.x;
+    let cy = from.y;
+    while (cx !== to.x) {
+      cx += cx < to.x ? 1 : -1;
+      path.push({ x: cx, y: cy });
+    }
+    while (cy !== to.y) {
+      cy += cy < to.y ? 1 : -1;
+      path.push({ x: cx, y: cy });
+    }
+    for (const step of path) {
+      if (step.y <= 0 || step.y >= map.length - 1 || step.x <= 0 || step.x >= map[0].length - 1) continue;
+      map[step.y][step.x] = 0;
+    }
+  }
+
+  function sealBorders(map) {
+    const H = map.length;
+    const Wd = map[0]?.length || 0;
+    for (let x = 0; x < Wd; x++) {
+      map[0][x] = 1;
+      map[H - 1][x] = 1;
+    }
+    for (let y = 0; y < H; y++) {
+      map[y][0] = 1;
+      map[y][Wd - 1] = 1;
+    }
+  }
+
+  function pickControlRoom(rooms, width, height) {
+    const cx = width / 2;
+    const cy = height / 2;
+    let best = null;
+    let bestScore = Infinity;
+    for (const room of rooms) {
+      const rx = room.x + room.w / 2;
+      const ry = room.y + room.h / 2;
+      const dist = (rx - cx) * (rx - cx) + (ry - cy) * (ry - cy);
+      if (dist < bestScore) {
+        bestScore = dist;
+        best = room;
+      }
+    }
+    return best || rooms[0] || null;
+  }
+
+  function pickEntranceRoom(rooms) {
+    let best = null;
+    let score = Infinity;
+    for (const room of rooms) {
+      const center = room.x + room.y;
+      if (center < score) {
+        score = center;
+        best = room;
+      }
+    }
+    return best || rooms[0] || null;
+  }
+
+  function pickBossRoom(rooms, control) {
+    if (!rooms.length) return null;
+    const ctrl = control || rooms[0];
+    const cx = ctrl.x + ctrl.w / 2;
+    const cy = ctrl.y + ctrl.h / 2;
+    let best = null;
+    let bestDist = -1;
+    for (const room of rooms) {
+      if (room === ctrl) continue;
+      const rx = room.x + room.w / 2;
+      const ry = room.y + room.h / 2;
+      const dist = (rx - cx) * (rx - cx) + (ry - cy) * (ry - cy);
+      if (dist > bestDist) {
+        bestDist = dist;
+        best = room;
+      }
+    }
+    return best || rooms[rooms.length - 1] || ctrl;
+  }
+
   const MapGenAPI = { _G: null, init(G){ this._G = G || W.G || (W.G={}); }, generate };
   W.MapGenAPI = MapGenAPI;
+  const MapGen = W.MapGen = W.MapGen || {};
+  MapGen.init = MapGenAPI.init.bind(MapGenAPI);
+  MapGen.generate = MapGenAPI.generate;
+  MapGen.ensureGrid = ensureGrid;
+  MapGen.MAP_MODE = MAP_MODE;
+  MapGen.createRNG = (seed) => RNG(seed);
+  MapGen.getLastSeed = () => W.G?.seed;
+  try {
+    Object.defineProperties(MapGen, {
+      map: { configurable: true, get(){ return W.G?.map || null; } },
+      mapW: { configurable: true, get(){ return W.G?.mapW || 0; } },
+      mapH: { configurable: true, get(){ return W.G?.mapH || 0; } },
+      mapAreas: { configurable: true, get(){ return W.G?.mapAreas || null; } },
+      seed: { configurable: true, get(){ return W.G?.seed; } }
+    });
+  } catch (_) {
+    MapGen.map = W.G?.map;
+    MapGen.mapW = W.G?.mapW;
+    MapGen.mapH = W.G?.mapH;
+    MapGen.mapAreas = W.G?.mapAreas;
+    MapGen.seed = W.G?.seed;
+  }
+
+  W.__MAP_MODE = MAP_MODE;
 
   // ─────────────────────────────────────────
   // Config & constantes

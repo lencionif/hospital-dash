@@ -2439,8 +2439,11 @@ function drawEntities(c2){
 
     buildLevelForCurrentMode(targetLevel);
 
-      // Siembra única con Placement; si no aplica, fallback
-      (function seedOnce(){
+      const seedOnce = async () => {
+        if (typeof window.resetLevelState === 'function') {
+          try { window.resetLevelState(); } catch (err) { console.warn('[resetLevelState]', err); }
+        }
+        G.__placementsApplied = false;
         let placementApplied = false;
         const levelCfg = G._lastLevelCfg || {
           G, mode: (DEBUG_MAP_MODE ? 'debug':'normal'), debug: DEBUG_MAP_MODE,
@@ -2450,31 +2453,45 @@ function drawEntities(c2){
         };
         try {
           if (window.Placement?.applyFromAsciiMap) {
-            const r = window.Placement.applyFromAsciiMap(levelCfg);
-            placementApplied = (r?.applied === true || r?.reason === 'guard');
-            if (r?.applied) { try { window.Placement?.summarize?.(); } catch(_){} }
+            const result = await window.Placement.applyFromAsciiMap(levelCfg);
+            placementApplied = (result?.applied === true || result?.reason === 'guard');
+            if (result?.applied) { try { window.Placement?.summarize?.(); } catch(_){} }
           }
         } catch (err){ console.warn('[Placement] applyFromAsciiMap error', err); }
         if (!placementApplied) { finalizeLevelBuildOnce({ forceFallback: true }); }
-      })();
-      // Activa IA y refresca minimapa
-      try {
-        if (Array.isArray(G.entities)) for (const e of G.entities) window.AI?.register?.(e);
-        window.Minimap?.refresh?.();
-      } catch(_){ }
+      };
 
-      configureLevelSystems();
+      const postSeed = () => {
+        try {
+          if (Array.isArray(G.entities)) for (const e of G.entities) window.AI?.register?.(e);
+          window.Minimap?.refresh?.();
+        } catch(_){ }
 
-    try {
-      window.GameFlowAPI?.startLevel?.(targetLevel);
-    } catch (err){
-      console.warn('[GameFlow] startLevel error:', err);
-    }
+        document.getElementById('minimapOverlay')?.classList.add('hidden');
+        document.getElementById('minimap')?.classList.remove('expanded');
+        window.__setMinimapMode?.('small');
+        window.__toggleMinimap?.(false);
+        window.__toggleMinimap?.(true);
 
-    setGameState('READY');
-    window.dispatchEvent(new CustomEvent('game:start', {
-      detail: { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart }
-    }));
+        configureLevelSystems();
+
+        try {
+          window.GameFlowAPI?.startLevel?.(targetLevel);
+        } catch (err){
+          console.warn('[GameFlow] startLevel error:', err);
+        }
+
+        setGameState('READY');
+        window.dispatchEvent(new CustomEvent('game:start', {
+          detail: { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart }
+        }));
+      };
+
+      seedOnce().then(postSeed).catch((err) => {
+        console.warn('[Placement] async seed error', err);
+        finalizeLevelBuildOnce({ forceFallback: true });
+        postSeed();
+      });
   }
 
 
