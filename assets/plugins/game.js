@@ -12,6 +12,18 @@
   // ------------------------------------------------------------
   const SEARCH_PARAMS = new URLSearchParams(location.search || '');
   const DEBUG_MAP_MODE = /(?:\?|&)map=debug\b/i.test(location.search || '');
+  const DEBUG_MAP_FILE = (() => {
+    const raw = SEARCH_PARAMS.get('debugMap')
+      || SEARCH_PARAMS.get('debugMapFile')
+      || SEARCH_PARAMS.get('mapfile');
+    if (!raw) return null;
+    try {
+      return decodeURIComponent(raw.replace(/\+/g, ' '));
+    } catch (_) {
+      return raw;
+    }
+  })();
+  window.DEBUG_MAP_FILE = DEBUG_MAP_FILE;
   const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
 
   function logThrough(level, ...args){
@@ -911,6 +923,8 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       return;
     }
 
+    G.asciiMap = Array.isArray(lines) ? lines.slice() : [];
+
     // === Tamaño y buffer de mapa ===
     G.mapH = lines.length;
     G.mapW = lines[0].length;
@@ -1040,6 +1054,21 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     if (Array.isArray(G.entities)){
       for (const ent of G.entities){ MovementSystem.register(ent); }
     }
+
+    const width = G.mapW || (lines[0]?.length || 0);
+    const height = G.mapH || lines.length;
+    window.LOG?.event?.('ASCII_MAP_READY', {
+      mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
+      width,
+      height,
+      source: G.debugAsciiSource || (DEBUG_MAP_MODE ? 'debug' : 'procedural')
+    });
+    logThrough('info', '[map] ASCII preparado', {
+      mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
+      width,
+      height,
+      source: G.debugAsciiSource || (DEBUG_MAP_MODE ? 'debug' : 'procedural')
+    });
   }
 
 
@@ -2087,6 +2116,81 @@ function drawEntities(c2){
 
   let lastUIState = null;
 
+  function normalizeAsciiFromText(text){
+    const normalized = String(text || '').replace(/\r\n?/g, '\n');
+    const rows = normalized.split('\n');
+    while (rows.length && !rows[0].trim()) rows.shift();
+    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    return rows.map((row) => row.replace(/\t/g, ' '));
+  }
+
+  async function loadDebugAsciiMap(fallbackLines){
+    const fallback = {
+      lines: Array.isArray(fallbackLines) ? fallbackLines.slice() : DEFAULT_ASCII_MAP.slice(),
+      source: 'builtin',
+      fromFile: false,
+      file: null
+    };
+    const fallbackWidth = fallback.lines[0]?.length || 0;
+    const fallbackHeight = fallback.lines.length;
+
+    if (!DEBUG_MAP_FILE) {
+      logThrough('info', '[debug-map] usando mapa ASCII embebido', {
+        width: fallbackWidth,
+        height: fallbackHeight
+      });
+      window.LOG?.event?.('DEBUG_MAP_LOAD', {
+        mode: 'builtin',
+        width: fallbackWidth,
+        height: fallbackHeight
+      });
+      return fallback;
+    }
+
+    try {
+      const response = await fetch(DEBUG_MAP_FILE, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const text = await response.text();
+      const rows = normalizeAsciiFromText(text);
+      if (!rows.length) {
+        throw new Error('archivo vacío');
+      }
+      const payload = {
+        lines: rows,
+        source: 'file',
+        fromFile: true,
+        file: DEBUG_MAP_FILE,
+        width: rows[0]?.length || 0,
+        height: rows.length
+      };
+      logThrough('info', '[debug-map] mapa ASCII externo cargado', {
+        file: DEBUG_MAP_FILE,
+        width: payload.width,
+        height: payload.height
+      });
+      window.LOG?.event?.('DEBUG_MAP_LOAD', {
+        mode: 'file',
+        file: DEBUG_MAP_FILE,
+        width: payload.width,
+        height: payload.height
+      });
+      return payload;
+    } catch (err) {
+      logThrough('warn', '[debug-map] fallo al cargar mapa externo, usando fallback', {
+        file: DEBUG_MAP_FILE,
+        error: err?.message || String(err)
+      });
+      window.LOG?.event?.('DEBUG_MAP_LOAD', {
+        mode: 'file-error',
+        file: DEBUG_MAP_FILE,
+        error: err?.message || String(err)
+      });
+      return fallback;
+    }
+  }
+
   function buildLevelForCurrentMode(levelNumber){
     const level = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
     G.debugMap = DEBUG_MAP_MODE;
@@ -2099,21 +2203,80 @@ function drawEntities(c2){
     G.flags = G.flags || {};
     G.flags.DEBUG_FORCE_ASCII = !!window.DEBUG_FORCE_ASCII;
 
-    if (window.DEBUG_FORCE_ASCII){
-      ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
-      parseMap(ASCII_MAP);
-      if (!window.Placement?.applyFromAsciiMap) {
-        finalizeLevelBuildOnce();
-      }
-      console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
-      return;
+    const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
+    const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
+
+    if (shouldUseDebugAscii){
+      return loadDebugAsciiMap(asciiFallback).then((payload) => {
+        const asciiLines = Array.isArray(payload?.lines) && payload.lines.length
+          ? payload.lines.slice()
+          : asciiFallback.slice();
+        ASCII_MAP = asciiLines;
+        G.debugAsciiSource = payload?.source || (payload?.fromFile ? 'file' : 'builtin');
+        G.debugAsciiFile = payload?.file || null;
+        parseMap(ASCII_MAP);
+        if (!window.Placement?.applyFromAsciiMap) {
+          finalizeLevelBuildOnce();
+        }
+        const width = G.mapW || (ASCII_MAP[0]?.length || 0);
+        const height = G.mapH || ASCII_MAP.length;
+        const counterLabel = (payload?.source === 'file' || payload?.fromFile)
+          ? 'debug:file'
+          : 'debug:builtin';
+        if (window.LOG?.counter) {
+          window.LOG.counter('mapMode', counterLabel);
+        }
+        window.LOG?.event?.('MAP_READY', {
+          mode: 'debug',
+          source: G.debugAsciiSource,
+          file: G.debugAsciiFile,
+          width,
+          height
+        });
+        logThrough('info', '[buildLevel] mapa debug preparado', {
+          source: G.debugAsciiSource,
+          file: G.debugAsciiFile,
+          width,
+          height
+        });
+      }).catch((err) => {
+        console.warn('[debug-map] error inesperado al cargar mapa debug', err);
+        ASCII_MAP = asciiFallback.slice();
+        G.debugAsciiSource = 'builtin-error';
+        G.debugAsciiFile = null;
+        parseMap(ASCII_MAP);
+        if (!window.Placement?.applyFromAsciiMap) {
+          finalizeLevelBuildOnce();
+        }
+        const width = G.mapW || (ASCII_MAP[0]?.length || 0);
+        const height = G.mapH || ASCII_MAP.length;
+        if (window.LOG?.counter) {
+          window.LOG.counter('mapMode', 'debug:fallback');
+        }
+        window.LOG?.event?.('MAP_READY', {
+          mode: 'debug',
+          source: G.debugAsciiSource,
+          width,
+          height
+        });
+        logThrough('info', '[buildLevel] mapa debug preparado (fallback)', {
+          source: G.debugAsciiSource,
+          width,
+          height
+        });
+      });
     }
 
+    G.debugAsciiSource = null;
+    G.debugAsciiFile = null;
+
     let usedGenerator = false;
+    let mapSource = 'fallback';
     try {
       if (window.MapGen && typeof MapGen.generate === 'function'){
         if (typeof MapGen.init === 'function') MapGen.init(G);
         usedGenerator = !!loadLevelWithMapGen(level);
+        if (usedGenerator) mapSource = 'mapgen';
       }
     } catch (err){
       console.warn('[MapGen] init/generate falló:', err);
@@ -2137,6 +2300,7 @@ function drawEntities(c2){
             finalizeLevelBuildOnce();
           }
           usedGenerator = true;
+          mapSource = window.DEBUG_MINIMAP ? 'mapgenapi-mini' : 'mapgenapi';
           console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
         }
       } catch (err){
@@ -2150,8 +2314,26 @@ function drawEntities(c2){
       if (!window.Placement?.applyFromAsciiMap) {
         finalizeLevelBuildOnce();
       }
+      mapSource = 'default';
       console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
     }
+
+    const width = G.mapW || (ASCII_MAP[0]?.length || 0);
+    const height = G.mapH || ASCII_MAP.length;
+    if (window.LOG?.counter) {
+      window.LOG.counter('mapMode', `normal:${mapSource}`);
+    }
+    window.LOG?.event?.('MAP_READY', {
+      mode: 'normal',
+      source: mapSource,
+      width,
+      height
+    });
+    logThrough('info', '[buildLevel] mapa procedural preparado', {
+      source: mapSource,
+      width,
+      height
+    });
   }
 
   function configureLevelSystems(){
@@ -2384,6 +2566,53 @@ function drawEntities(c2){
     }
   }
 
+  function resetGlobalLevelState(){
+    const arrayKeys = [
+      'entities','movers','enemies','patients','pills','lights','roomLights','npcs','items'
+    ];
+    for (const key of arrayKeys) {
+      if (!Array.isArray(G[key])) {
+        G[key] = [];
+      } else {
+        G[key].length = 0;
+      }
+    }
+
+    if (Array.isArray(G.__asciiPlacements)) {
+      G.__asciiPlacements.length = 0;
+    } else {
+      G.__asciiPlacements = [];
+    }
+
+    G.mapgenPlacements = [];
+    G.mapAreas = null;
+    G.map = [];
+    G.mapW = 0;
+    G.mapH = 0;
+    G.asciiMap = [];
+
+    G.player = null;
+    G.cart = null;
+    G.boss = null;
+    G.door = null;
+    G.carry = null;
+    G.mosquitoSpawn = null;
+    G._lastLevelCfg = null;
+    G._placementsFinalized = false;
+    G._hasPlaced = false;
+    G.__placementsApplied = false;
+    G.debugAsciiSource = null;
+    G.debugAsciiFile = null;
+
+    try { MovementSystem?.setMap?.(null, TILE); } catch (_) {}
+    try { window.Placement?.reset?.(); } catch (_) {}
+    try { window.AI?.clearLevel?.(); } catch (_) {}
+    try { window.BellsAPI?.reset?.(); } catch (_) {}
+
+    window.LOG?.event?.('LEVEL_RESET', { debug: DEBUG_MAP_MODE });
+    logThrough('info', '[startGame] estado global reseteado', { debug: DEBUG_MAP_MODE });
+  }
+
   function startGame(levelNumber){
     const targetLevel = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
     const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
@@ -2427,6 +2656,8 @@ function drawEntities(c2){
     window.__setMinimapMode?.('small');
     window.__toggleMinimap?.(true);
 
+    resetGlobalLevelState();
+
     G.time = 0;
     G.cycleSeconds = 0;
     if (!wasRestart) G.score = 0;
@@ -2437,61 +2668,123 @@ function drawEntities(c2){
     G._gameOverShown = false;
     G._levelCompleteShown = false;
 
-    buildLevelForCurrentMode(targetLevel);
+    const mapReadyPromise = Promise.resolve(buildLevelForCurrentMode(targetLevel));
 
-      const seedOnce = async () => {
-        if (typeof window.resetLevelState === 'function') {
-          try { window.resetLevelState(); } catch (err) { console.warn('[resetLevelState]', err); }
-        }
-        G.__placementsApplied = false;
-        let placementApplied = false;
-        const levelCfg = G._lastLevelCfg || {
-          G, mode: (DEBUG_MAP_MODE ? 'debug':'normal'), debug: DEBUG_MAP_MODE,
-          asciiMap: ASCII_MAP, ascii: ASCII_MAP, allowAscii: !!ASCII_MAP,
-          map: G.map, areas: G.mapAreas, width: G.mapW, height: G.mapH, level: G.level, seed: G.seed,
-          placements: G.mapgenPlacements
-        };
-        try {
-          if (window.Placement?.applyFromAsciiMap) {
-            const result = await window.Placement.applyFromAsciiMap(levelCfg);
-            placementApplied = (result?.applied === true || result?.reason === 'guard');
-            if (result?.applied) { try { window.Placement?.summarize?.(); } catch(_){} }
+    const seedOnce = async () => {
+      if (typeof window.resetLevelState === 'function') {
+        try { window.resetLevelState(); } catch (err) { console.warn('[resetLevelState]', err); }
+      }
+      G.__placementsApplied = false;
+      let placementApplied = false;
+      const levelCfg = G._lastLevelCfg || {
+        G, mode: (DEBUG_MAP_MODE ? 'debug':'normal'), debug: DEBUG_MAP_MODE,
+        asciiMap: ASCII_MAP, ascii: ASCII_MAP, allowAscii: !!ASCII_MAP,
+        map: G.map, areas: G.mapAreas, width: G.mapW, height: G.mapH, level: G.level, seed: G.seed,
+        placements: G.mapgenPlacements
+      };
+      try {
+        if (window.Placement?.applyFromAsciiMap) {
+          const result = await window.Placement.applyFromAsciiMap(levelCfg);
+          placementApplied = (result?.applied === true || result?.reason === 'guard');
+          if (result?.applied) {
+            try { window.Placement?.summarize?.(); } catch(_){}
           }
-        } catch (err){ console.warn('[Placement] applyFromAsciiMap error', err); }
-        if (!placementApplied) { finalizeLevelBuildOnce({ forceFallback: true }); }
-      };
-
-      const postSeed = () => {
-        try {
-          if (Array.isArray(G.entities)) for (const e of G.entities) window.AI?.register?.(e);
-          window.Minimap?.refresh?.();
-        } catch(_){ }
-
-        document.getElementById('minimapOverlay')?.classList.add('hidden');
-        document.getElementById('minimap')?.classList.remove('expanded');
-        window.__setMinimapMode?.('small');
-        window.__toggleMinimap?.(false);
-        window.__toggleMinimap?.(true);
-
-        configureLevelSystems();
-
-        try {
-          window.GameFlowAPI?.startLevel?.(targetLevel);
-        } catch (err){
-          console.warn('[GameFlow] startLevel error:', err);
         }
+      } catch (err){
+        console.warn('[Placement] applyFromAsciiMap error', err);
+      }
 
-        setGameState('READY');
-        window.dispatchEvent(new CustomEvent('game:start', {
-          detail: { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart }
-        }));
-      };
-
-      seedOnce().then(postSeed).catch((err) => {
-        console.warn('[Placement] async seed error', err);
+      if (placementApplied) {
+        G._hasPlaced = true;
+        window.LOG?.event?.('PLACEMENT_APPLIED', {
+          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
+          source: 'ascii',
+          entities: Array.isArray(G.entities) ? G.entities.length : null
+        });
+      } else {
         finalizeLevelBuildOnce({ forceFallback: true });
-        postSeed();
+        if (Array.isArray(G.entities) && G.entities.length) {
+          G._hasPlaced = true;
+        }
+        window.LOG?.event?.('PLACEMENT_APPLIED', {
+          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
+          source: 'fallback',
+          entities: Array.isArray(G.entities) ? G.entities.length : null
+        });
+      }
+
+      return placementApplied;
+    };
+
+    const postSeed = (placementApplied) => {
+      try {
+        if (Array.isArray(G.entities)) for (const e of G.entities) window.AI?.register?.(e);
+        window.Minimap?.refresh?.();
+      } catch(_){ }
+
+      document.getElementById('minimapOverlay')?.classList.add('hidden');
+      document.getElementById('minimap')?.classList.remove('expanded');
+      window.__setMinimapMode?.('small');
+      window.__toggleMinimap?.(false);
+      window.__toggleMinimap?.(true);
+
+      configureLevelSystems();
+
+      window.LOG?.event?.('LEVEL_READY', {
+        level: targetLevel,
+        debug: DEBUG_MAP_MODE,
+        placement: placementApplied ? 'ascii' : 'fallback'
       });
+
+      try {
+        window.GameFlowAPI?.startLevel?.(targetLevel);
+      } catch (err){
+        console.warn('[GameFlow] startLevel error:', err);
+      }
+
+      setGameState('READY');
+      if (DEBUG_MAP_MODE) {
+        logThrough('info', '[startGame] modo debug activo, esperando confirmación del jugador', {
+          state: G.state
+        });
+        window.LOG?.event?.('DEBUG_WAITING', {
+          level: targetLevel,
+          state: G.state
+        });
+      }
+      window.dispatchEvent(new CustomEvent('game:start', {
+        detail: { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart }
+      }));
+    };
+
+    mapReadyPromise
+      .catch((err) => {
+        console.warn('[startGame] buildLevelForCurrentMode error', err);
+        if (!Array.isArray(ASCII_MAP) || !ASCII_MAP.length) {
+          ASCII_MAP = DEFAULT_ASCII_MAP.slice();
+          parseMap(ASCII_MAP);
+        }
+        finalizeLevelBuildOnce({ forceFallback: true });
+      })
+      .then(() => seedOnce())
+      .then(
+        (placementApplied) => {
+          try {
+            postSeed(placementApplied);
+          } catch (err) {
+            console.warn('[startGame] postSeed error', err);
+          }
+        },
+        (err) => {
+          console.warn('[Placement] async seed error', err);
+          finalizeLevelBuildOnce({ forceFallback: true });
+          try {
+            postSeed(false);
+          } catch (postErr) {
+            console.warn('[startGame] postSeed error tras fallo', postErr);
+          }
+        }
+      );
   }
 
 
