@@ -4,12 +4,59 @@
 // Permite: apagar timbre con E (cerca) y mute global (teléfono).
 
 (function () {
+  function ensureWarningSpriteVariant(bell) {
+    if (!bell) return null;
+    if (bell._spriteWarning) return bell._spriteWarning;
+
+    const sprites = window.Sprites || null;
+    const baseKey = (bell._spriteRinging || bell.spriteKey || 'timbre_encendido');
+    const hasNormalize = !!(sprites && typeof sprites._normalizeKey === 'function');
+    const normalizedBase = hasNormalize
+      ? sprites._normalizeKey(baseKey)
+      : String(baseKey).trim().toLowerCase();
+    const warningKey = `${normalizedBase || 'timbre_encendido'}_alerta`;
+
+    if (!sprites || !sprites._imgs || !sprites._imgs[normalizedBase]) {
+      return normalizedBase;
+    }
+    if (!sprites._imgs[warningKey]) {
+      try {
+        const img = sprites._imgs[normalizedBase];
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = 'rgba(255, 72, 64, 0.85)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = 'source-over';
+        sprites._imgs[warningKey] = canvas;
+        if (!sprites._keys?.includes(warningKey)) {
+          sprites._keys = sprites._keys || [];
+          sprites._keys.push(warningKey);
+        }
+      } catch (err) {
+        console.warn('[Bells] No se pudo crear sprite de alerta:', err);
+        bell._spriteWarning = normalizedBase;
+        return bell._spriteWarning;
+      }
+    }
+    bell._spriteWarning = warningKey;
+    return bell._spriteWarning;
+  }
+
   function updateBellSpriteVisual(bell, ringing) {
     if (!bell) return;
     const idle = bell._spriteIdle || bell.spriteKey || 'timbre_apagado';
     const active = bell._spriteRinging || idle;
+    const isWarning = !!bell._warning && !!ringing;
+    const warning = isWarning ? (ensureWarningSpriteVariant(bell) || active) : active;
     bell.ringing = !!ringing;
-    bell.spriteKey = ringing ? active : idle;
+    bell.spriteKey = ringing ? warning : idle;
   }
 
   const BellsAPI = {
@@ -20,6 +67,9 @@
       ringMax: 540,   // 9 minutos
       // Tiempo que dura sonando antes de “furiosa” (segundos)
       ringDuration: 45,
+      // Umbral para aviso visual de urgencia (segundos restantes)
+      warningThreshold: null, // si null -> usa warningRatio * ringDuration (mínimo 3 s)
+      warningRatio: 0.25,
       // Radios
       interactRadius: 42, // distancia para apagar con E
       pairMaxDist: 80,    // distancia para vincular timbre<>paciente si el mapa no los empareja
@@ -77,6 +127,19 @@
       return G;
     },
 
+    _getWarningThreshold() {
+      const cfg = this.cfg || {};
+      const ringDur = Number.isFinite(cfg.ringDuration) ? Math.max(0, cfg.ringDuration) : 0;
+      if (Number.isFinite(cfg.warningThreshold) && cfg.warningThreshold > 0) {
+        return Math.min(ringDur, cfg.warningThreshold);
+      }
+      const ratio = Number.isFinite(cfg.warningRatio) ? cfg.warningRatio : 0.25;
+      const raw = ringDur * Math.max(0, ratio);
+      const candidate = Math.max(0, Math.min(ringDur, raw || 0));
+      const minFloor = Math.min(ringDur, 3);
+      return Math.max(minFloor, candidate);
+    },
+
     _createBellEntity(x, y, opts = {}) {
       const G = this._ensureGameCollections();
       const tile = this.TILE || (typeof window.TILE_SIZE !== 'undefined' ? window.TILE_SIZE : 32);
@@ -101,7 +164,8 @@
         pairName: opts.pairName || opts.keyName || opts.targetName || opts.link || null,
         anchorPatient: opts.patient || null,
         isBell: true,
-        ringing: false
+        ringing: false,
+        _warning: false
       };
       if (G.ENT && typeof G.ENT.BELL === 'undefined') {
         G.ENT.BELL = bell.kind;
@@ -147,6 +211,9 @@
 
     _applyRingingState(entry, ringing) {
       if (!entry) return;
+      if (!ringing && entry.e) {
+        entry.e._warning = false;
+      }
       updateBellSpriteVisual(entry.e, ringing);
       const patient = entry.patient;
       if (patient && typeof patient === 'object') {
@@ -154,8 +221,10 @@
         if (ringing) {
           const seconds = Number.isFinite(entry.tLeft) ? entry.tLeft : this.cfg.ringDuration;
           patient.ringDeadline = Date.now() + seconds * 1000;
+          patient.ringingUrgent = !!(entry.e && entry.e._warning);
         } else {
           if (patient.ringDeadline) patient.ringDeadline = 0;
+          patient.ringingUrgent = false;
         }
       }
       if (entry.e) {
@@ -231,6 +300,8 @@
         if (opts.startRinging) {
           entry.state = 'ringing';
           entry.tLeft = Number.isFinite(opts.initialDuration) ? opts.initialDuration : this.cfg.ringDuration;
+          if (bell) bell._warning = false;
+          if (entry.patient && typeof entry.patient === 'object') entry.patient.ringingUrgent = false;
           this._applyRingingState(entry, true);
           this._logBellOn(entry);
         } else {
@@ -318,10 +389,12 @@
           }
           if (b.patient && typeof b.patient === 'object' && b.patient.bellId === bell.id) {
             b.patient.bellId = null;
+            b.patient.ringingUrgent = false;
           }
           b.state = 'idle';
           b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);
           this._applyRingingState(b, false);
+          if (bell) bell._warning = false;
           continue;
         }
 
@@ -329,6 +402,8 @@
         if (b.state === 'idle' && this.now >= b.nextAt) {
           b.state = 'ringing';
           b.tLeft = this.cfg.ringDuration;
+          if (bell) bell._warning = false;
+          if (b.patient && typeof b.patient === 'object') b.patient.ringingUrgent = false;
           // Sonido:
           if (window.AudioAPI) AudioAPI.play(this.cfg.sfxRing, { at: { x: bell.x, y: bell.y }, volume: 0.9 });
           // Visual opcional: marca
@@ -341,6 +416,18 @@
           b.tLeft -= dt;
           // ping visual liviano
           bell._pulse = ((bell._pulse || 0) + dt) % 1.0;
+
+          const warningThreshold = this._getWarningThreshold();
+          if (warningThreshold > 0 && Number.isFinite(b.tLeft)) {
+            const urgent = b.tLeft <= warningThreshold;
+            if (bell && bell._warning !== urgent) {
+              bell._warning = urgent;
+              updateBellSpriteVisual(bell, true);
+            }
+            if (b.patient && typeof b.patient === 'object' && b.patient.ringingUrgent !== urgent) {
+              b.patient.ringingUrgent = urgent;
+            }
+          }
 
           // Si el jugador está cerca y pulsa E -> apaga
           // (la interacción real se hace por tryInteract(); aquí solo el estado)
@@ -362,6 +449,10 @@
             b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);
             if (typeof bell === 'object') {
               bell.ringing = false;
+              bell._warning = false;
+            }
+            if (patient && typeof patient === 'object') {
+              patient.ringingUrgent = false;
             }
           }
         }
@@ -388,6 +479,10 @@
           if (window.AudioAPI) AudioAPI.play(this.cfg.sfxOff, { at: { x: bell.x, y: bell.y }, volume: 0.9 });
           // bonus opcional:
           if (this.G.addScore) this.G.addScore(50);
+          if (bell) bell._warning = false;
+          if (b.patient && typeof b.patient === 'object') {
+            b.patient.ringingUrgent = false;
+          }
           return true;
         }
       }
@@ -408,6 +503,10 @@
         b.tLeft = 0;
         b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);
         this._applyRingingState(b, false);
+        if (b.patient && typeof b.patient === 'object') {
+          b.patient.ringingUrgent = false;
+        }
+        if (b.e) b.e._warning = false;
       }
       if (silenced && window.AudioAPI) AudioAPI.play('phone_ok', { volume: 0.8 });
       return silenced;
