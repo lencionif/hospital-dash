@@ -298,18 +298,35 @@
     skin = normalizeSkinAsset(skin);
     const flipOverride = (st.stateFlip != null) ? st.stateFlip : stateInfo.flip;
     const shadowRadius = stateInfo.shadowRadius ?? cfg.shadowRadius ?? (Math.max(baseW, baseH) * 0.18);
-    const shadowFlatten = stateInfo.shadowFlatten ?? cfg.shadowFlatten ?? 0.32;
-    const shadowAlpha = stateInfo.shadowAlpha ?? cfg.shadowAlpha ?? 0.22;
+    const shadowFlattenBase = stateInfo.shadowFlatten ?? cfg.shadowFlatten ?? 0.32;
+    const shadowAlphaBase = stateInfo.shadowAlpha ?? cfg.shadowAlpha ?? 0.22;
+    const isRagdoll = stateInfo.ragdoll === true || !!(e && (e.ragdolling || e.ragdoll || (e._ragdollTimer > 0)));
+    const ragAngle = isRagdoll ? (e?._ragdollAngle || 0) : 0;
+    const allowLean = (stateInfo.applyLean != null) ? !!stateInfo.applyLean : (cfg.applyLean !== false);
+    const shadowFlatten = isRagdoll
+      ? (stateInfo.ragdollShadowFlatten ?? Math.min(0.22, shadowFlattenBase * 0.55))
+      : shadowFlattenBase;
+    const shadowAlpha = isRagdoll
+      ? (stateInfo.ragdollShadowAlpha ?? Math.min(0.5, shadowAlphaBase + 0.12))
+      : shadowAlphaBase;
     ctx.save();
     ctx.translate(cx, cy);
     drawShadow(ctx, shadowRadius, totalScale, shadowFlatten, shadowAlpha);
-    ctx.translate(0, -h * 0.5 + offsetY + st.bob * bobMul + (cfg.hover ?? 0));
-    if (cfg.applyLean !== false){
-      ctx.rotate((st.lean || 0) + (st.erratic || 0) + (st.micro || 0) + (stateInfo.lean || 0));
+    if (isRagdoll){
+      const ragOffset = (stateInfo.ragdollOffsetY ?? (h * 0.25)) * (stateInfo.ragdollScaleY ?? 0.6);
+      ctx.translate(0, ragOffset);
+      ctx.rotate(ragAngle);
+      ctx.translate(0, -h * 0.45);
+    } else {
+      ctx.translate(0, -h * 0.5 + offsetY + st.bob * bobMul + (cfg.hover ?? 0));
+      if (allowLean){
+        ctx.rotate((st.lean || 0) + (st.erratic || 0) + (st.micro || 0) + (stateInfo.lean || 0));
+      }
+      ctx.translate((st.sway + (st.hip || 0)) * (stateInfo.swayMul ?? 1), stateInfo.offsetX ?? 0);
     }
-    ctx.translate((st.sway + (st.hip || 0)) * (stateInfo.swayMul ?? 1), stateInfo.offsetX ?? 0);
     const flip = flipOverride != null ? !!flipOverride : (st.dir < 0);
-    ctx.scale(flip ? -1 : 1, 1);
+    const scaleY = isRagdoll ? (stateInfo.ragdollScaleY ?? 0.62) : 1;
+    ctx.scale(flip ? -1 : 1, scaleY);
     drawSprite(ctx, skin, w, h, cfg.fallbackColor || stateInfo.fallbackColor || '#bcbec7', tint);
     if (cfg.overlay) cfg.overlay(ctx, totalScale, st, e);
     if (stateInfo.overlay) stateInfo.overlay(ctx, totalScale, st, e);
@@ -403,12 +420,27 @@
       walk_side: { skin: frontSkin, bobMul: 1.0 },
       talk: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.5, tint: { color: 'rgba(240,250,255,1)', alpha: 0.18 } },
       push: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.42, tint: { color: 'rgba(180,255,220,1)', alpha: 0.12 } },
-      hurt: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.4, tint: { color: 'rgba(255,120,120,1)', alpha: 0.3 } }
+      hurt: { skin: { down: frontSkin, up: backSkin, side: frontSkin }, bobMul: 0.4, tint: { color: 'rgba(255,120,120,1)', alpha: 0.3 } },
+      ragdoll: {
+        skin: { down: frontSkin, up: frontSkin, side: frontSkin },
+        bobMul: 0,
+        ragdoll: true,
+        offsetY: 18,
+        ragdollOffsetY: 22,
+        ragdollScaleY: 0.6,
+        shadowFlatten: 0.2,
+        shadowAlpha: 0.34,
+        applyLean: false,
+        tint: { color: 'rgba(255,255,255,1)', alpha: 0.12 }
+      }
     };
   }
 
   function resolveNPCState(st, e){
     const orientation = st.orientation || 'down';
+    if ((e?._ragdollTimer || 0) > 0 || e?.ragdolling || e?.ragdoll) {
+      return { state: 'ragdoll', orientation, applyLean: false };
+    }
     if ((e?.invuln || 0) > 0 && (Date.now() - (e?._lastHitAt || 0) < 1200)) {
       return { state: 'hurt', orientation };
     }

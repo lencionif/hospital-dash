@@ -154,6 +154,16 @@
       void readyContentEl.offsetWidth;
       readyContentEl.style.transition = 'transform 650ms cubic-bezier(0.19,0.7,0.32,1)';
       readyContentEl.style.transform = 'translateX(0)';
+      const fxKick = setTimeout(() => {
+        try { window.CineFX?.readyBeat?.({ hold: 0.32, duration: 0.7, release: 0.4 }); }
+        catch (err){ if (W.DEBUG_FORCE_ASCII) console.warn('[CineFX] ready overlay cue', err); }
+      }, 200);
+      readyTimers.push(fxKick);
+      const fxGo = setTimeout(() => {
+        try { window.CineFX?.readyBeat?.({ scale: 0.55, hold: 0.25, duration: 0.55, release: 0.35 }); }
+        catch (err){ if (W.DEBUG_FORCE_ASCII) console.warn('[CineFX] ready overlay go', err); }
+      }, 820);
+      readyTimers.push(fxGo);
       const pauseTimer = setTimeout(() => {
         readyContentEl.style.transition = 'transform 550ms cubic-bezier(0.55,0,0.85,0.36)';
         readyContentEl.style.transform = 'translateX(-120vw)';
@@ -709,6 +719,8 @@
     S.running = false;
     if (S.G) S.G.state = 'COMPLETE';
     showOverlay(DOM.complete);
+    try { window.CineFX?.levelCompleteCue?.(); }
+    catch (err){ if (W.DEBUG_FORCE_ASCII) console.warn('[CineFX] level complete cue', err); }
     // Música/ducking leve
     if (W.Audio && W.Audio.duck) { try { W.Audio.duck(true); } catch (e) {} }
     if (S.G && !S.G._levelCompleteLogged) {
