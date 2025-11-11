@@ -2217,6 +2217,7 @@ function drawEntities(c2){
     let placements = [];
     let areas = null;
     let source = 'procedural';
+    let meta = null;
 
     if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
       try {
@@ -2236,6 +2237,13 @@ function drawEntities(c2){
           placements = Array.isArray(res.placements) ? res.placements.slice() : [];
           areas = res.areas || null;
           source = window.DEBUG_MINIMAP ? 'procedural-mini' : 'procedural';
+          meta = {
+            ...(res.meta || {}),
+            seed: res.seed ?? res.meta?.seed ?? (G.seed ?? null),
+            level: res.level ?? res.meta?.level ?? level,
+            width: res.width ?? res.meta?.width ?? (rows[0]?.length || null),
+            height: res.height ?? res.meta?.height ?? rows.length
+          };
         }
       } catch (err) {
         console.warn('[MapGenAPI] generate falló:', err);
@@ -2253,8 +2261,98 @@ function drawEntities(c2){
       file: null,
       placements,
       areas,
-      mode: 'normal'
+      mode: 'normal',
+      meta
     };
+  }
+
+  async function maybeLogGeneratedMap(levelCfg, payload){
+    try {
+      if (!payload || payload.mode !== 'normal') return;
+      const source = payload.source || '';
+      if (!/procedural/.test(source)) return;
+      if (!levelCfg || !Array.isArray(levelCfg.asciiRows) || !levelCfg.asciiRows.length) return;
+
+      const req = (typeof window !== 'undefined' && typeof window.require === 'function')
+        ? window.require
+        : (typeof require === 'function' ? require : null);
+      if (!req) return;
+
+      let fs;
+      let path;
+      try {
+        fs = req('fs');
+        path = req('path');
+      } catch (err) {
+        console.warn('[MapLog] módulos fs/path no disponibles', err);
+        return;
+      }
+
+      const resolveBaseDir = () => {
+        if (typeof window !== 'undefined' && typeof window.MAP_LOG_DIR === 'string' && window.MAP_LOG_DIR.trim()) {
+          return window.MAP_LOG_DIR.trim();
+        }
+        if (typeof process !== 'undefined' && typeof process.cwd === 'function') {
+          return path.join(process.cwd(), 'logs');
+        }
+        return path.join('.', 'logs');
+      };
+
+      const baseDir = resolveBaseDir();
+      try {
+        fs.mkdirSync(baseDir, { recursive: true });
+      } catch (err) {
+        console.warn('[MapLog] no se pudo preparar el directorio de logs', err);
+        return;
+      }
+
+      const filePath = path.join(baseDir, 'logMAP.txt');
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const timestamp = `[${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
+
+      const meta = payload.meta || {};
+      const params = [];
+      params.push('mode=normal');
+      params.push(`source=${source}`);
+      const seed = meta.seed ?? levelCfg.seed ?? ((typeof G !== 'undefined' && G && typeof G.seed !== 'undefined') ? G.seed : null);
+      if (seed !== null && seed !== undefined) params.push(`seed=${seed}`);
+      if (typeof meta.roomsCount === 'number') params.push(`rooms=${meta.roomsCount}`);
+      const spawns = meta.spawns || {};
+      const enemies = (typeof meta.enemies === 'number' && !Number.isNaN(meta.enemies))
+        ? meta.enemies
+        : ((typeof spawns.mosquito === 'number' ? spawns.mosquito : 0) + (typeof spawns.rat === 'number' ? spawns.rat : 0));
+      if (Number.isFinite(enemies)) params.push(`enemies=${enemies}`);
+      if (typeof spawns.staff === 'number') params.push(`staff=${spawns.staff}`);
+      if (typeof spawns.cart === 'number') params.push(`carts=${spawns.cart}`);
+      if (typeof meta.patientsCount === 'number') params.push(`patients=${meta.patientsCount}`);
+      if (typeof meta.pillsCount === 'number') params.push(`pills=${meta.pillsCount}`);
+      if (typeof meta.bellsCount === 'number') params.push(`bells=${meta.bellsCount}`);
+      if (typeof meta.elevatorsCount === 'number') params.push(`elevators=${meta.elevatorsCount}`);
+      if (typeof meta.lightsCount === 'number') params.push(`lights=${meta.lightsCount}`);
+
+      const asciiRows = levelCfg.asciiRows.map((row) => (row == null ? '' : String(row)));
+      const width = levelCfg.width ?? (asciiRows[0]?.length ?? 0);
+      const height = levelCfg.height ?? asciiRows.length;
+      const fallbackLevel = (typeof G !== 'undefined' && G && typeof G.level !== 'undefined') ? G.level : '?';
+      const levelLabel = (typeof levelCfg.level === 'number') ? `Level ${levelCfg.level}` : `Level ${fallbackLevel}`;
+
+      const headerLine = `${timestamp} ${levelLabel} (Procedural, difficulty=normal)`;
+      const paramsLine = `Parámetros: ${params.join(', ')}`;
+      const mapHeader = `Mapa ${width}x${height}:`;
+      const separator = '--------------------------------------------------';
+      const entry = `${headerLine}\n${paramsLine}\n${mapHeader}\n${asciiRows.join('\n')}\n${separator}\n`;
+
+      const appendPromise = (fs.promises && typeof fs.promises.appendFile === 'function')
+        ? fs.promises.appendFile(filePath, entry, 'utf8')
+        : new Promise((resolve, reject) => {
+            fs.appendFile(filePath, entry, 'utf8', (err) => (err ? reject(err) : resolve()));
+          });
+
+      await appendPromise;
+    } catch (err) {
+      console.warn('[MapLog] error al escribir log de mapa', err);
+    }
   }
 
   async function buildLevelForCurrentMode(levelNumber){
@@ -2336,6 +2434,8 @@ function drawEntities(c2){
       source: payload.source,
       file: payload.file || null
     });
+
+    await maybeLogGeneratedMap(levelCfg, payload);
 
     return levelCfg;
   }

@@ -1284,6 +1284,30 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     placements.push({ type:'npc', sub:'supervisora', x:a.tx*TILE, y:a.ty*TILE });
     placements.push({ type:'npc', sub:'jefe_servicio', x:b.tx*TILE, y:b.ty*TILE });
 
+    const meta = {
+      seed,
+      level: lvl,
+      width: Wd,
+      height: Hd,
+      roomsCount: rooms.length,
+      doorsCount: doors.length,
+      elevatorsCount: Array.isArray(elevators) ? elevators.length : 0,
+      lightsCount: Array.isArray(lights) ? lights.length : 0,
+      spawns: {
+        mosquito: Array.isArray(spawns.mosquito) ? spawns.mosquito.length : 0,
+        rat: Array.isArray(spawns.rat) ? spawns.rat.length : 0,
+        staff: Array.isArray(spawns.staff) ? spawns.staff.length : 0,
+        cart: Array.isArray(spawns.cart) ? spawns.cart.length : 0
+      },
+      patientsCount: Array.isArray(patients) ? patients.length : 0,
+      pillsCount: Array.isArray(pills) ? pills.length : 0,
+      bellsCount: Array.isArray(bells) ? bells.length : 0,
+      enemies: (
+        (Array.isArray(spawns.mosquito) ? spawns.mosquito.length : 0) +
+        (Array.isArray(spawns.rat) ? spawns.rat.length : 0)
+      )
+    };
+
     const result = {
       ascii: rowsToString(ascii),
       map: asciiToNumeric(ascii),
@@ -1292,7 +1316,8 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       elevators,
       report,
       charset: cs,
-      seed, level:lvl, width:Wd, height:Hd
+      seed, level:lvl, width:Wd, height:Hd,
+      meta
     };
     return result;
   }
