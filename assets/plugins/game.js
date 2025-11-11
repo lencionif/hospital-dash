@@ -476,9 +476,10 @@
   function worldToScreenBasic(worldX, worldY, cam = camera, viewportWidth = VIEW_W, viewportHeight = VIEW_H) {
     const ref = cam || camera;
     const zoom = Number(ref?.zoom) || 1;
+    const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
     return {
-      x: (worldX - (ref?.x || 0)) * zoom + viewportWidth * 0.5,
-      y: (worldY - (ref?.y || 0)) * zoom + viewportHeight * 0.5,
+      x: (worldX - (ref?.x || 0)) * zoom + viewportWidth * 0.5 + (shake.x || 0),
+      y: (worldY - (ref?.y || 0)) * zoom + viewportHeight * 0.5 + (shake.y || 0),
     };
   }
 
@@ -1616,19 +1617,43 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
   // Paso de IA específica por entidad hostil (antes de la física)
   function runEntityAI(dt){
+    const ents = Array.isArray(G.entities) ? G.entities : null;
+    let ragdollSuppressed = null;
     if (window.AI?.update) {
+      if (ents && ents.length){
+        ragdollSuppressed = [];
+        for (const ent of ents){
+          if (!ent || ent.dead) continue;
+          const ragdolling = (ent._ragdollTimer || 0) > 0 || ent.ragdolling || ent.ragdoll;
+          if (!ragdolling) continue;
+          ragdollSuppressed.push(ent);
+          if (typeof ent.intentVx === 'number'){ ent._ragAI_prevVX = ent.intentVx; ent.intentVx = 0; }
+          if (typeof ent.intentVy === 'number'){ ent._ragAI_prevVY = ent.intentVy; ent.intentVy = 0; }
+        }
+      }
       try {
         window.AI.update(G, dt);
         return;
       } catch (err) {
         if (window.DEBUG_FORCE_ASCII) console.warn('[AI] update error', err);
+      } finally {
+        if (ragdollSuppressed && ragdollSuppressed.length){
+          for (const ent of ragdollSuppressed){
+            if (!ent) continue;
+            if (typeof ent._ragAI_prevVX === 'number'){ ent.intentVx = ent._ragAI_prevVX; }
+            if (typeof ent._ragAI_prevVY === 'number'){ ent.intentVy = ent._ragAI_prevVY; }
+            delete ent._ragAI_prevVX;
+            delete ent._ragAI_prevVY;
+          }
+        }
       }
     }
 
-    if (!Array.isArray(G.entities)) return;
+    if (!ents) return;
     const dbg = !!window.DEBUG_FORCE_ASCII;
-    for (const ent of G.entities){
+    for (const ent of ents){
       if (!ent || ent.dead) continue;
+      if ((ent._ragdollTimer || 0) > 0 || ent.ragdolling || ent.ragdoll) continue;
       try {
         if (matchesKind(ent, 'RAT') && window.Rats?.ai){
           window.Rats.ai(ent, G, dt);
@@ -1653,6 +1678,41 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     for (const e of G.entities){
       if (!e || e.dead) continue;
       MovementSystem.register(e);
+      const ragTimer = Number.isFinite(e?._ragdollTimer) ? e._ragdollTimer : 0;
+      if (ragTimer > 0){
+        if (!e.ragdolling){
+          e.ragdolling = true;
+          e.ragdoll = true;
+        }
+        if (e._ragdollPrevMu == null && typeof e.mu === 'number'){
+          e._ragdollPrevMu = e.mu;
+        }
+        if (typeof e.mu === 'number'){
+          e.mu = Math.min(e.mu, 0.02);
+        }
+        if (typeof e.intentVx === 'number') e.intentVx *= 0.4;
+        if (typeof e.intentVy === 'number') e.intentVy *= 0.4;
+        e.vx *= 0.96;
+        e.vy *= 0.96;
+        if (typeof e.onRagdollTick === 'function'){
+          try { e.onRagdollTick(dt, ragTimer); }
+          catch (err){ if (dbg) console.warn('[updateEntities] ragdoll tick', err); }
+        }
+        continue;
+      } else if (e.ragdolling || e.ragdoll){
+        e.ragdolling = false;
+        e.ragdoll = false;
+        if (typeof e._ragdollPrevMu === 'number'){
+          e.mu = e._ragdollPrevMu;
+        }
+        delete e._ragdollPrevMu;
+        if (Math.abs(e.vx || 0) < 12) e.vx = 0;
+        if (Math.abs(e.vy || 0) < 12) e.vy = 0;
+        if (typeof e.onRagdollRecover === 'function'){
+          try { e.onRagdollRecover(); }
+          catch (err){ if (dbg) console.warn('[updateEntities] ragdoll recover', err); }
+        }
+      }
       if (typeof e.update === 'function'){
         try { e.update(dt); }
         catch(err){
@@ -1921,7 +1981,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // cámara
     ctx2d.save();
-    ctx2d.translate(VIEW_W/2, VIEW_H/2);
+    const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
+    ctx2d.translate(VIEW_W/2 + (shake.x || 0), VIEW_H/2 + (shake.y || 0));
     ctx2d.scale(camera.zoom, camera.zoom);
     ctx2d.translate(-camera.x, -camera.y);
 
@@ -2091,7 +2152,14 @@ function drawEntities(c2){
     }
 
     const delta = (now - lastT)/1000; lastT = now;
-    acc += Math.min(delta, 0.05);
+    if (window.CineFX && typeof window.CineFX.update === 'function'){
+      try { window.CineFX.update(delta, { camera, game: G }); }
+      catch (err){ if (window.DEBUG_FORCE_ASCII) console.warn('[CineFX] update error', err); }
+    }
+    const fxScale = window.CineFX && typeof window.CineFX.getTimeScale === 'function'
+      ? clamp(window.CineFX.getTimeScale(), 0.05, 2)
+      : 1;
+    acc += Math.min(delta * fxScale, 0.05);
     while (acc >= DT){
       update(DT);
       acc -= DT;
@@ -2650,6 +2718,8 @@ function drawEntities(c2){
             setGameState('PLAYING');
           };
           const triggerReady = () => {
+            try { window.CineFX?.readyBeat?.(); }
+            catch (err){ if (window.DEBUG_FORCE_ASCII) console.warn('[CineFX] readyBeat error', err); }
             const played = window.GameFlowAPI?.playReadyOverlay?.({ onComplete: beginPlay });
             if (!played) beginPlay();
           };
@@ -2705,6 +2775,8 @@ function drawEntities(c2){
         window.__toggleMinimap?.(false);
         gameOverScreen.classList.add('hidden');
         levelCompleteScreen.classList.remove('hidden');
+        try { window.CineFX?.levelCompleteCue?.(); }
+        catch (err){ if (window.DEBUG_FORCE_ASCII) console.warn('[CineFX] levelCompleteCue error', err); }
         if (!G._levelCompleteShown){
           G._levelCompleteShown = true;
           const breakdown = buildLevelBreakdown();
