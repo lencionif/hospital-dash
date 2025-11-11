@@ -91,9 +91,34 @@
     return puppet.state;
   }
 
+  function shouldUpdatePuppet(puppet, info, now, tileSize){
+    if (!puppet || !puppet.entity) return false;
+    if (!info) return true;
+    const ent = puppet.entity;
+    if (ent === (window.G?.player)) return true;
+    if (ent._alwaysUpdate === true) return true;
+    const awakeUntil = Number(ent._alwaysUpdateUntil);
+    if (Number.isFinite(awakeUntil) && awakeUntil > now) return true;
+    const w = Number.isFinite(ent.w) ? ent.w : tileSize;
+    const h = Number.isFinite(ent.h) ? ent.h : tileSize;
+    const ex = (Number(ent.x) || 0) + w * 0.5;
+    const ey = (Number(ent.y) || 0) + h * 0.5;
+    const dx = ex - info.hx;
+    const dy = ey - info.hy;
+    return (dx * dx + dy * dy) <= info.radiusSq;
+  }
+
   function updateAll(state, dt){
     sortPuppets();
+    const info = (state && state.__visualRadiusInfo)
+      || (window.G && window.G.__visualRadiusInfo)
+      || null;
+    const tileSize = window.TILE_SIZE || window.TILE || 32;
+    const now = info?.timestamp || ((typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now());
     for (const puppet of puppets){
+      if (info && !shouldUpdatePuppet(puppet, info, now, tileSize)) continue;
       puppet.time += dt;
       const rig = rigs.get(puppet.rigName);
       if (!rig) continue;
