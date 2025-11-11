@@ -429,18 +429,24 @@
       patient.dead = true;
       this.G.entities = this.G.entities.filter(x => x !== patient);
       this.G.patients = (this.G.patients || []).filter(x => x !== patient);
-      this.G.npcs     = (this.G.npcs || []).filter(x => x !== patient);
+      if (Array.isArray(this.G.humans)) this.G.humans = this.G.humans.filter(x => x !== patient);
+      if (Array.isArray(this.G.animals)) this.G.animals = this.G.animals.filter(x => x !== patient);
+      if (Array.isArray(this.G.objects)) this.G.objects = this.G.objects.filter(x => x !== patient);
+      if (Array.isArray(this.G.hostiles)) this.G.hostiles = this.G.hostiles.filter(x => x !== patient);
       // Crea un "enemigo simple" si no existe FuriousAPI
       const ENT = this.G.ENT || {};
       const e = {
         kind: ENT.FURIOUS || 'furious',
         x: patient.x, y: patient.y, w: patient.w, h: patient.h,
         vx: 0, vy: 0, mass: 120, dynamic: true, solid: true,
-        color: '#ff5a6b', t: 0, touchCD: 0
+        color: '#ff5a6b', t: 0, touchCD: 0,
+        hostile: true,
+        group: 'human'
       };
       this.G.entities.push(e);
-      this.G.enemies = this.G.enemies || [];
-      this.G.enemies.push(e);
+      this.G.hostiles = this.G.hostiles || [];
+      this.G.hostiles.push(e);
+      try { window.EntityGroups?.register?.(e, this.G); } catch (_) {}
       if (window.Physics && Physics.registerEntity) Physics.registerEntity(e);
     }
   };

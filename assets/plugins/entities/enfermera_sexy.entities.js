@@ -197,7 +197,9 @@
 
   function ensureOnArrays(e){
     push(G.entities || (G.entities=[]), e);
-    push(G.npcs     || (G.npcs=[]),     e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
   }
 
   // ====== Luz / iluminación ===========================================================

@@ -25,7 +25,7 @@
     G.patients = Array.isArray(G.patients) ? G.patients : (G.patients = []);
     G.allPatients = Array.isArray(G.allPatients) ? G.allPatients : (G.allPatients = []);
     G.pills = Array.isArray(G.pills) ? G.pills : (G.pills = []);
-    G.npcs = Array.isArray(G.npcs) ? G.npcs : (G.npcs = []);
+    try { W.EntityGroups?.ensure?.(G); } catch (_) {}
     G._patientsByKey = G._patientsByKey || new Map();
     ensurePatientCounters();
   }
@@ -108,7 +108,7 @@
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== e);
     if (Array.isArray(G.patients)) G.patients = G.patients.filter((x) => x !== e);
     if (Array.isArray(G.allPatients)) G.allPatients = G.allPatients.filter((x) => x !== e);
-    if (Array.isArray(G.npcs)) G.npcs = G.npcs.filter((x) => x !== e);
+    try { W.EntityGroups?.unregister?.(e, G); } catch (_) {}
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== e);
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== e);
     try { W.MovementSystem?.unregister?.(e); } catch (_) {}
@@ -146,7 +146,9 @@
     if (!G.entities.includes(e)) G.entities.push(e);
     if (!G.patients.includes(e)) G.patients.push(e);
     if (!G.allPatients.includes(e)) G.allPatients.push(e);
-    if (!G.npcs.includes(e)) G.npcs.push(e);
+    e.group = 'human';
+    try { W.EntityGroups?.assign?.(e); } catch (_) {}
+    try { W.EntityGroups?.register?.(e, G); } catch (_) {}
     if (G._patientsByKey instanceof Map) {
       G._patientsByKey.set(e.keyName, e);
     }

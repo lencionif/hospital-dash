@@ -11,8 +11,9 @@
     const g = window.G || (window.G = {});
     const target = (state && typeof state === 'object') ? state : g;
     if (!Array.isArray(target.entities)) target.entities = [];
-    if (!Array.isArray(target.enemies)) target.enemies = [];
+    if (!Array.isArray(target.hostiles)) target.hostiles = [];
     if (!Array.isArray(target.movers)) target.movers = [];
+    try { window.EntityGroups?.ensure?.(target); } catch (_) {}
     return target;
   }
 
@@ -65,9 +66,12 @@
 
     attachPuppet(ent);
     window.MovementSystem?.register?.(ent);
+    ent.group = 'animal';
     state.entities.push(ent);
-    state.enemies.push(ent);
+    state.hostiles.push(ent);
     state.movers.push(ent);
+    try { window.EntityGroups?.assign?.(ent); } catch (_) {}
+    try { window.EntityGroups?.register?.(ent, state); } catch (_) {}
     return ent;
   }
 

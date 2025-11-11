@@ -227,7 +227,9 @@
     }
 
     (G.entities || (G.entities=[])).push(e);
-    (G.npcs || (G.npcs=[])).push(e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     cleaners.push(e);
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_chica_limpieza', { z: 0, scale: 1, data: { skin: e.skin } })

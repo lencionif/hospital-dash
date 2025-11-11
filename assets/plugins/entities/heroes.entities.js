@@ -118,6 +118,9 @@
   function ensureOnArrays(e) {
     pushUnique(G.entities || (G.entities=[]), e);
     pushUnique(G.movers   || (G.movers=[]),   e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     G.player = e;
   }
 

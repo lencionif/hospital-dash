@@ -237,7 +237,9 @@
       interact(by){ return TCAE.toggleFollowNearest(by); }
     };
     (G.entities||(G.entities=[])).push(t);
-    (G.npcs||(G.npcs=[])).push(t);
+    t.group = 'human';
+    try { W.EntityGroups?.assign?.(t); } catch (_) {}
+    try { W.EntityGroups?.register?.(t, G); } catch (_) {}
     try { W.AI?.attach?.(t, 'TCAE'); } catch (_) {}
     try {
       const puppet = window.Puppet?.bind?.(t, 'npc_tcae', { z: 0, scale: 1, data: { skin: t.skin } })

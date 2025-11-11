@@ -196,7 +196,9 @@
 
     // Registro
     G.entities = G.entities || []; pushUnique(G.entities, e);
-    G.npcs     = G.npcs || [];     pushUnique(G.npcs, e);
+    e.group = 'human';
+    try { W.EntityGroups?.assign?.(e); } catch (_) {}
+    try { W.EntityGroups?.register?.(e, G); } catch (_) {}
     try { W.AI?.attach?.(e, 'GUARDIA'); } catch (_) {}
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_guardia', { z: 0, scale: 1, data: { skin: e.skin } })
@@ -424,7 +426,7 @@
   function remove(e){
     e.dead = true;
     if (G.entities) G.entities = G.entities.filter(x=>x!==e);
-    if (G.npcs)     G.npcs     = G.npcs.filter(x=>x!==e);
+    try { W.EntityGroups?.unregister?.(e, G); } catch (_) {}
     S.list = S.list.filter(x=>x!==e);
   }
 

@@ -44,6 +44,8 @@
           G.movers.push(entity);
         }
       }
+      try { root.EntityGroups?.assign?.(entity); } catch (_) {}
+      try { root.EntityGroups?.register?.(entity, G); } catch (_) {}
       const kindKey = resolveKind(entity);
       Placement._counts[kindKey] = (Placement._counts[kindKey] || 0) + 1;
       try { root.AI?.register?.(entity); } catch (_) {}
@@ -805,8 +807,8 @@
     if (!Array.isArray(G.entities)) G.entities = [];
     if (!Array.isArray(G.movers)) G.movers = [];
     if (!Array.isArray(G.pills)) G.pills = [];
-    if (!Array.isArray(G.npcs)) G.npcs = [];
     if (!Array.isArray(G.patients)) G.patients = [];
+    try { root.EntityGroups?.ensure?.(G); } catch (_) {}
     if (typeof G.patients.total !== 'number') {
       G.patients.total = 0;
       G.patients.pending = 0;
@@ -1100,8 +1102,10 @@
         };
       }
       npc.rigOk = npc.rigOk === true || true;
+      if (!npc.group) npc.group = 'human';
       out.push(npc);
-      if (Array.isArray(G.npcs) && !G.npcs.includes(npc)) G.npcs.push(npc);
+      try { root.EntityGroups?.assign?.(npc); } catch (_) {}
+      try { root.EntityGroups?.register?.(npc, G); } catch (_) {}
     }
     return out;
   }
@@ -1200,7 +1204,22 @@
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true || true;
+        if (!entity.group) {
+          if (subtype.includes('mosquito') || type === 'mosquito') {
+            entity.group = 'animal';
+          } else if (subtype.includes('rat') || type === 'rat') {
+            entity.group = 'animal';
+          } else if (subtype.includes('furious')) {
+            entity.group = 'human';
+          }
+        }
+        if (entity.hostile !== true) entity.hostile = true;
         out.push(entity);
+        try { root.EntityGroups?.assign?.(entity); } catch (_) {}
+        try { root.EntityGroups?.register?.(entity, G); } catch (_) {}
+        if (Array.isArray(G.hostiles) && !G.hostiles.includes(entity)) {
+          G.hostiles.push(entity);
+        }
       }
     }
     return out;
@@ -1259,7 +1278,10 @@
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true || true;
+        if (!entity.group) entity.group = 'object';
         out.push(entity);
+        try { root.EntityGroups?.assign?.(entity); } catch (_) {}
+        try { root.EntityGroups?.register?.(entity, G); } catch (_) {}
       }
     }
     return out;

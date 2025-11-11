@@ -207,7 +207,9 @@
     };
     try { window.AI?.attach?.(e, 'CELADOR'); } catch (_) {}
     pushUnique(G.entities, e);
-    pushUnique(G.npcs || (G.npcs=[]), e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_celador', { z: 0, scale: 1, data: { skin: e.skin } })
         || window.PuppetAPI?.attach?.(e, { rig: 'npc_celador', z: 0, scale: 1, data: { skin: e.skin } });

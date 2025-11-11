@@ -117,12 +117,14 @@
     health: 6, // medias vidas (0..6)
     entities: [],
     movers: [],
-    enemies: [],
+    hostiles: [],
+    humans: [],
+    animals: [],
+    objects: [],
     patients: [],
     pills: [],
     lights: [],       // lógicas (para info)
     roomLights: [],   // focos de sala
-    npcs: [],         // (los pacientes cuentan como NPC)
     mosquitoSpawn: null,
     door: null,
     cart: null,
@@ -816,7 +818,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     e.bouncy = false;
     e.static = false;
     G.entities.push(e);
-    G.enemies.push(e);
+    e.group = 'animal';
+    e.hostile = true;
+    G.hostiles = G.hostiles || [];
+    G.hostiles.push(e);
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     window.LOG?.event?.('SPAWN', { kind: 'MOSQUITO', id: e.id || null, x: e.x, y: e.y });
     return e;
   }
@@ -830,7 +837,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
                 :               {w:180,h:120};
 
     // Limpieza de estado como haces al cargar ASCII
-    G.entities = []; G.movers = []; G.enemies = []; G.npcs = [];
+    G.entities = []; G.movers = [];
+    G.hostiles = [];
+    G.humans = [];
+    G.animals = [];
+    G.objects = [];
     G.patients = []; G.pills = []; G.map = []; G.mapW = dims.w; G.mapH = dims.h;
     G.patientsTotal = 0;
     G.patientsPending = 0;
@@ -913,10 +924,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // === Reset de listas (como la antigua, estable) ===
     G.entities.length = 0;
     G.movers.length = 0;
-    G.enemies.length = 0;
+    G.hostiles.length = 0;
     G.patients.length = 0;
     G.pills.length = 0;
-    G.npcs.length = 0;
+    G.humans.length = 0;
+    G.animals.length = 0;
+    G.objects.length = 0;
     G.lights.length = 0;
     G.roomLights.length = 0;
 
@@ -1224,7 +1237,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       e.dead = true;
       if (window.ScoreAPI){ try{ ScoreAPI.awardForDeath(e, Object.assign({cause:'killEnemy'}, meta||{})); }catch(_){} }
     // saca de las listas
-    G.enemies = G.enemies.filter(x => x !== e);
+    G.hostiles = G.hostiles.filter(x => x !== e);
     G.entities = G.entities.filter(x => x !== e);
     MovementSystem.unregister(e);
     // notificar respawn diferido
@@ -1244,8 +1257,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // quítalo de todas las listas donde pueda estar
     G.entities = G.entities.filter(x => x !== e);
     G.movers   = G.movers.filter(x => x !== e);
-    G.enemies  = G.enemies.filter(x => x !== e);
-    G.npcs     = G.npcs.filter(x => x !== e);
+    G.hostiles  = G.hostiles.filter(x => x !== e);
+    try { window.EntityGroups?.unregister?.(e, G); } catch (_) {}
     G.patients = G.patients.filter(x => x !== e);
     MovementSystem.unregister(e);
 
@@ -1471,10 +1484,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
 
     const talkRange = TILE * 1.2;
-    if (Array.isArray(G.npcs) && window.DialogAPI?.open){
+    if (Array.isArray(G.humans) && window.DialogAPI?.open){
       const px = p.x + p.w * 0.5;
       const py = p.y + p.h * 0.5;
-      for (const npc of G.npcs){
+      for (const npc of G.humans){
         if (!npc || npc.dead) continue;
         const nx = npc.x + (npc.w || 0) * 0.5;
         const ny = npc.y + (npc.h || 0) * 0.5;
@@ -1782,8 +1795,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (hero) {
         add(hero, Math.PI * 0.60, heroDist, flashlightColorForHero(hero), { isHero: true });
       }
-      if (Array.isArray(G.npcs)) {
-        for (const npc of G.npcs) {
+      if (Array.isArray(G.humans)) {
+        for (const npc of G.humans) {
           if (!npc || npc.dead) continue;
           const profile = flashlightProfileForNPC(npc, heroDist);
           const npcDist = Number.isFinite(profile?.dist) ? profile.dist : npcRadiusBase;
@@ -2127,14 +2140,20 @@ function drawEntities(c2){
         else if (p.type === 'patient') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.PATIENT, '#ffd166', false, true);
           e.name = p.name || `Paciente_${G.patients.length+1}`;
-          G.entities.push(e); G.patients.push(e); G.npcs.push(e);
+          e.group = 'human';
+          G.entities.push(e); G.patients.push(e);
+          try { window.EntityGroups?.assign?.(e); } catch (_) {}
+          try { window.EntityGroups?.register?.(e, G); } catch (_) {}
         }
         else if (p.type === 'pill') {
           const e = makeRect(p.x|0, p.y|0, T*0.6, T*0.6, ENT.PILL, '#a0ffcf', false, false);
           e.label = p.label || 'Píldora';
           // intenta vincularla al primer paciente existente si no se indicó target
           e.targetName = p.targetName || (G.patients[0]?.name) || null;
+          e.group = 'object';
           G.entities.push(e); G.movers.push(e); G.pills.push(e);
+          try { window.EntityGroups?.assign?.(e); } catch (_) {}
+          try { window.EntityGroups?.register?.(e, G); } catch (_) {}
         }
         else if (p.type === 'door') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.DOOR, '#7f8c8d', false, true, {mass:0,rest:0,mu:0,static:true});
@@ -2361,10 +2380,10 @@ function drawEntities(c2){
       if (seed !== null && seed !== undefined) params.push(`seed=${seed}`);
       if (typeof meta.roomsCount === 'number') params.push(`rooms=${meta.roomsCount}`);
       const spawns = meta.spawns || {};
-      const enemies = (typeof meta.enemies === 'number' && !Number.isNaN(meta.enemies))
-        ? meta.enemies
+      const animals = (typeof meta.animalSpawns === 'number' && !Number.isNaN(meta.animalSpawns))
+        ? meta.animalSpawns
         : ((typeof spawns.mosquito === 'number' ? spawns.mosquito : 0) + (typeof spawns.rat === 'number' ? spawns.rat : 0));
-      if (Number.isFinite(enemies)) params.push(`enemies=${enemies}`);
+      if (Number.isFinite(animals)) params.push(`animals=${animals}`);
       if (typeof spawns.staff === 'number') params.push(`staff=${spawns.staff}`);
       if (typeof spawns.cart === 'number') params.push(`carts=${spawns.cart}`);
       if (typeof meta.patientsCount === 'number') params.push(`patients=${meta.patientsCount}`);
@@ -2714,7 +2733,7 @@ function drawEntities(c2){
 
   function resetGlobalLevelState(){
     const arrayKeys = [
-      'entities','movers','enemies','patients','pills','lights','roomLights','npcs','items'
+      'entities','movers','hostiles','humans','animals','objects','patients','pills','lights','roomLights','items'
     ];
     for (const key of arrayKeys) {
       if (!Array.isArray(G[key])) {
