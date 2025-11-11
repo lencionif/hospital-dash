@@ -112,6 +112,13 @@
       root.TILE_SIZE = globals.tileSize;
     }
     G.globals = { ...(G.globals || {}), ...globals };
+    if (Number.isFinite(globals.visualRadius)) {
+      G.visualRadiusTiles = globals.visualRadius;
+      const tile = TILE_SIZE();
+      if (Number.isFinite(tile)) {
+        G.visualRadiusPx = globals.visualRadius * tile;
+      }
+    }
     if (typeof globals.defaultHero === 'string' && !G.selectedHero) {
       G.selectedHero = globals.defaultHero;
     }
@@ -1437,6 +1444,9 @@
         entity = root.Entities.Cart.spawn(normalized, world.x, world.y, payload);
       } else if (type === 'door' && root.Entities?.Door?.spawn) {
         entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
+      } else if (type === 'boss_door' && root.Entities?.Door?.spawn) {
+        const payload = { ...(entry || {}), bossDoor: true };
+        entity = root.Entities.Door.spawn(world.x, world.y, payload);
       } else if (type === 'elevator' && root.Entities?.Elevator?.spawn) {
         entity = root.Entities.Elevator.spawn(world.x, world.y, entry || {});
       } else if (type === 'light' && root.Entities?.Light?.spawn) {

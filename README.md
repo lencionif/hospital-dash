@@ -43,3 +43,10 @@ Arcade top-down inspirado en los clásicos de 1983, ambientado en la planta F7 d
 2. Abre [http://localhost:5173/index.html?map=debug](http://localhost:5173/index.html?map=debug) para cargar el mapa de pruebas con puertas, pacientes y enemigos.
 
 El parámetro `map=debug` activa el flujo de victoria completo: entrega la pastilla correcta, observa cómo desaparece el paciente, la puerta del boss se abre y empuja el carro de urgencias hasta él para terminar la partida.
+
+---
+
+## Leyenda ASCII rápida
+
+- `d`: puerta normal.
+- `u`: puerta de urgencias / boss (se abre al atender a todos los pacientes).

@@ -120,7 +120,9 @@
       locked: !!opts.locked,
       _cooldown: 0, // local, por si alguna vez lo quieres por-ascensor
       aiId: 'ELEVATOR',
-      draw: null
+      draw: null,
+      state: { open: false, openProgress: 0 },
+      open: false
     };
     try { W.AI?.attach?.(e, 'ELEVATOR'); } catch (_) {}
 
@@ -234,6 +236,26 @@
       moved++;
     }
 
+    const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const keepAwakeMs = 3000;
+    const openFor = 2.0;
+    const markOpen = (elev) => {
+      if (!elev) return;
+      elev.state = elev.state || { open: false, openProgress: 0 };
+      elev.state.open = true;
+      elev.open = true;
+      const existing = Number.isFinite(elev._cooldown) ? elev._cooldown : 0;
+      elev._cooldown = Math.max(existing, openFor);
+      const awakeUntil = now + keepAwakeMs;
+      if (!Number.isFinite(elev._alwaysUpdateUntil) || elev._alwaysUpdateUntil < awakeUntil) {
+        elev._alwaysUpdateUntil = awakeUntil;
+      }
+    };
+    markOpen(a);
+    markOpen(b);
+
     // pulso visual opcional (si tienes AudioAPI)
     try { W.AudioAPI?.play?.('elevator_warp', {vol:0.9}); } catch(_){}
     return moved;
@@ -269,6 +291,27 @@
 
       // Reloj global
       S.time += dt;
+
+      const dtMs = Math.max(0, dt * 1000);
+      const animSpeed = 0.0035 * dtMs;
+      for (const elev of S.list){
+        if (!elev || elev.dead) continue;
+        elev.state = elev.state || { open: false, openProgress: 0 };
+        const st = elev.state;
+        const cooldown = Number.isFinite(elev._cooldown) ? elev._cooldown : 0;
+        if (cooldown > 0){
+          elev._cooldown = Math.max(0, cooldown - dt);
+          st.open = true;
+        } else if (st.open) {
+          st.open = false;
+        }
+        if (animSpeed > 0){
+          st.openProgress += (st.open ? animSpeed : -animSpeed);
+          if (st.openProgress < 0) st.openProgress = 0;
+          if (st.openProgress > 1) st.openProgress = 1;
+        }
+        elev.open = st.openProgress >= 0.5;
+      }
 
       // ¿toca activar una pareja al azar?
       if (S.time >= S.nextActivationAt){

@@ -144,6 +144,71 @@
     cycleSeconds: 0
   };
   window.G = G; // (expuesto)
+
+  let currentVisualInfo = null;
+
+  function resolveVisualRadiusTiles(){
+    const candidates = [
+      Number.isFinite(G?.visualRadiusTiles) ? G.visualRadiusTiles : null,
+      G?.levelRules?.level?.visualRadius,
+      G?.levelRules?.globals?.visualRadius,
+      G?.globals?.visualRadius
+    ];
+    for (const value of candidates){
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+    return null;
+  }
+
+  function computeVisualRadiusInfo(){
+    const hero = G.player;
+    if (!hero){
+      currentVisualInfo = null;
+      if (G) G.__visualRadiusInfo = null;
+      return null;
+    }
+    const radiusTiles = resolveVisualRadiusTiles();
+    if (!Number.isFinite(radiusTiles) || radiusTiles <= 0){
+      currentVisualInfo = null;
+      G.__visualRadiusInfo = null;
+      return null;
+    }
+    const tileSize = window.TILE_SIZE || window.TILE || TILE;
+    const radiusPx = radiusTiles * tileSize;
+    const info = {
+      radiusTiles,
+      radiusPx,
+      radiusSq: radiusPx * radiusPx,
+      hx: hero.x + (hero.w || tileSize) * 0.5,
+      hy: hero.y + (hero.h || tileSize) * 0.5,
+      timestamp: (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now()
+    };
+    currentVisualInfo = info;
+    G.__visualRadiusInfo = info;
+    return info;
+  }
+
+  function shouldUpdateEntity(ent){
+    if (!ent) return false;
+    if (ent === G.player) return true;
+    const info = currentVisualInfo;
+    if (!info) return true;
+    if (ent._alwaysUpdate === true) return true;
+    const now = info.timestamp || ((typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now());
+    const awakeUntil = Number(ent._alwaysUpdateUntil);
+    if (Number.isFinite(awakeUntil) && awakeUntil > now) return true;
+    const w = Number.isFinite(ent.w) ? ent.w : TILE;
+    const h = Number.isFinite(ent.h) ? ent.h : TILE;
+    const ex = (Number(ent.x) || 0) + w * 0.5;
+    const ey = (Number(ent.y) || 0) + h * 0.5;
+    const dx = ex - info.hx;
+    const dy = ey - info.hy;
+    return (dx * dx + dy * dy) <= info.radiusSq;
+  }
   const MovementSystem = (() => {
     const states = new WeakMap();
     const movers = new Set();
@@ -309,12 +374,20 @@
       for (const e of movers){
         if (!e || e.dead) continue;
         const st = ensure(e);
+        if (!st) continue;
         if (st.forceTeleport){
           st.x = st.teleportX;
           st.y = st.teleportY;
           st.forceTeleport = false;
           st.vx = st.intentVx;
           st.vy = st.intentVy;
+          continue;
+        }
+        if (!shouldUpdateEntity(e)){
+          st.intentVx = 0;
+          st.intentVy = 0;
+          st.vx = 0;
+          st.vy = 0;
           continue;
         }
         st.vx = st.intentVx;
@@ -638,7 +711,7 @@ document.addEventListener('keydown', (e)=>{
   // S: héroe principal (jugador)
   // p: paciente en cama          | f: paciente furiosa (debug)
   // i: pastilla vinculada al paciente
-  // D: puerta de urgencias cerrada (boss)
+  // d: puerta normal               | u: puerta de urgencias cerrada (boss)
   // X: paciente crítico final (boss)
   // U: carro de urgencias        | +: carro de medicinas | F: carro de comida
   // N: spawner de humanos (NPC)  | C: spawner de carros
@@ -1024,8 +1097,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         else if (ch === 'R') { // legacy rat spawner
           asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'rat', legacy:'R' });
         }
-        else if (ch === 'D') {
+        else if (ch === 'D' || ch === 'd') {
           asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
+        }
+        else if (ch === 'u') {
+          asciiPlacements.push({ type:'boss_door', x: wx, y: wy, locked:true, bossDoor:true, _units:'px' });
         }
         else if (ch === 'X') {
           asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
@@ -1618,11 +1694,16 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // Paso de IA específica por entidad hostil (antes de la física)
   function runEntityAI(dt){
     const ents = Array.isArray(G.entities) ? G.entities : null;
+    const useCulling = !!currentVisualInfo && Array.isArray(ents);
+    const toProcess = useCulling
+      ? ents.filter((ent) => ent && !ent.dead && shouldUpdateEntity(ent))
+      : (Array.isArray(ents) ? ents : []);
     let ragdollSuppressed = null;
+    let originalEntities = null;
     if (window.AI?.update) {
-      if (ents && ents.length){
+      if (toProcess && toProcess.length){
         ragdollSuppressed = [];
-        for (const ent of ents){
+        for (const ent of toProcess){
           if (!ent || ent.dead) continue;
           const ragdolling = (ent._ragdollTimer || 0) > 0 || ent.ragdolling || ent.ragdoll;
           if (!ragdolling) continue;
@@ -1631,12 +1712,19 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           if (typeof ent.intentVy === 'number'){ ent._ragAI_prevVY = ent.intentVy; ent.intentVy = 0; }
         }
       }
+      if (useCulling && toProcess !== ents){
+        originalEntities = G.entities;
+        G.entities = toProcess;
+      }
       try {
         window.AI.update(G, dt);
         return;
       } catch (err) {
         if (window.DEBUG_FORCE_ASCII) console.warn('[AI] update error', err);
       } finally {
+        if (useCulling && originalEntities) {
+          G.entities = originalEntities;
+        }
         if (ragdollSuppressed && ragdollSuppressed.length){
           for (const ent of ragdollSuppressed){
             if (!ent) continue;
@@ -1649,9 +1737,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
 
-    if (!ents) return;
+    if (!Array.isArray(toProcess) || !toProcess.length) return;
     const dbg = !!window.DEBUG_FORCE_ASCII;
-    for (const ent of ents){
+    for (const ent of toProcess){
       if (!ent || ent.dead) continue;
       if ((ent._ragdollTimer || 0) > 0 || ent.ragdolling || ent.ragdoll) continue;
       try {
@@ -1679,6 +1767,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (!e || e.dead) continue;
       MovementSystem.register(e);
       const ragTimer = Number.isFinite(e?._ragdollTimer) ? e._ragdollTimer : 0;
+      if (!shouldUpdateEntity(e)){
+        if (ragTimer > 0){
+          e._ragdollTimer = Math.max(0, ragTimer - dt);
+        }
+        continue;
+      }
       if (ragTimer > 0){
         if (!e.ragdolling){
           e.ragdolling = true;
@@ -1734,6 +1828,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     for (const ent of G.entities){
       if (!ent || ent.dead) continue;
       if (!matchesKind(ent, 'DOOR')) continue;
+      if (!shouldUpdateEntity(ent)) continue;
       try {
         window.Doors.update(ent, G, dt);
       } catch (err){
@@ -1894,7 +1989,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       try { window.GameFlowAPI?.update?.(dt); } catch(err){ console.warn('[GameFlow] update error:', err); }
     }
     applyStateVisuals();
-    if (!isPlaying || !G.player) return; // <-- evita tocar nada sin jugador
+    if (!isPlaying || !G.player){
+      currentVisualInfo = null;
+      G.__visualRadiusInfo = null;
+      return; // <-- evita tocar nada sin jugador
+    }
     G.time += dt;
     G.cycleSeconds += dt;
     const dbg = !!window.DEBUG_FORCE_ASCII;
@@ -1906,7 +2005,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     
     // alimenta al rig con el mismo ángulo (evita “héroe invertido”)
     if (G.player) G.player.facingAngle = G.player.lookAngle || 0;
-    
+
     // jugador
     const p = G.player;
     if (p){
@@ -1916,12 +2015,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (p.pushAnimT>0) p.pushAnimT = Math.max(0, p.pushAnimT - dt);
     }
 
+    computeVisualRadiusInfo();
+
     // Posición del oyente (para paneo/atenuación en SFX posicionales)
     //if (G.player) AudioAPI.setListener(G.player.x + G.player.w/2, G.player.y + G.player.h/2);
 
     // objetos/movers (camas, carros, pastillas sueltas)
     for (const e of G.movers){
       if (e.dead) continue;
+      if (!shouldUpdateEntity(e)) continue;
       // clamp velocidad máxima
       const ms = BALANCE.physics.maxSpeedObject;
       const sp = Math.hypot(e.vx, e.vy);

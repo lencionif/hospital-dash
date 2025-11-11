@@ -25,7 +25,7 @@
 //   density: { rooms, lights, worms }   // tuning fino por tamaño
 //
 // Caracteres ASCII por defecto (override con options.charset):
-//   '#': pared      '.' : suelo         'd': puerta normal  'D': puerta boss
+//   '#': pared      '.' : suelo         'd': puerta normal  'u': puerta urgencias
 //   'S': start      'T' : teléfono      'X' : boss (marcador)
 //   'L': luz        'l' : luz rota      'E' : ascensor activo  'e': ascensor cerrado
 //   'M': spwn mosq  'R' : spwn rata     'N' : spwn staff       'C': spwn carro
@@ -717,7 +717,7 @@ function fixRoomPerimeterGaps(ascii, room, cs){
 
 // === AMPLIACIÓN CHARSET PARA DEBUG ASCII ===
 const EXTRA_CHARSET = {
-  door:'d', bossDoor:'D', elev:'E', elevClosed:'e',
+  door:'d', bossDoor:'u', elev:'E', elevClosed:'e',
   player:'S', followerA:'F', followerB:'G', bossMarker:'X',
   spAnimal:'A', spStaff:'N', spCart:'C',
   nurse:'n', tcae:'t', celador:'c', cleaner:'h', guardia:'g', medico:'k',
@@ -733,7 +733,7 @@ const EXTRA_CHARSET = {
 // **defecto + extra**
 const CHARSET_DEFAULT = {
   wall:'#', floor:'.',
-  door:'d', bossDoor:'D',
+  door:'d', bossDoor:'u',
   elev:'E', elevClosed:'e',
   start:'S', light:'L', lightBroken:'l',
   spAnimal:'A', spStaff:'N', spCart:'C',
@@ -1635,12 +1635,12 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     placements.push({type:'boss', x:pB.x, y:pB.y, nearWall:true});
     markAscii(pB.x, pB.y, charset.bossMarker||'X');
 
-    // 3) TODAS LAS PUERTAS (cerradas) incl. Boss Door si hay 'D'
+    // 3) TODAS LAS PUERTAS (cerradas) incl. Boss Door si hay 'u'
     for (let y=0; y<ascii.length; y++){
       for (let x=0; x<ascii[y].length; x++){
         const ch = ascii[y][x];
-        if (ch===charset.door || ch==='d'){ placements.push({type:'door', x,y, locked:true}); }
-        if (ch===charset.bossDoor || ch==='D'){ placements.push({type:'boss_door', x,y, locked:true, isBoss:true}); }
+        if (ch===charset.door || ch==='d' || ch==='D'){ placements.push({type:'door', x,y, locked:true}); }
+        if (ch===charset.bossDoor || ch==='u'){ placements.push({type:'boss_door', x,y, locked:true, isBoss:true}); }
       }
     }
 
