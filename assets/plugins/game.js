@@ -12,7 +12,8 @@
   // ------------------------------------------------------------
   const SEARCH_PARAMS = new URLSearchParams(location.search || '');
   const DEBUG_MAP_MODE = /(?:\?|&)map=debug\b/i.test(location.search || '');
-  const DEBUG_MAP_FILE = (() => {
+  const DEFAULT_DEBUG_MAP_PATH = 'assets/config/debug-map.txt';
+  const DEBUG_MAP_FILE_PARAM = (() => {
     const raw = SEARCH_PARAMS.get('debugMap')
       || SEARCH_PARAMS.get('debugMapFile')
       || SEARCH_PARAMS.get('mapfile');
@@ -23,6 +24,8 @@
       return raw;
     }
   })();
+  const DEBUG_MAP_FILE = DEBUG_MAP_FILE_PARAM || DEFAULT_DEBUG_MAP_PATH;
+  window.DEBUG_MAP_FILE_PARAM = DEBUG_MAP_FILE_PARAM;
   window.DEBUG_MAP_FILE = DEBUG_MAP_FILE;
   const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
 
@@ -645,7 +648,7 @@ document.addEventListener('keydown', (e)=>{
   // #: pared  · .: suelo
   // ------------------------------------------------------------
     // Mapa por defecto (inmutable)
-    const DEFAULT_ASCII_MAP = [
+    const FALLBACK_DEBUG_ASCII_MAP = [
     "##############################",
     "#............................#",
     "#....####............####....#",
@@ -673,7 +676,7 @@ document.addEventListener('keydown', (e)=>{
     })();
 
     // Mapa ASCII mini (para pruebas rápidas con ?map=mini)
-    const DEBUG_ASCII_MINI = DEFAULT_ASCII_MAP;
+    const DEBUG_ASCII_MINI = FALLBACK_DEBUG_ASCII_MAP;
 
   // --- selector de mapa por URL ---
   // ?map=debug  → fuerza el mapa ASCII de arriba
@@ -703,7 +706,7 @@ document.addEventListener('keydown', (e)=>{
 
 
 // Mapa activo (se puede sustituir por el de MapGen)
-let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
+let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
   // ------------------------------------------------------------
   // Creación de entidades
@@ -947,18 +950,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
         // === MARCAS ASCII ===
         if (ch === 'S') {
-          // HÉROE: se crea INMEDIATO como antes (no depende de factories)
-          const p = (typeof makePlayer === 'function')
-            ? makePlayer(wx+4, wy+4)
-            : (window.Entities?.Hero?.spawnPlayer?.(wx+4, wy+4, {}) || null);
-
-          if (p){
-            G.player = p; G.entities.push(p);
-            // sala segura (5x5 tiles centrados en S)
-            G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
-            // luz blanca suave en sala de control
-            G.roomLights.push({ x: (p.x||wx)+TILE/2, y: (p.y||wy)+TILE/2, r: 5.5*TILE, baseA: 0.28 });
-          }
+          asciiPlacements.push({ type:'player', x: wx+4, y: wy+4, _units:'px' });
+          // sala segura (5x5 tiles centrados en S)
+          G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
+          // luz blanca suave en sala de control
+          G.roomLights.push({ x: wx + TILE/2, y: wy + TILE/2, r: 5.5*TILE, baseA: 0.28 });
         }
         else if (ch === 'P') {
           // Paciente: placement (NO instanciamos aquí)
@@ -1027,6 +1023,13 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       G.map.push(row);
     }
 
+    if (!asciiPlacements.some((p) => p && String(p.type).toLowerCase() === 'player')) {
+      asciiPlacements.push({ type: 'player', x: TILE*2, y: TILE*2, _units: 'px' });
+      if (!G.safeRect) {
+        G.safeRect = { x: TILE * 0, y: TILE * 0, w: 5 * TILE, h: 5 * TILE };
+      }
+    }
+
     // Mezclamos con placements del generador (si ya existían)
     // ========== DEBUG ASCII (mini) ==========
     try {
@@ -1043,17 +1046,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     } catch(_){}
     // =======================================
 
-    // Fallback por si el mapa no trae 'S' (igual que la antigua)
-    if (!G.player) {
-      const p = (typeof makePlayer === 'function')
-        ? makePlayer(TILE*2, TILE*2)
-        : (window.Entities?.Hero?.spawnPlayer?.(TILE*2, TILE*2, {}) || null);
-      if (p){ G.player = p; G.entities.push(p); }
-    }
     MovementSystem.setMap(G.map, TILE);
-    if (Array.isArray(G.entities)){
-      for (const ent of G.entities){ MovementSystem.register(ent); }
-    }
 
     const width = G.mapW || (lines[0]?.length || 0);
     const height = G.mapH || lines.length;
@@ -2077,7 +2070,19 @@ function drawEntities(c2){
       for (const p of sourcePlacements) {
         if (!p || !p.type) continue;
 
-        if (p.type === 'patient') {
+        if ((p.type === 'player' || p.type === 'hero' || p.type === 'start') && !G.player) {
+          const px = (p.x ?? 0) | 0;
+          const py = (p.y ?? 0) | 0;
+          const hero = (typeof makePlayer === 'function')
+            ? makePlayer(px, py)
+            : (window.Entities?.Hero?.spawnPlayer?.(px, py, {}) || null);
+          if (hero) {
+            G.player = hero;
+            G.entities.push(hero);
+            MovementSystem.register(hero);
+          }
+        }
+        else if (p.type === 'patient') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.PATIENT, '#ffd166', false, true);
           e.name = p.name || `Paciente_${G.patients.length+1}`;
           G.entities.push(e); G.patients.push(e); G.npcs.push(e);
@@ -2126,29 +2131,18 @@ function drawEntities(c2){
 
   async function loadDebugAsciiMap(fallbackLines){
     const fallback = {
-      lines: Array.isArray(fallbackLines) ? fallbackLines.slice() : DEFAULT_ASCII_MAP.slice(),
+      lines: Array.isArray(fallbackLines) ? fallbackLines.slice() : FALLBACK_DEBUG_ASCII_MAP.slice(),
       source: 'builtin',
       fromFile: false,
       file: null
     };
     const fallbackWidth = fallback.lines[0]?.length || 0;
     const fallbackHeight = fallback.lines.length;
-
-    if (!DEBUG_MAP_FILE) {
-      logThrough('info', '[debug-map] usando mapa ASCII embebido', {
-        width: fallbackWidth,
-        height: fallbackHeight
-      });
-      window.LOG?.event?.('DEBUG_MAP_LOAD', {
-        mode: 'builtin',
-        width: fallbackWidth,
-        height: fallbackHeight
-      });
-      return fallback;
-    }
+    const fileToLoad = DEBUG_MAP_FILE;
+    const mapFileOrigin = DEBUG_MAP_FILE_PARAM ? 'custom' : 'default';
 
     try {
-      const response = await fetch(DEBUG_MAP_FILE, { cache: 'no-store' });
+      const response = await fetch(fileToLoad, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -2159,181 +2153,191 @@ function drawEntities(c2){
       }
       const payload = {
         lines: rows,
-        source: 'file',
+        source: mapFileOrigin === 'custom' ? 'file' : 'file-default',
         fromFile: true,
-        file: DEBUG_MAP_FILE,
+        file: fileToLoad,
         width: rows[0]?.length || 0,
         height: rows.length
       };
       logThrough('info', '[debug-map] mapa ASCII externo cargado', {
-        file: DEBUG_MAP_FILE,
+        file: fileToLoad,
         width: payload.width,
         height: payload.height
       });
       window.LOG?.event?.('DEBUG_MAP_LOAD', {
-        mode: 'file',
-        file: DEBUG_MAP_FILE,
+        mode: mapFileOrigin,
+        file: fileToLoad,
         width: payload.width,
         height: payload.height
       });
       return payload;
     } catch (err) {
       logThrough('warn', '[debug-map] fallo al cargar mapa externo, usando fallback', {
-        file: DEBUG_MAP_FILE,
+        file: fileToLoad,
         error: err?.message || String(err)
       });
       window.LOG?.event?.('DEBUG_MAP_LOAD', {
-        mode: 'file-error',
-        file: DEBUG_MAP_FILE,
+        mode: `${mapFileOrigin}-error`,
+        file: fileToLoad,
         error: err?.message || String(err)
       });
+      fallback.source = 'builtin-error';
       return fallback;
     }
   }
 
-  function buildLevelForCurrentMode(levelNumber){
+  async function resolveAsciiMapForLevel(level){
+    const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
+    const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
+
+    if (shouldUseDebugAscii) {
+      const payload = await loadDebugAsciiMap(asciiFallback).catch((err) => {
+        console.warn('[debug-map] error inesperado al cargar mapa debug', err);
+        return {
+          lines: asciiFallback.slice(),
+          source: 'builtin-error',
+          fromFile: false,
+          file: null
+        };
+      });
+      const lines = Array.isArray(payload?.lines) && payload.lines.length
+        ? payload.lines.slice()
+        : asciiFallback.slice();
+      return {
+        lines,
+        source: payload?.source || (payload?.fromFile ? 'file' : 'builtin'),
+        file: payload?.file || null,
+        placements: [],
+        areas: null,
+        mode: 'debug'
+      };
+    }
+
+    let asciiLines = null;
+    let placements = [];
+    let areas = null;
+    let source = 'procedural';
+
+    if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
+      try {
+        const res = MapGenAPI.generate(level, {
+          seed: G.seed || Date.now(),
+          place: false,
+          defs: null,
+          width: window.DEBUG_MINIMAP ? 128 : undefined,
+          height: window.DEBUG_MINIMAP ? 128 : undefined
+        }) || {};
+        const asciiText = typeof res.ascii === 'string'
+          ? res.ascii
+          : (typeof MapGenAPI.toAscii === 'function' ? MapGenAPI.toAscii(res) : '');
+        const rows = normalizeAsciiFromText(asciiText);
+        if (rows.length) {
+          asciiLines = rows;
+          placements = Array.isArray(res.placements) ? res.placements.slice() : [];
+          areas = res.areas || null;
+          source = window.DEBUG_MINIMAP ? 'procedural-mini' : 'procedural';
+        }
+      } catch (err) {
+        console.warn('[MapGenAPI] generate falló:', err);
+      }
+    }
+
+    if (!asciiLines || !asciiLines.length) {
+      asciiLines = asciiFallback.slice();
+      source = 'fallback';
+    }
+
+    return {
+      lines: asciiLines,
+      source,
+      file: null,
+      placements,
+      areas,
+      mode: 'normal'
+    };
+  }
+
+  async function buildLevelForCurrentMode(levelNumber){
     const level = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
     G.debugMap = DEBUG_MAP_MODE;
-    G._placementMode = DEBUG_MAP_MODE ? 'debug' : 'normal';
+    G.mode = DEBUG_MAP_MODE ? 'debug' : 'normal';
+    G._placementMode = G.mode;
     G._placementsFinalized = false;
     G._hasPlaced = false;
     G.mapgenPlacements = [];
     G.mapAreas = null;
 
     G.flags = G.flags || {};
-    G.flags.DEBUG_FORCE_ASCII = !!window.DEBUG_FORCE_ASCII;
+    G.flags.DEBUG_FORCE_ASCII = !!(DEBUG_MAP_MODE || window.DEBUG_FORCE_ASCII);
 
-    const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
-    const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
+    const payload = await resolveAsciiMapForLevel(level);
+    const asciiLines = Array.isArray(payload.lines) && payload.lines.length
+      ? payload.lines.slice()
+      : (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
 
-    if (shouldUseDebugAscii){
-      return loadDebugAsciiMap(asciiFallback).then((payload) => {
-        const asciiLines = Array.isArray(payload?.lines) && payload.lines.length
-          ? payload.lines.slice()
-          : asciiFallback.slice();
-        ASCII_MAP = asciiLines;
-        G.debugAsciiSource = payload?.source || (payload?.fromFile ? 'file' : 'builtin');
-        G.debugAsciiFile = payload?.file || null;
-        parseMap(ASCII_MAP);
-        if (!window.Placement?.applyFromAsciiMap) {
-          finalizeLevelBuildOnce();
-        }
-        const width = G.mapW || (ASCII_MAP[0]?.length || 0);
-        const height = G.mapH || ASCII_MAP.length;
-        const counterLabel = (payload?.source === 'file' || payload?.fromFile)
-          ? 'debug:file'
-          : 'debug:builtin';
-        if (window.LOG?.counter) {
-          window.LOG.counter('mapMode', counterLabel);
-        }
-        window.LOG?.event?.('MAP_READY', {
-          mode: 'debug',
-          source: G.debugAsciiSource,
-          file: G.debugAsciiFile,
-          width,
-          height
-        });
-        logThrough('info', '[buildLevel] mapa debug preparado', {
-          source: G.debugAsciiSource,
-          file: G.debugAsciiFile,
-          width,
-          height
-        });
-      }).catch((err) => {
-        console.warn('[debug-map] error inesperado al cargar mapa debug', err);
-        ASCII_MAP = asciiFallback.slice();
-        G.debugAsciiSource = 'builtin-error';
-        G.debugAsciiFile = null;
-        parseMap(ASCII_MAP);
-        if (!window.Placement?.applyFromAsciiMap) {
-          finalizeLevelBuildOnce();
-        }
-        const width = G.mapW || (ASCII_MAP[0]?.length || 0);
-        const height = G.mapH || ASCII_MAP.length;
-        if (window.LOG?.counter) {
-          window.LOG.counter('mapMode', 'debug:fallback');
-        }
-        window.LOG?.event?.('MAP_READY', {
-          mode: 'debug',
-          source: G.debugAsciiSource,
-          width,
-          height
-        });
-        logThrough('info', '[buildLevel] mapa debug preparado (fallback)', {
-          source: G.debugAsciiSource,
-          width,
-          height
-        });
-      });
-    }
+    ASCII_MAP = asciiLines;
+    G.debugAsciiSource = payload.source || (DEBUG_MAP_MODE ? 'debug' : 'procedural');
+    G.debugAsciiFile = payload.file || null;
+    G.mapgenPlacements = Array.isArray(payload.placements) ? payload.placements.slice() : [];
+    G.mapAreas = payload.areas || null;
 
-    G.debugAsciiSource = null;
-    G.debugAsciiFile = null;
-
-    let usedGenerator = false;
-    let mapSource = 'fallback';
-    try {
-      if (window.MapGen && typeof MapGen.generate === 'function'){
-        if (typeof MapGen.init === 'function') MapGen.init(G);
-        usedGenerator = !!loadLevelWithMapGen(level);
-        if (usedGenerator) mapSource = 'mapgen';
-      }
-    } catch (err){
-      console.warn('[MapGen] init/generate falló:', err);
-    }
-
-    if (!usedGenerator){
-      try {
-        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function'){
-          const res = MapGenAPI.generate(level, {
-            seed: G.seed || Date.now(),
-            place: false,
-            defs: null,
-            width: window.DEBUG_MINIMAP ? 128 : undefined,
-            height: window.DEBUG_MINIMAP ? 128 : undefined
-          });
-          ASCII_MAP = (res.ascii || '').trim().split('\n');
-          G.mapgenPlacements = res.placements || [];
-          G.mapAreas = res.areas || null;
-          parseMap(ASCII_MAP);
-          if (!window.Placement?.applyFromAsciiMap) {
-            finalizeLevelBuildOnce();
-          }
-          usedGenerator = true;
-          mapSource = window.DEBUG_MINIMAP ? 'mapgenapi-mini' : 'mapgenapi';
-          console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
-        }
-      } catch (err){
-        console.warn('[MapGenAPI] generate falló:', err);
-      }
-    }
-
-    if (!usedGenerator){
-      ASCII_MAP = DEFAULT_ASCII_MAP.slice();
-      parseMap(ASCII_MAP);
-      if (!window.Placement?.applyFromAsciiMap) {
-        finalizeLevelBuildOnce();
-      }
-      mapSource = 'default';
-      console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
-    }
+    parseMap(ASCII_MAP);
 
     const width = G.mapW || (ASCII_MAP[0]?.length || 0);
     const height = G.mapH || ASCII_MAP.length;
-    if (window.LOG?.counter) {
-      window.LOG.counter('mapMode', `normal:${mapSource}`);
+    const asciiString = ASCII_MAP.join('\n');
+
+    const asciiPlacements = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
+    if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
+      asciiPlacements.push(...G.mapgenPlacements);
     }
-    window.LOG?.event?.('MAP_READY', {
-      mode: 'normal',
-      source: mapSource,
+
+    const levelCfg = {
+      G,
+      mode: G.mode,
+      debug: DEBUG_MAP_MODE,
+      ascii: asciiString,
+      asciiMap: asciiString,
+      asciiRows: ASCII_MAP.slice(),
+      allowAscii: true,
+      forceAscii: true,
+      map: G.map,
+      areas: G.mapAreas,
+      width,
+      height,
+      level,
+      seed: G.seed || null,
+      placements: asciiPlacements
+    };
+
+    G._lastLevelCfg = levelCfg;
+
+    if (window.LOG?.counter) {
+      window.LOG.counter('mapMode', `${payload.mode}:${payload.source}`);
+    }
+
+    const eventPayload = {
+      mode: payload.mode,
+      source: payload.source,
       width,
       height
+    };
+    if (payload.file) {
+      eventPayload.file = payload.file;
+    }
+
+    window.LOG?.event?.('MAP_READY', eventPayload);
+    window.LOG?.event?.('MAP_ASCII_READY', {
+      ...eventPayload,
+      source: payload.source
     });
-    logThrough('info', '[buildLevel] mapa procedural preparado', {
-      source: mapSource,
-      width,
-      height
+    logThrough('info', `[buildLevel] mapa ASCII preparado (${width}x${height})`, {
+      mode: payload.mode,
+      source: payload.source,
+      file: payload.file || null
     });
+
+    return levelCfg;
   }
 
   function configureLevelSystems(){
@@ -2603,6 +2607,11 @@ function drawEntities(c2){
     G.__placementsApplied = false;
     G.debugAsciiSource = null;
     G.debugAsciiFile = null;
+    G.safeRect = null;
+
+    G.flags = G.flags || {};
+    G.flags.DEBUG_FORCE_ASCII = false;
+    G.flags.DEBUG_MINIMAP = !!window.DEBUG_MINIMAP;
 
     try { MovementSystem?.setMap?.(null, TILE); } catch (_) {}
     try { window.Placement?.reset?.(); } catch (_) {}
@@ -2676,11 +2685,29 @@ function drawEntities(c2){
       }
       G.__placementsApplied = false;
       let placementApplied = false;
+      const asciiString = Array.isArray(ASCII_MAP) ? ASCII_MAP.join('\n') : String(ASCII_MAP || '');
       const levelCfg = G._lastLevelCfg || {
-        G, mode: (DEBUG_MAP_MODE ? 'debug':'normal'), debug: DEBUG_MAP_MODE,
-        asciiMap: ASCII_MAP, ascii: ASCII_MAP, allowAscii: !!ASCII_MAP,
-        map: G.map, areas: G.mapAreas, width: G.mapW, height: G.mapH, level: G.level, seed: G.seed,
-        placements: G.mapgenPlacements
+        G,
+        mode: (DEBUG_MAP_MODE ? 'debug' : 'normal'),
+        debug: DEBUG_MAP_MODE,
+        asciiMap: asciiString,
+        ascii: asciiString,
+        asciiRows: Array.isArray(ASCII_MAP) ? ASCII_MAP.slice() : normalizeAsciiFromText(asciiString),
+        allowAscii: !!asciiString,
+        forceAscii: true,
+        map: G.map,
+        areas: G.mapAreas,
+        width: G.mapW,
+        height: G.mapH,
+        level: G.level,
+        seed: G.seed,
+        placements: (() => {
+          const base = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
+          if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
+            base.push(...G.mapgenPlacements);
+          }
+          return base;
+        })()
       };
       try {
         if (window.Placement?.applyFromAsciiMap) {
@@ -2761,7 +2788,7 @@ function drawEntities(c2){
       .catch((err) => {
         console.warn('[startGame] buildLevelForCurrentMode error', err);
         if (!Array.isArray(ASCII_MAP) || !ASCII_MAP.length) {
-          ASCII_MAP = DEFAULT_ASCII_MAP.slice();
+          ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           parseMap(ASCII_MAP);
         }
         finalizeLevelBuildOnce({ forceFallback: true });
