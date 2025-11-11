@@ -99,6 +99,7 @@
     for (const enemy of spawnEnemiesPack(cfg, G)) add(enemy);
     for (const obj of spawnWorldObjects(cfg, G)) add(obj);
 
+    try { Placement.ensureNoPushableOverlap(G, { log: true }); } catch (_) {}
     try { root.Minimap?.refresh?.(); } catch (_) {}
     try { root.LOG?.event?.('PLACEMENT_SUMMARY', Placement.summarize()); } catch (_) {}
 
@@ -772,6 +773,7 @@
     G.levelRules = { globals, level, rules };
     G.__placementsApplied = true;
 
+    try { Placement.ensureNoPushableOverlap(G, { log: true }); } catch (_) {}
     try { root.LOG?.event?.('PLACEMENT_SUMMARY', Placement.summarize()); } catch (_) {}
     return legacyResult;
   }
@@ -983,6 +985,200 @@
       y: ty * tile
     };
   }
+
+  function tileKey(tx, ty){
+    return `${tx},${ty}`;
+  }
+
+  function tileSize(){
+    const size = Number(TILE_SIZE() || 0);
+    return Number.isFinite(size) && size > 0 ? size : 32;
+  }
+
+  function entityTile(entity){
+    if (!entity) return { tx: NaN, ty: NaN };
+    const tile = tileSize();
+    const w = Number.isFinite(entity.w) ? entity.w : tile * 0.9;
+    const h = Number.isFinite(entity.h) ? entity.h : tile * 0.9;
+    const cx = Number.isFinite(entity.x) ? entity.x + w * 0.5 : w * 0.5;
+    const cy = Number.isFinite(entity.y) ? entity.y + h * 0.5 : h * 0.5;
+    return {
+      tx: Math.floor(cx / tile),
+      ty: Math.floor(cy / tile)
+    };
+  }
+
+  function isTileWalkable(G, tx, ty){
+    if (!G) return true;
+    const map = Array.isArray(G.map) ? G.map : null;
+    if (!map || !map.length) return true;
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+    if (ty < 0 || ty >= map.length) return false;
+    const row = map[ty];
+    if (!Array.isArray(row) || tx < 0 || tx >= row.length) return false;
+    return row[tx] !== 1;
+  }
+
+  function listPushables(G){
+    if (!Array.isArray(G?.entities)) return [];
+    return G.entities.filter((ent) => ent && !ent.dead && ent.pushable === true);
+  }
+
+  function toIgnoreSet(ignore){
+    if (!ignore) return null;
+    if (ignore instanceof Set) return ignore;
+    if (Array.isArray(ignore)) return new Set(ignore);
+    return new Set([ignore]);
+  }
+
+  function isTileOccupiedByPushable(G, tx, ty, opts = {}){
+    const ignoreSet = toIgnoreSet(opts.ignore);
+    const pushables = Array.isArray(opts.pushables) ? opts.pushables : listPushables(G);
+    const occupiedMap = opts.occupiedMap || null;
+    const key = tileKey(tx, ty);
+    if (occupiedMap && occupiedMap.size){
+      const occupant = occupiedMap.get(key);
+      if (occupant && (!ignoreSet || !ignoreSet.has(occupant))) return true;
+    }
+    for (const ent of pushables){
+      if (!ent || ent.dead) continue;
+      if (ignoreSet && ignoreSet.has(ent)) continue;
+      const pos = entityTile(ent);
+      if (pos.tx === tx && pos.ty === ty) return true;
+    }
+    return false;
+  }
+
+  function moveEntityToTile(entity, tx, ty){
+    if (!entity) return;
+    const world = toWorld(tx, ty);
+    const px = world.x;
+    const py = world.y;
+    try {
+      entity.x = px;
+      entity.y = py;
+    } catch (_) {
+      entity.x = px;
+      entity.y = py;
+    }
+    if (typeof entity.vx === 'number') entity.vx = 0;
+    if (typeof entity.vy === 'number') entity.vy = 0;
+    entity._lastSafeX = px;
+    entity._lastSafeY = py;
+    try {
+      const st = root.MovementSystem?.getState?.(entity);
+      if (st){
+        st.x = px;
+        st.y = py;
+        st.vx = 0;
+        st.vy = 0;
+        st.teleportX = px;
+        st.teleportY = py;
+        st.forceTeleport = true;
+      }
+    } catch (_) {}
+    if (entity.body && typeof entity.body.setPosition === 'function'){
+      try { entity.body.setPosition(px, py); } catch (_) {}
+    }
+  }
+
+  function describePushable(ent){
+    if (!ent) return 'pushable';
+    const kind = (ent.kindName || ent.kind || ent.type || 'pushable');
+    const label = ent.name || ent.id;
+    return label ? `${kind}:${label}` : String(kind);
+  }
+
+  function findNearestFreeTile(G, startTx, startTy, condition, options = {}){
+    const game = G || root.G;
+    if (!game) return null;
+    const maxRadiusRaw = Number.isFinite(options.maxRadius) ? options.maxRadius : 5;
+    const maxRadius = Math.max(0, Math.round(maxRadiusRaw));
+    const pushables = Array.isArray(options.pushables) ? options.pushables : listPushables(game);
+    const ignoreSet = toIgnoreSet(options.ignore);
+    const occupiedMap = options.occupiedMap || null;
+
+    const tester = (typeof condition === 'function')
+      ? (tx, ty) => condition(tx, ty, { game, pushables, ignore: ignoreSet, occupied: occupiedMap })
+      : (tx, ty) => {
+          if (!isTileWalkable(game, tx, ty)) return false;
+          return !isTileOccupiedByPushable(game, tx, ty, {
+            ignore: ignoreSet,
+            pushables,
+            occupiedMap
+          });
+        };
+
+    for (let radius = 0; radius <= maxRadius; radius++){
+      for (let dy = -radius; dy <= radius; dy++){
+        for (let dx = -radius; dx <= radius; dx++){
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+          const tx = startTx + dx;
+          const ty = startTy + dy;
+          if (!Number.isFinite(tx) || !Number.isFinite(ty)) continue;
+          if (!tester(tx, ty)) continue;
+          return { tx, ty };
+        }
+      }
+    }
+    return null;
+  }
+
+  function ensureNoPushableOverlap(G, opts = {}){
+    const game = G || root.G;
+    if (!game) return [];
+    const pushables = listPushables(game);
+    if (pushables.length <= 1) return [];
+    const logEnabled = opts.log !== false;
+    const maxRadius = Number.isFinite(opts.maxRadius) ? opts.maxRadius : 6;
+    const movements = [];
+    const occupancy = new Map();
+
+    for (const ent of pushables){
+      const pos = entityTile(ent);
+      if (!Number.isFinite(pos.tx) || !Number.isFinite(pos.ty)) continue;
+      const key = tileKey(pos.tx, pos.ty);
+      const first = occupancy.get(key);
+      if (!first){
+        occupancy.set(key, ent);
+        continue;
+      }
+      if (first === ent) continue;
+      if (logEnabled){
+        try {
+          console.warn(`WARNING: Pushable overlap detected at (${pos.tx},${pos.ty}) between ${describePushable(first)} and ${describePushable(ent)}. Relocating.`);
+        } catch (_) {}
+      }
+      const target = findNearestFreeTile(game, pos.tx, pos.ty, null, {
+        maxRadius,
+        ignore: ent,
+        pushables,
+        occupiedMap: occupancy
+      });
+      if (target){
+        moveEntityToTile(ent, target.tx, target.ty);
+        occupancy.set(tileKey(target.tx, target.ty), ent);
+        movements.push({ entity: ent, from: pos, to: target });
+        if (logEnabled){
+          try {
+            console.info(`[PushableSafety] relocated ${describePushable(ent)} to (${target.tx},${target.ty}).`);
+          } catch (_) {}
+        }
+      } else if (logEnabled){
+        try {
+          console.warn(`[PushableSafety] no free tile found near (${pos.tx},${pos.ty}) for ${describePushable(ent)}.`);
+        } catch (_) {}
+      }
+    }
+
+    return movements;
+  }
+
+  Placement.findNearestFreeTile = findNearestFreeTile;
+  Placement.isTileOccupiedByPushable = function wrappedIsTileOccupied(G, tx, ty, options){
+    return isTileOccupiedByPushable(G, tx, ty, options);
+  };
+  Placement.ensureNoPushableOverlap = ensureNoPushableOverlap;
 
   function spawnHero(tx, ty, cfg, G){
     const tile = TILE_SIZE();

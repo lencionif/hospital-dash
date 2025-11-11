@@ -490,6 +490,7 @@
   }
 
   let invalidZoomLogged = false;
+  let pushableOverlapCooldown = 0;
 
   try {
     window.GameFlowAPI?.init?.(G, { cartBossTiles: 2.0 });
@@ -1681,6 +1682,19 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
   }
 
+  function runtimePushableSafety(dt){
+    if (!window.Placement?.ensureNoPushableOverlap) return;
+    if (!Number.isFinite(dt) || dt <= 0) dt = 0;
+    pushableOverlapCooldown = Math.max(0, pushableOverlapCooldown - dt);
+    if (pushableOverlapCooldown > 0) return;
+    pushableOverlapCooldown = 1.0;
+    try {
+      window.Placement.ensureNoPushableOverlap(G, { log: false, maxRadius: 6 });
+    } catch (err) {
+      if (window.DEBUG_FORCE_ASCII) console.warn('[PushableSafety] runtime check failed', err);
+    }
+  }
+
   // ------------------------------------------------------------
   // Reglas de juego base (pill→patient→door→boss with cart)
   // ------------------------------------------------------------
@@ -1865,6 +1879,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // integración de movimiento centralizada
     MovementSystem.step(dt);
+    runtimePushableSafety(dt);
 
     // ascensores
     Entities?.Elevator?.update?.(dt);

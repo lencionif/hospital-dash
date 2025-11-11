@@ -91,6 +91,20 @@
     return { x, y };
   }
 
+  function findFreeTileForPushable(tx, ty, radiusTiles){
+    if (!W.Placement || typeof W.Placement.findNearestFreeTile !== 'function') return null;
+    const game = getGame();
+    if (!game) return null;
+    return W.Placement.findNearestFreeTile(game, tx, ty, null, { maxRadius: Math.max(0, radiusTiles | 0) });
+  }
+
+  function logCartRelocation(fromTx, fromTy, toTx, toTy){
+    if (fromTx === toTx && fromTy === toTy) return;
+    try {
+      console.info(`Spawner: reubicado carro de (${fromTx},${fromTy}) a (${toTx},${toTy}) por espacio ocupado.`);
+    } catch (_) {}
+  }
+
   function sumQueue(qMap) {
     let s = 0;
     qMap.forEach(v => s += (v | 0));
@@ -207,7 +221,45 @@
     // Elegir posición (radio alrededor del punto, evitando paredes)
     const baseX = sp.inTiles ? worldFromTiles(sp.x, sp.y).x : sp.x;
     const baseY = sp.inTiles ? worldFromTiles(sp.x, sp.y).y : sp.y;
-    const pos = findFreeSpotNear(baseX, baseY, clamp(Math.round((sp.radiusPx || TILE) / TILE), 1, 8));
+    const baseTx = Math.round(baseX / TILE);
+    const baseTy = Math.round(baseY / TILE);
+    const radiusTiles = clamp(Math.round((sp.radiusPx || TILE) / TILE), 1, 8);
+    let pos = null;
+
+    if (sp.type === 'cart') {
+      const freeTile = findFreeTileForPushable(baseTx, baseTy, radiusTiles);
+      if (freeTile) {
+        pos = { x: freeTile.tx * TILE, y: freeTile.ty * TILE };
+        logCartRelocation(baseTx, baseTy, freeTile.tx, freeTile.ty);
+      } else {
+        try {
+          console.warn(`[SpawnerManager] No se encontró casilla libre para carro cerca de (${baseTx},${baseTy}). Se usará la posición original.`);
+        } catch (_) {}
+      }
+    }
+
+    if (!pos) {
+      pos = findFreeSpotNear(baseX, baseY, radiusTiles);
+    }
+
+    if (sp.type === 'cart' && W.Placement?.isTileOccupiedByPushable) {
+      const game = getGame();
+      if (game) {
+        const tx = Math.round(pos.x / TILE);
+        const ty = Math.round(pos.y / TILE);
+        if (W.Placement.isTileOccupiedByPushable(game, tx, ty, {})) {
+          const fallback = findFreeTileForPushable(tx, ty, radiusTiles + 1);
+          if (fallback) {
+            logCartRelocation(tx, ty, fallback.tx, fallback.ty);
+            pos = { x: fallback.tx * TILE, y: fallback.ty * TILE };
+          } else {
+            try {
+              console.warn(`[SpawnerManager] No fue posible reubicar un carro desde (${tx},${ty}) a una casilla libre cercana.`);
+            } catch (_) {}
+          }
+        }
+      }
+    }
 
     // Crear
     let ent = null;
