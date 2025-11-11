@@ -92,6 +92,7 @@
       }
     }
 
+    registerSpawnerPlacements(cfg, G);
     for (const npc of spawnNPCPack(cfg, G)) add(npc);
     for (const enemy of spawnEnemiesPack(cfg, G)) add(enemy);
     for (const obj of spawnWorldObjects(cfg, G)) add(obj);
@@ -842,6 +843,43 @@
     return [];
   }
 
+  function registerSpawnerPlacements(cfg, G){
+    if (!root.SpawnerManager || typeof root.SpawnerManager.registerPoint !== 'function') return;
+    const placements = getPlacements(cfg);
+    if (!Array.isArray(placements) || !placements.length) return;
+    for (const entry of placements) {
+      if (!entry || !entry.type) continue;
+      const type = String(entry.type || '').toLowerCase();
+      if (!type.startsWith('spawn_')) continue;
+      const { tx, ty } = normalizePlacementToTile(entry, cfg);
+      try {
+        if (type === 'spawn_animal') {
+          const allowSet = new Set(['mosquito', 'rat']);
+          if (Array.isArray(entry?.allows)) {
+            for (const tag of entry.allows) allowSet.add(String(tag || '').toLowerCase());
+          }
+          const allows = Array.from(allowSet).filter(Boolean);
+          const prefer = String(entry?.prefers || '').toLowerCase();
+          const opts = { inTiles: true, allows };
+          if (prefer && allows.includes(prefer)) opts.prefer = prefer;
+          root.SpawnerManager.registerPoint('enemy', tx, ty, opts);
+        } else {
+          const payload = { ...entry, inTiles: true, x: tx, y: ty };
+          if (typeof root.SpawnerManager.registerFromPlacement === 'function') {
+            root.SpawnerManager.registerFromPlacement(payload);
+          } else {
+            const kind = type === 'spawn_staff' ? 'npc' : (type === 'spawn_cart' ? 'cart' : 'enemy');
+            root.SpawnerManager.registerPoint(kind, tx, ty, { inTiles: true });
+          }
+        }
+      } catch (err) {
+        try {
+          console.warn('[Placement] spawner registration failed', type, err);
+        } catch (_) {}
+      }
+    }
+  }
+
   function parseAsciiRows(cfg){
     const raw = cfg?.asciiMap || cfg?.ascii || '';
     if (!raw) return null;
@@ -865,10 +903,10 @@
     if (rows) {
       for (let ty = 0; ty < rows.length; ty++) {
         const row = rows[ty];
-        const idx = row.indexOf('H');
-        if (idx >= 0) {
-          return { tx: idx, ty };
-        }
+        let idx = row.indexOf('S');
+        if (idx >= 0) return { tx: idx, ty };
+        idx = row.indexOf('s');
+        if (idx >= 0) return { tx: idx, ty };
       }
     }
 
@@ -1082,6 +1120,61 @@
     return null;
   }
 
+  function spawnFuriousFromPlacement(x, y, cfg, G){
+    const tile = TILE_SIZE();
+    const size = tile * 0.9;
+    const px = x - size * 0.5;
+    const py = y - size * 0.5;
+    if (root.FuriousAPI?.spawnFromPatient) {
+      const stub = {
+        x: px,
+        y: py,
+        w: size,
+        h: size,
+        vx: 0,
+        vy: 0,
+        dead: false,
+        kind: 'PATIENT'
+      };
+      try {
+        if (Array.isArray(G?.entities)) G.entities.push(stub);
+        if (Array.isArray(G?.patients)) G.patients.push(stub);
+        const spawned = root.FuriousAPI.spawnFromPatient(stub, { skipCounters: true });
+        if (spawned) return spawned;
+      } catch (err) {
+        try { console.warn('[Placement] FuriousAPI.spawnFromPatient', err); } catch (_) {}
+      } finally {
+        if (Array.isArray(G?.patients)) {
+          const idx = G.patients.indexOf(stub);
+          if (idx >= 0) G.patients.splice(idx, 1);
+        }
+        if (Array.isArray(G?.entities)) {
+          const idx = G.entities.indexOf(stub);
+          if (idx >= 0) G.entities.splice(idx, 1);
+        }
+      }
+    }
+    const furious = {
+      kind: 'FURIOUS',
+      x: px,
+      y: py,
+      w: size,
+      h: size,
+      vx: 0,
+      vy: 0,
+      solid: true,
+      dynamic: true,
+      pushable: true,
+      rigOk: false
+    };
+    try {
+      const puppet = root.Puppet?.bind?.(furious, 'patient_furiosa', { z: 0, scale: 1 })
+        || root.PuppetAPI?.attach?.(furious, { rig: 'patient_furiosa', z: 0, scale: 1 });
+      if (puppet) furious.rigOk = true;
+    } catch (_) {}
+    return furious;
+  }
+
   function spawnEnemiesPack(cfg, G){
     const out = [];
     for (const entry of getPlacements(cfg)) {
@@ -1095,6 +1188,8 @@
           entity = root.MosquitoAPI.spawn(world.x, world.y, { _units: 'px' });
         } else if (subtype.includes('rat') && root.RatsAPI?.spawn) {
           entity = root.RatsAPI.spawn(world.x, world.y, { _units: 'px' });
+        } else if (subtype.includes('furious')) {
+          entity = spawnFuriousFromPlacement(world.x, world.y, cfg, G);
         }
       }
       if (!entity && type === 'mosquito' && root.MosquitoAPI?.spawn) {
@@ -1119,7 +1214,12 @@
       const world = toWorld(tx, ty);
       let entity = null;
       if (type === 'cart' && root.Entities?.Cart?.spawn) {
-        entity = root.Entities.Cart.spawn(entry?.sub || 'med', world.x, world.y, entry || {});
+        const sub = String(entry?.sub || '').toLowerCase();
+        const normalized = sub === 'urgencias' ? 'er'
+          : (sub === 'medicinas' || sub === 'meds' ? 'med'
+          : (sub === 'comida' || sub === 'food' ? 'food' : (sub || 'med')));
+        const payload = { ...entry, sub: normalized };
+        entity = root.Entities.Cart.spawn(normalized, world.x, world.y, payload);
       } else if (type === 'door' && root.Entities?.Door?.spawn) {
         entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
       } else if (type === 'elevator' && root.Entities?.Elevator?.spawn) {
@@ -1137,6 +1237,25 @@
       } else if (type === 'phone') {
         entity = root.PhoneAPI?.spawnPhone?.(world.x, world.y, entry || {})
           || root.spawnPhone?.(world.x, world.y, entry || {});
+      } else if (type === 'bell') {
+        entity = spawnBell(tx, ty, entry || {}, cfg, G);
+      } else if (type === 'hazard_wet') {
+        if (root.HazardsAPI?.spawnWet) {
+          entity = root.HazardsAPI.spawnWet(tx, ty, entry || {});
+        } else {
+          const size = TILE_SIZE() * 0.8;
+          entity = {
+            kind: 'HAZARD_WET',
+            x: world.x + (TILE_SIZE() - size) * 0.5,
+            y: world.y + (TILE_SIZE() - size) * 0.5,
+            w: size,
+            h: size,
+            solid: false,
+            dynamic: false,
+            pushable: false,
+            rigOk: false
+          };
+        }
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true || true;

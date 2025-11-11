@@ -461,32 +461,31 @@ function fixRoomPerimeterGaps(ascii, room, cs){
 
       // Enemigos: mezcla M/R
       for (let i=0;i<enemies;i++){
-        const sub = Math.random()<0.5 ? 'M' : 'R';
-        // mete en ASCII para que tu parseMap actual funcione
+        const prefer = Math.random()<0.5 ? 'mosquito' : 'rat';
         const p = placeInside(map, room) || centerOf(room);
-        ascii[p.ty][p.tx] = sub; // 'M' o 'R'
-        if (sub==='M') extra.mosquito.push({tx:p.tx,ty:p.ty});
-        else           extra.rat.push({tx:p.tx,ty:p.ty});
+        ascii[p.ty][p.tx] = cs.spAnimal || 'A';
+        if (prefer==='mosquito') extra.mosquito.push({tx:p.tx,ty:p.ty});
+        else extra.rat.push({tx:p.tx,ty:p.ty});
       }
 
       // NPC random (staff genérico 'N')
       for (let i=0;i<npcs;i++){
         const p = placeInside(map, room) || centerOf(room);
-        ascii[p.ty][p.tx] = 'N';
+        ascii[p.ty][p.tx] = cs.spStaff || 'N';
         extra.staff.push({tx:p.tx,ty:p.ty});
       }
 
       // 1 Celador (también como staff genérico 'N' en ASCII)
       for (let i=0;i<celadores;i++){
         const p = placeInside(map, room) || centerOf(room);
-        ascii[p.ty][p.tx] = 'N';
+        ascii[p.ty][p.tx] = cs.spStaff || 'N';
         extra.staff.push({tx:p.tx,ty:p.ty});
       }
 
       // 1 carro por habitación (spawn 'C')
       {
         const p = placeInside(map, room) || centerOf(room);
-        ascii[p.ty][p.tx] = 'C';
+        ascii[p.ty][p.tx] = cs.spCart || 'C';
         extra.cart.push({tx:p.tx,ty:p.ty});
       }
     }
@@ -720,11 +719,11 @@ function fixRoomPerimeterGaps(ascii, room, cs){
 const EXTRA_CHARSET = {
   door:'d', bossDoor:'D', elev:'E', elevClosed:'e',
   player:'S', followerA:'F', followerB:'G', bossMarker:'X',
-  spMosquito:'M', spRat:'R', spStaff:'N', spCart:'C',
+  spAnimal:'A', spStaff:'N', spCart:'C',
   nurse:'n', tcae:'t', celador:'c', cleaner:'h', guardia:'g', medico:'k',
-  jefe_servicio:'J', supervisora:'V',
+  jefe_servicio:'J', supervisora:'H',
   mosquito:'m', rat:'r',
-  cartUrg:'U', cartMed:'m', cartFood:'q',
+  cartUrg:'U', cartMed:'+', cartFood:'F',
   light:'L', lightBroken:'l',
   coin:'o', bag:'$', food:'f', power:'u',
   patient:'p', pill:'i', bell:'b',
@@ -737,7 +736,7 @@ const CHARSET_DEFAULT = {
   door:'d', bossDoor:'D',
   elev:'E', elevClosed:'e',
   start:'S', light:'L', lightBroken:'l',
-  spMosquito:'M', spRat:'R', spStaff:'N', spCart:'C',
+  spAnimal:'A', spStaff:'N', spCart:'C',
   patient:'p', pill:'i', bell:'b', phone:'T', bossMarker:'X'
 };
 const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET);
@@ -1499,28 +1498,28 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       const n = SPAWN_SCALE.mosquito(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.mosquito);
-        if (!p) break; put(ascii, p.tx,p.ty, cs.spMosquito); out.mosquito.push(p);
+        if (!p) break; put(ascii, p.tx,p.ty, cs.spAnimal||'A'); out.mosquito.push({ ...p, prefers:'mosquito' });
       }
     }
     if (defs.enemies.rat){
       const n = SPAWN_SCALE.rat(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.rat);
-        if (!p) break; put(ascii, p.tx,p.ty, cs.spRat); out.rat.push(p);
+        if (!p) break; put(ascii, p.tx,p.ty, cs.spAnimal||'A'); out.rat.push({ ...p, prefers:'rat' });
       }
     }
     if (defs.npcs.staff){
       const n = SPAWN_SCALE.staff(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.staff);
-        if (!p) break; put(ascii, p.tx,p.ty, cs.spStaff); out.staff.push(p);
+        if (!p) break; put(ascii, p.tx,p.ty, cs.spStaff||'N'); out.staff.push(p);
       }
     }
     if (defs.carts.food || defs.carts.meds || defs.carts.er){
       const n = SPAWN_SCALE.carts(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.cart);
-        if (!p) break; put(ascii, p.tx,p.ty, cs.spCart); out.cart.push(p);
+        if (!p) break; put(ascii, p.tx,p.ty, cs.spCart||'C'); out.cart.push(p);
       }
     }
     return out;
@@ -1686,7 +1685,13 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       for (let i=0;i<npcs;i++){
         const p = randomInside(rect, 2); const sub = pick(staff);
         placements.push({type:'npc', sub, x:p.x, y:p.y});
-        markAscii(p.x, p.y, charset[sub]||'N');
+        const ch = sub === 'nurse' ? (charset.nurse || 'n')
+          : sub === 'tcae' ? (charset.tcae || 't')
+          : sub === 'celador' ? (charset.celador || 'c')
+          : sub === 'cleaner' ? (charset.cleaner || 'h')
+          : sub === 'guardia' ? (charset.guardia || 'g')
+          : (charset.medico || 'k');
+        markAscii(p.x, p.y, ch);
       }
     }
     for (const r of rooms) populateAreaRect(r);
@@ -1702,7 +1707,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     if (candidateRooms.length>1){
       const rV = pick(candidateRooms), pV = randomInside(rV,2);
       placements.push({type:'npc_unique', sub:'supervisora', x:pV.x, y:pV.y});
-      markAscii(pV.x, pV.y, charset.supervisora||'V');
+      markAscii(pV.x, pV.y, charset.supervisora||'H');
     }
 
     // 7) CARROS por sala: 3..6 (10% urgencias, 30% medicinas, 60% comida)
@@ -1710,9 +1715,9 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       const n = rint(3,6);
       for (let i=0;i<n;i++){
         const p = randomInside(room,2);
-        const roll = rng(); const sub = roll<0.10 ? 'urgencias' : (roll<0.40 ? 'medicinas' : 'comida');
+        const roll = rng(); const sub = roll<0.10 ? 'er' : (roll<0.40 ? 'med' : 'food');
         placements.push({type:'cart', sub, x:p.x, y:p.y});
-        markAscii(p.x,p.y, sub==='urgencias' ? (charset.cartUrg||'U') : (sub==='medicinas' ? (charset.cartMed||'m') : (charset.cartFood||'q')));
+        markAscii(p.x,p.y, sub==='er' ? (charset.cartUrg||'U') : (sub==='med' ? (charset.cartMed||'+') : (charset.cartFood||'F')));
       }
     }
     for (const r of rooms) placeRoomCarts(r);
@@ -1740,20 +1745,24 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     const baseSpR = level===1 ? rint(2,3) : (level===2 ? rint(3,4) : rint(4,6));
     const baseSpS = level===1 ? rint(2,3) : (level===2 ? rint(3,4) : rint(4,6));
     const baseSpC = level===1 ? rint(1,2) : (level===2 ? rint(2,3) : rint(3,4));
-    function dropSpawners(kind, count){
+    function dropAnimalSpawners(count, prefer){
+      for (let i=0;i<count;i++){
+        const r = pick(rooms); const p = randomInside(r,2);
+        placements.push({type:'spawn_animal', x:p.x, y:p.y, prefers: prefer});
+        markAscii(p.x,p.y, charset.spAnimal||'A');
+      }
+    }
+    function dropSpawner(kind, count, ch){
       for (let i=0;i<count;i++){
         const r = pick(rooms); const p = randomInside(r,2);
         placements.push({type: kind, x:p.x, y:p.y});
-        const ch = (kind==='spawn_mosquito') ? (charset.spMosquito||'M') :
-                  (kind==='spawn_rat')      ? (charset.spRat||'R') :
-                  (kind==='spawn_staff')    ? (charset.spStaff||'N') : (charset.spCart||'C');
         markAscii(p.x,p.y, ch);
       }
     }
-    dropSpawners('spawn_mosquito', baseSpM);
-    dropSpawners('spawn_rat',      baseSpR);
-    dropSpawners('spawn_staff',    baseSpS);
-    dropSpawners('spawn_cart',     baseSpC);
+    dropAnimalSpawners(baseSpM, 'mosquito');
+    dropAnimalSpawners(baseSpR, 'rat');
+    dropSpawner('spawn_staff', baseSpS, charset.spStaff||'N');
+    dropSpawner('spawn_cart',  baseSpC, charset.spCart||'C');
 
     // 10) 7 PACIENTES + PASTILLAS + TIMBRES enlazados (no en Control ni Boss)
     const usedRooms = rooms.filter(r=> r!==ctrl && r!==bossR);
