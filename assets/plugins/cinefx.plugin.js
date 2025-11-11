@@ -281,11 +281,25 @@
     if (impulse >= (cfg.ragdollImpulse ?? Infinity)) {
       const masses = Array.isArray(evt.masses) ? evt.masses : [];
       const heavy = masses.filter(Number.isFinite).reduce((acc, v) => Math.max(acc, v), 0);
-      const normal = computeImpactNormal(evt);
+      const baseNormal = computeImpactNormal(evt);
       entities.forEach((ent, idx) => {
         if (!ent) return;
         const entMass = Number.isFinite(masses[idx]) ? masses[idx] : (Number.isFinite(ent.mass) ? ent.mass : 1);
         const partner = entities.find(o => o && o !== ent) || evt.other || null;
+        let normal = baseNormal;
+        if (partner && partner.x != null && partner.y != null && partner.w != null && partner.h != null &&
+            ent.x != null && ent.y != null && ent.w != null && ent.h != null) {
+          const ax = ent.x + ent.w * 0.5;
+          const ay = ent.y + ent.h * 0.5;
+          const bx = partner.x + partner.w * 0.5;
+          const by = partner.y + partner.h * 0.5;
+          const dx = ax - bx;
+          const dy = ay - by;
+          const len = Math.hypot(dx, dy) || 1;
+          normal = { x: dx / len, y: dy / len };
+        } else if (idx % 2 === 1 && baseNormal) {
+          normal = { x: -(baseNormal.x || 0), y: -(baseNormal.y || 0) };
+        }
         registerRagdoll(ent, {
           impact: impulse,
           mass: entMass,
