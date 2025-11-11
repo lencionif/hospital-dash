@@ -12,7 +12,7 @@
 //   SpawnerManager.update(dt)                         // llama en tu bucle (o deja que se autoenganche)
 //
 // Atajos útiles de registro desde placements (opcionales):
-//   SpawnerManager.registerFromPlacement({type:'spawn_mosquito', x,y, ...})
+//   SpawnerManager.registerFromPlacement({type:'spawn_animal', x,y, ...})
 //
 // Integración de muertes: en tus APIs de entidades, cuando muera alguien, llama a:
 //   SpawnerManager.reportDeath('enemy','mosquito'|'rat')
@@ -134,8 +134,10 @@
       S.pending[type].push((sub + '').toLowerCase());
       return false;
     }
-    const sp = randPick(cands);
     const key = (sub + '').toLowerCase();
+    const preferred = cands.filter((sp) => String(sp.meta?.prefer || '').toLowerCase() === key);
+    const pool = preferred.length ? preferred : cands;
+    const sp = randPick(pool);
     sp.queue.set(key, (sp.queue.get(key) | 0) + 1);
     return true;
   }
@@ -255,6 +257,19 @@
       const py = inTiles ? p.y : (p.y | 0);
       if (T === 'spawn_mosquito') return this.registerPoint('enemy', px, py, { inTiles, allows: ['mosquito'] });
       if (T === 'spawn_rat')      return this.registerPoint('enemy', px, py, { inTiles, allows: ['rat'] });
+      if (T === 'spawn_animal') {
+        const base = Array.isArray(p.allows) && p.allows.length
+          ? p.allows.map((s) => String(s || '').toLowerCase()).filter(Boolean)
+          : ['mosquito', 'rat'];
+        const allowSet = new Set(base);
+        allowSet.add('mosquito');
+        allowSet.add('rat');
+        const allows = Array.from(allowSet);
+        const preferRaw = String(p.prefers || p.prefer || '').toLowerCase();
+        const opts = { inTiles, allows };
+        if (preferRaw && allows.includes(preferRaw)) opts.prefer = preferRaw;
+        return this.registerPoint('enemy', px, py, opts);
+      }
       if (T === 'spawn_staff')    return this.registerPoint('npc',   px, py, { inTiles }); // admite varios subs
       if (T === 'spawn_cart')     return this.registerPoint('cart',  px, py, { inTiles }); // admite food/med/er
       return null;

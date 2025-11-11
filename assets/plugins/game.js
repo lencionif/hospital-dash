@@ -631,20 +631,21 @@ document.addEventListener('keydown', (e)=>{
 
   // ------------------------------------------------------------
   // Mapa ASCII — leyenda completa (usa placement.api.js)
-  // S: spawn del héroe
-  // P: paciente encamado
-  // I: pastilla vinculada al paciente (target = primer P si no se indica)
-  // D: puerta boss cerrada (se abre al terminar pacientes normales)
-  // X: boss (inmóvil)
-  // C: carro de urgencias (1º ER, 2º MED, resto FOOD)
-  // M: spawner de mosquito (tiles)
-  // R: spawner de rata (tiles)
-  // m: enemigo directo mosquito (px)
-  // r: enemigo directo rata (px)
-  // E: ascensor
-  // H: NPC médico    | U: supervisora | T: TCAE
-  // G: guardia       | F: familiar    | N: enfermera sexy
-  // L: luz de sala
+  // S: héroe principal (jugador)
+  // p: paciente en cama          | f: paciente furiosa (debug)
+  // i: pastilla vinculada al paciente
+  // D: puerta de urgencias cerrada (boss)
+  // X: paciente crítico final (boss)
+  // U: carro de urgencias        | +: carro de medicinas | F: carro de comida
+  // N: spawner de humanos (NPC)  | C: spawner de carros
+  // A: spawner de animales (ratas/mosquitos)
+  // m: enemigo mosquito directo  | r: enemigo rata directo
+  // k: médico NPC                | H: jefa de enfermería
+  // t: técnico T.C.A.E.          | c: celador
+  // n: enfermera cameo           | h: personal de limpieza
+  // g: guardia de seguridad      | v: familiar visitante
+  // L: luz funcionando           | l: luz rota
+  // ~: charco de agua            | E: ascensor
   // #: pared  · .: suelo
   // ------------------------------------------------------------
     // Mapa por defecto (inmutable)
@@ -652,15 +653,15 @@ document.addEventListener('keydown', (e)=>{
     "##############################",
     "#............................#",
     "#....####............####....#",
-    "#......S#....P.I#....#X.#....#",
-    "#....#..#.......#....#..D....#",
-    "#....####....C..#....####....#",
-    "#...............#............#",
-    "#...............#............#",
-    "#............####............#",
+    "#......S#....p.i#....#X.#....#",
+    "#....#..#..~....#....#..D....#",
+    "#....####..U+F#....####....#C#",
+    "#..vk.g..~..#....N...A....c..#",
+    "#...H..t..n..#..m.f...r......#",
+    "#....L....l....E....L....l...#",
+    "#....b.......####.......i....#",
     "#............#..#............#",
     "#...............#............#",
-    "#............####............#",
     "##############################",
     ];
     // --- Flags globales de modo mapa ---
@@ -864,12 +865,19 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           G.entities.push(b); G.boss = b;
         },
         placeEnemy: (kind,tx,ty)=>{
-          if (kind==='mosquito') spawnMosquito(tx*TILE+TILE/2, ty*TILE+TILE/2);
-          // añade aquí más tipos si MapGen los emite (ratas, etc.)
+          const cx = tx*TILE+TILE/2;
+          const cy = ty*TILE+TILE/2;
+          if (kind==='mosquito') spawnMosquito(cx, cy);
+          else if (kind==='rat' && window.RatsAPI?.spawn) window.RatsAPI.spawn(cx, cy, { _units:'px' });
         },
         placeSpawner: (kind,tx,ty)=>{
-          // si usas spawners, guarda sus coords para tus sistemas
-          if (kind==='mosquito') G.mosquitoSpawn = {x:tx*TILE+TILE/2, y:ty*TILE+TILE/2, t:0, n:0};
+          const cx = tx*TILE+TILE/2;
+          const cy = ty*TILE+TILE/2;
+          if (kind==='mosquito') G.mosquitoSpawn = {x:cx, y:cy, t:0, n:0};
+          else if (kind==='animal') {
+            G.animalSpawners = Array.isArray(G.animalSpawners) ? G.animalSpawners : [];
+            G.animalSpawners.push({ x: cx, y: cy, tx, ty });
+          }
         },
         placeNPC: (kind,tx,ty)=>{ /* según tus factories existentes */ },
         placeElevator: (tx,ty)=>{ /* si tienes elevators.plugin */ },
@@ -949,35 +957,57 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         if (ch === '#') { row.push(1); } else { row.push(0); }
 
         // === MARCAS ASCII ===
-        if (ch === 'S') {
+        if (ch === 'S' || ch === 's') {
           asciiPlacements.push({ type:'player', x: wx+4, y: wy+4, _units:'px' });
           // sala segura (5x5 tiles centrados en S)
           G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
           // luz blanca suave en sala de control
           G.roomLights.push({ x: wx + TILE/2, y: wy + TILE/2, r: 5.5*TILE, baseA: 0.28 });
         }
-        else if (ch === 'P') {
+        else if (ch === 'p' || ch === 'P') {
           // Paciente: placement (NO instanciamos aquí)
           asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
           // luz clara de sala (igual que antigua)
           G.roomLights.push({ x: wx+TILE/2, y: wy+TILE/2, r: 5.0*TILE, baseA: 0.25 });
         }
-        else if (ch === 'I') {
+        else if (ch === 'f') {
+          asciiPlacements.push({ type:'enemy', sub:'furious', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        }
+        else if (ch === 'i' || ch === 'I') {
           asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
         }
+        else if (ch === 'b') {
+          asciiPlacements.push({ type:'bell', x: wx+TILE*0.1, y: wy+TILE*0.1, _units:'px' });
+        }
+        else if (ch === 'U') {
+          asciiPlacements.push({ type:'cart', sub:'er', x: wx+6, y: wy+8, _units:'px' });
+        }
+        else if (ch === '+') {
+          asciiPlacements.push({ type:'cart', sub:'med', x: wx+6, y: wy+8, _units:'px' });
+        }
+        else if (ch === 'F') {
+          asciiPlacements.push({ type:'cart', sub:'food', x: wx+6, y: wy+8, _units:'px' });
+        }
         else if (ch === 'C') {
-          // Orden debug: 1º ER, 2º MED, 3º+ FOOD
-          window.G = window.G || {};
-          const n = (G._debugCartCount = (G._debugCartCount|0) + 1);
-          const sub = (n === 1) ? 'er' : (n === 2 ? 'med' : 'food');
-          asciiPlacements.push({ type:'cart', sub, x: wx+6, y: wy+8, _units:'px' });
+          asciiPlacements.push({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'M') {
-          // Spawner mosquito: SOLO lo apuntamos (si lo apagas en debug/HTML no romperá)
-          asciiPlacements.push({ type:'spawn_mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'V') { // legacy cart spawner
+          asciiPlacements.push({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'V' });
         }
-        else if (ch === 'R') {
-          asciiPlacements.push({ type:'spawn_rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'N') {
+          asciiPlacements.push({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        }
+        else if (ch === 'B') { // legacy humano spawner
+          asciiPlacements.push({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'B' });
+        }
+        else if (ch === 'A') {
+          asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        }
+        else if (ch === 'M') { // legacy mosquito spawner
+          asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'mosquito', legacy:'M' });
+        }
+        else if (ch === 'R') { // legacy rat spawner
+          asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'rat', legacy:'R' });
         }
         else if (ch === 'D') {
           asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
@@ -988,6 +1018,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         else if (ch === 'L') {
           asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
+        else if (ch === 'l') {
+          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, broken:true, _units:'px' });
+        }
         else if (ch === 'm') { // enemigo directo: mosquito
           asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
@@ -997,26 +1030,35 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         else if (ch === 'E') { // ascensor activo
           asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
         }
-        else if (ch === 'H') { // NPC: médico
+        else if (ch === 'k' || ch === 'K') { // NPC: médico
           asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'U') { // NPC: supervisora
+        else if (ch === 'H') { // NPC: jefa enfermería
           asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'T') { // NPC: tcae
+        else if (ch === 't' || ch === 'T') { // NPC: tcae
           asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'G') { // NPC: guardia
-          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'c') { // NPC: celador
+          asciiPlacements.push({ type:'npc', sub:'celador', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'F') { // NPC: familiar molesto
-          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'h') { // NPC: limpieza
+          asciiPlacements.push({ type:'npc', sub:'limpieza', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'N') { // NPC: enfermera sexy
+        else if (ch === 'n') { // NPC: enfermera cameo
           asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'L') { // luz de sala
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'g' || ch === 'G') { // NPC: guardia
+          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        }
+        else if (ch === 'v') { // NPC: familiar visitante
+          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        }
+        else if (ch === '~') {
+          const spawned = window.HazardsAPI?.spawnWet?.(x, y);
+          if (!spawned) {
+            asciiPlacements.push({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          }
         }
         // Si añades más letras ASCII, convierte aquí a placements (en píxeles).
       }
