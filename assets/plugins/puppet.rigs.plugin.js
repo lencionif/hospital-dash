@@ -1120,11 +1120,7 @@
 
   // ───────────────────────────── HAZARDS ────────────────────────────
   API.registerRig('hazard_fire', {
-    create(e){
-      const phase = Math.random() * TAU;
-      const pulse = 0.7 + 0.3 * Math.sin(phase + (e?.id?.length || 0));
-      return { phase, time: 0, pulse };
-    },
+    create(){ return { phase: Math.random() * TAU, time: 0 }; },
     update(st, e, dt){
       st.time += dt;
       st.phase = (st.phase + dt * 10) % TAU;
@@ -1149,11 +1145,7 @@
   });
 
   API.registerRig('hazard_water', {
-    create(e){
-      const phase = Math.random() * TAU;
-      const ripple = 1 + 0.08 * Math.sin(phase + (e?.id?.length || 0));
-      return { phase, time: 0, ripple };
-    },
+    create(){ return { phase: Math.random() * TAU, time: 0 }; },
     update(st, e, dt){
       st.time += dt;
       st.phase = (st.phase + dt * 4) % TAU;
@@ -1178,15 +1170,11 @@
   API.registerRig('pill', {
     create(e){
       const data = e?.puppet?.data || {};
-      const phase = Math.random() * TAU;
-      const scale = (typeof data.scale === 'number') ? data.scale : 1;
       return {
-        phase,
+        phase: Math.random() * TAU,
         skin: normalizeSkinAsset(data.skin || e.skin || 'pastilla_generic'),
-        scale,
-        tint: parseTint(data.tint, 0.4),
-        bob: Math.sin(phase) * 6 * scale,
-        spin: Math.sin(phase * 0.5) * 0.18
+        scale: (typeof data.scale === 'number') ? data.scale : 1,
+        tint: parseTint(data.tint, 0.4)
       };
     },
     update(st, e, dt){
@@ -1211,13 +1199,11 @@
   API.registerRig('syringe', {
     create(e){
       const data = e?.puppet?.data || {};
-      const phase = Math.random() * TAU;
       return {
-        phase,
+        phase: Math.random() * TAU,
         skin: normalizeSkinAsset(data.skin || e.skin || 'jeringa_roja'),
         scale: (typeof data.scale === 'number') ? data.scale : 1,
-        tint: parseTint(data.tint, 0.4),
-        swing: Math.sin(phase) * 0.25
+        tint: parseTint(data.tint, 0.4)
       };
     },
     update(st, e, dt){
@@ -1240,15 +1226,11 @@
   API.registerRig('drip', {
     create(e){
       const data = e?.puppet?.data || {};
-      const phase = Math.random() * TAU;
-      const scale = (typeof data.scale === 'number') ? data.scale : 1;
       return {
-        phase,
+        phase: Math.random() * TAU,
         skin: normalizeSkinAsset(data.skin || e.skin || 'gotero_azul'),
-        scale,
-        tint: parseTint(data.tint, 0.4),
-        swing: Math.sin(phase) * 0.12,
-        drop: Math.abs(Math.sin(phase * 0.6)) * 12 * scale
+        scale: (typeof data.scale === 'number') ? data.scale : 1,
+        tint: parseTint(data.tint, 0.4)
       };
     },
     update(st, e, dt){
@@ -1274,14 +1256,7 @@
   });
 
   API.registerRig('phone', {
-    create(){
-      const phase = Math.random() * TAU;
-      return {
-        phase,
-        vib: Math.sin(phase) * 2.5,
-        scale: 1 + Math.sin(phase * 0.5) * 0.05
-      };
-    },
+    create(){ return { phase: Math.random() * TAU }; },
     update(st, e, dt){
       st.phase = (st.phase + dt * 12) % TAU;
       st.vib = Math.sin(st.phase) * 2.5;
@@ -1309,16 +1284,11 @@
   API.registerRig('light', {
     create(e){
       const data = e?.puppet?.data || {};
-      const phase = Math.random() * TAU;
-      const flick = data.broken
-        ? (0.3 + 0.7 * Math.max(0, Math.sin(phase * 8)))
-        : 1;
       return {
         radius: data.radius ?? 48,
         intensity: data.intensity ?? 0.6,
         broken: !!data.broken,
-        phase,
-        flick
+        phase: Math.random() * TAU
       };
     },
     update(st, e, dt){
@@ -1342,11 +1312,7 @@
   function registerSpawnerRig(type, skin){
     const defaultSkin = normalizeSkinAsset(skin);
     API.registerRig(`spawner_${type}`, {
-      create(e){
-        const phase = Math.random() * TAU;
-        const pulse = 0.65 + 0.35 * Math.sin(phase + (e?.id?.length || 0));
-        return { phase, pulse };
-      },
+      create(){ return { phase: Math.random() * TAU }; },
       update(st, e, dt){
         st.phase = (st.phase + dt * 3) % TAU;
         st.pulse = 0.65 + 0.35 * Math.sin(st.phase + (e?.id?.length || 0));
