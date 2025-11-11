@@ -9,7 +9,7 @@
     damage: 0.5,
     tick: 0.4,
     size: 26,
-    spawnCooldown: 0.35,
+    spawnCooldown: 0.6,
     minDistance: 16,
     recentWindow: 1.0,
     maxActive: 20,
@@ -59,6 +59,19 @@
       this._purgeRecent(now);
 
       const cooldown = (opts.cooldown != null) ? opts.cooldown : (this.cfg.spawnCooldown || 0);
+      const mergeRadius = (opts.mergeRadius != null) ? opts.mergeRadius : ((opts.size != null ? opts.size : this.cfg.size || 0) * 0.55);
+      if (mergeRadius > 0){
+        const active = this.list.find(f => f && !f.dead && Math.hypot((f.x + f.w * 0.5) - x, (f.y + f.h * 0.5) - y) <= mergeRadius);
+        if (active){
+          const ttl = opts.ttl != null ? opts.ttl : this.cfg.ttl;
+          if (Number.isFinite(ttl)) active.ttl = Math.max(active.ttl, ttl);
+          if (opts.damage != null) active.damage = opts.damage;
+          if (opts.tick != null) active.tick = opts.tick;
+          active._bornAt = now;
+          this._recent.push({ x, y, t: now });
+          return active;
+        }
+      }
       if (cooldown > 0 && (now - this._lastSpawn) < cooldown) return null;
 
       const minDist = (opts.minDistance != null) ? opts.minDistance : (this.cfg.minDistance || 0);

@@ -20,11 +20,21 @@
     explodeImpulse: 170,
     fireImpulse: 240,
     fireMinMass: 2.5,
-    fireCooldown: 0.4,
+    fireCooldown: 0.6,
     fireTTL: 4.0,
     fireExtraTTL: 3.0,
     fireDamage: 0.5,
-    fireTick: 0.4
+    fireTick: 0.4,
+    shakeImpulse: 105,
+    shakeDuration: 0.55,
+    shakeMax: 18,
+    slowMoImpulse: 160,
+    slowMoScale: 0.45,
+    slowMoDuration: 0.75,
+    slowMoRelease: 0.55,
+    ragdollImpulse: 140,
+    ragdollDuration: 1.1,
+    ragdollCooldown: 0.65
   };
 
   const DEFAULTS = { ...PHYS };
@@ -188,6 +198,23 @@
       }
     }
 
+    function notifyImpactEffects(x, y, impulse, meta = {}){
+      if (!(impulse > 0)) return;
+      const fx = window.CineFX;
+      if (!fx || typeof fx.onPhysicsImpact !== 'function') return;
+      const payload = Object.assign({
+        x,
+        y,
+        impulse,
+        impact: impulse
+      }, meta || {});
+      try {
+        fx.onPhysicsImpact(payload);
+      } catch (err){
+        if (window.DEBUG_FORCE_ASCII) console.warn('[Physics] CineFX impact error', err);
+      }
+    }
+
     function applyImpulse(e, ix, iy){
       if (!e || e.static) return;
       const limit = (CFG.crushImpulse ?? DEFAULTS.crushImpulse) / Math.max(1, e.mass || 1);
@@ -226,15 +253,28 @@
         if (!isWall(tryX + pad, ny + pad, cw, ch)){
           nx = tryX;
         } else {
-          if (allowFireSpawn && Math.abs(vxStep) > 0.01){
-            const massFactor = Number.isFinite(entMass) ? Math.max(entMass, 1) : Math.max(minFireMass, 1);
+          const absVx = Math.abs(vxStep);
+          const massFactor = Number.isFinite(entMass) ? Math.max(entMass, 1) : Math.max(minFireMass, 1);
+          if (allowFireSpawn && absVx > 0.01){
             const contactX = vxStep > 0 ? nx + e.w : nx;
             const contactY = ny + e.h * 0.5;
-            maybeSpawnImpactFire(contactX, contactY, Math.abs(vxStep) * massFactor, {
+            maybeSpawnImpactFire(contactX, contactY, absVx * massFactor, {
               type: 'wall',
               axis: 'x',
               normal: { x: vxStep > 0 ? 1 : -1, y: 0 },
               entity: e
+            });
+          }
+          if (absVx > 0.01){
+            const contactX = vxStep > 0 ? nx + e.w : nx;
+            const contactY = ny + e.h * 0.5;
+            notifyImpactEffects(contactX, contactY, absVx * massFactor, {
+              type: 'wall',
+              axis: 'x',
+              normal: { x: vxStep > 0 ? 1 : -1, y: 0 },
+              entity: e,
+              masses: [entMass],
+              velocity: { vx: vxStep, vy: vyStep || 0 }
             });
           }
           const v = -(e.vx || 0) * wr;
@@ -246,15 +286,28 @@
         if (!isWall(nx + pad, tryY + pad, cw, ch)){
           ny = tryY;
         } else {
-          if (allowFireSpawn && Math.abs(vyStep) > 0.01){
-            const massFactor = Number.isFinite(entMass) ? Math.max(entMass, 1) : Math.max(minFireMass, 1);
+          const absVy = Math.abs(vyStep);
+          const massFactor = Number.isFinite(entMass) ? Math.max(entMass, 1) : Math.max(minFireMass, 1);
+          if (allowFireSpawn && absVy > 0.01){
             const contactY = vyStep > 0 ? ny + e.h : ny;
             const contactX = nx + e.w * 0.5;
-            maybeSpawnImpactFire(contactX, contactY, Math.abs(vyStep) * massFactor, {
+            maybeSpawnImpactFire(contactX, contactY, absVy * massFactor, {
               type: 'wall',
               axis: 'y',
               normal: { x: 0, y: vyStep > 0 ? 1 : -1 },
               entity: e
+            });
+          }
+          if (absVy > 0.01){
+            const contactY = vyStep > 0 ? ny + e.h : ny;
+            const contactX = nx + e.w * 0.5;
+            notifyImpactEffects(contactX, contactY, absVy * massFactor, {
+              type: 'wall',
+              axis: 'y',
+              normal: { x: 0, y: vyStep > 0 ? 1 : -1 },
+              entity: e,
+              masses: [entMass],
+              velocity: { vx: vxStep || 0, vy: vyStep }
             });
           }
           const v = -(e.vy || 0) * wr;
@@ -330,6 +383,7 @@
           b.x -= nx * corrB; b.y -= ny * corrB;
           const rvx = (a.vx || 0) - (b.vx || 0);
           const rvy = (a.vy || 0) - (b.vy || 0);
+          const relativeSpeed = Math.hypot(rvx, rvy);
           const velN = rvx * nx + rvy * ny;
           if (velN < 0){
             const rest = Math.max(CFG.restitution, a.rest || 0, b.rest || 0);
@@ -347,10 +401,10 @@
                 Number.isFinite(massA) ? massA : 0,
                 Number.isFinite(massB) ? massB : 0
               );
+              const contactX = (ax + bx) * 0.5;
+              const contactY = (ay + by) * 0.5;
+              const axis = Math.abs(nx) > Math.abs(ny) ? 'x' : 'y';
               if (heavy >= minMass){
-                const contactX = (ax + bx) * 0.5;
-                const contactY = (ay + by) * 0.5;
-                const axis = Math.abs(nx) > Math.abs(ny) ? 'x' : 'y';
                 maybeSpawnImpactFire(contactX, contactY, impact, {
                   type: 'entity',
                   axis,
@@ -358,6 +412,20 @@
                   entities: [a, b]
                 });
               }
+              notifyImpactEffects(contactX, contactY, impact, {
+                type: 'entity',
+                axis,
+                normal: { x: nx, y: ny },
+                entities: [a, b],
+                masses: [massA, massB],
+                relativeSpeed,
+                velocity: {
+                  ax: a.vx || 0,
+                  ay: a.vy || 0,
+                  bx: b.vx || 0,
+                  by: b.vy || 0
+                }
+              });
             }
           }
           if (isWall(a.x, a.y, a.w, a.h)) snapInsideMap(a);
@@ -384,6 +452,22 @@
     function bindGame(game){
       G = game || null;
       updateTileSize();
+      try {
+        window.CineFX?.configure?.({
+          shakeThreshold: CFG.shakeImpulse ?? DEFAULTS.shakeImpulse,
+          shakeDuration: CFG.shakeDuration ?? DEFAULTS.shakeDuration,
+          shakeMax: CFG.shakeMax ?? DEFAULTS.shakeMax,
+          slowMoThreshold: CFG.slowMoImpulse ?? DEFAULTS.slowMoImpulse,
+          slowMoScale: CFG.slowMoScale ?? DEFAULTS.slowMoScale,
+          slowMoDuration: CFG.slowMoDuration ?? DEFAULTS.slowMoDuration,
+          slowMoRelease: CFG.slowMoRelease ?? DEFAULTS.slowMoRelease,
+          ragdollImpulse: CFG.ragdollImpulse ?? DEFAULTS.ragdollImpulse,
+          ragdollDuration: CFG.ragdollDuration ?? DEFAULTS.ragdollDuration,
+          ragdollCooldown: CFG.ragdollCooldown ?? DEFAULTS.ragdollCooldown
+        });
+      } catch (err){
+        if (window.DEBUG_FORCE_ASCII) console.warn('[Physics] CineFX configure', err);
+      }
       return api;
     }
 
