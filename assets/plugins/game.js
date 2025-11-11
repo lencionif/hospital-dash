@@ -702,6 +702,10 @@ document.addEventListener('keydown', (e)=>{
     G.flags = G.flags || {};
     G.flags.DEBUG_FORCE_ASCII = !!window.DEBUG_FORCE_ASCII;
     G.flags.DEBUG_MINIMAP    = !!window.DEBUG_MINIMAP;
+    if (!window.DEBUG_FORCE_ASCII && !window.DEBUG_MINIMAP) {
+      window.DEBUG_MINIMAP = true;
+      G.flags.DEBUG_MINIMAP = true;
+    }
   })();
 
 
