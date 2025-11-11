@@ -177,9 +177,10 @@
 
       // Registro global
       G.entities = G.entities || [];
-      G.npcs = G.npcs || [];
       G.entities.push(e);
-      G.npcs.push(e);
+      e.group = 'human';
+      try { W.EntityGroups?.assign?.(e); } catch (_) {}
+      try { W.EntityGroups?.register?.(e, G); } catch (_) {}
       try { W.AI?.attach?.(e, 'JEFESERVICIO'); } catch (_) {}
       try {
       const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })

@@ -56,7 +56,7 @@
       this.cfg = Object.assign({}, DEFAULTS, opts||{});
       const g = G();
       g.entities = g.entities || [];
-      g.npcs     = g.npcs || [];
+      try { window.EntityGroups?.ensure?.(g); } catch (_) {}
       return this;
     },
 
@@ -77,7 +77,9 @@
       // Registrar en listas globales
       const g = G();
       g.entities.push(e);
-      g.npcs.push(e);
+      e.group = 'human';
+      try { window.EntityGroups?.assign?.(e); } catch (_) {}
+      try { window.EntityGroups?.register?.(e, g); } catch (_) {}
       try { window.AI?.attach?.(e, 'SUPERVISORA'); } catch (_) {}
       try {
       const puppet = window.Puppet?.bind?.(e, 'npc_supervisora', { z: 0, scale: 1, data: { skin: e.skin } })

@@ -169,7 +169,7 @@
         try { W.CleanerAPI.callAllTo(target.x, target.y, { reason: 'boss_cleaner' }); return; } catch (e) {}
       }
       // Fallback: buscar NPCs con sub/role “cleaner”
-      (G.npcs || []).forEach(n => {
+      (G.humans || []).forEach(n => {
         const tag = (n.sub || n.role || n.kind || '').toLowerCase();
         if (tag.includes('clean')) {
           n.goalX = target.x; n.goalY = target.y;

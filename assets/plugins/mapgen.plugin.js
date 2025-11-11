@@ -69,7 +69,7 @@
     DOOR_NECK: 1,             // cuello de botella = 1 tile
     MIN_ROOM_GAP: 10,         // separación mínima entre habitaciones (en tiles)
     CORRIDOR_DOCK: 3,         // tramo que entra en el costado (≈ al centro)
-    perRoom: (level) => ({ enemies: level, npcs: 1, celadores: 1 }),
+    perRoom: (level) => ({ animals: level, staff: 1, celadores: 1 }),
     cartProb: { food: 0.6, meds: 0.3, urg: 0.1 },
   };
 
@@ -457,10 +457,10 @@ function fixRoomPerimeterGaps(ascii, room, cs){
     const roomList = rooms.filter(r=> r!==ctrl && r!==boss);
 
     for (const room of roomList){
-      const { enemies, npcs, celadores } = GEN_RULES.perRoom(level);
+      const { animals, staff, celadores } = GEN_RULES.perRoom(level);
 
-      // Enemigos: mezcla M/R
-      for (let i=0;i<enemies;i++){
+      // Criaturas hostiles: mezcla M/R
+      for (let i=0;i<animals;i++){
         const prefer = Math.random()<0.5 ? 'mosquito' : 'rat';
         const p = placeInside(map, room) || centerOf(room);
         ascii[p.ty][p.tx] = cs.spAnimal || 'A';
@@ -468,8 +468,8 @@ function fixRoomPerimeterGaps(ascii, room, cs){
         else extra.rat.push({tx:p.tx,ty:p.ty});
       }
 
-      // NPC random (staff genérico 'N')
-      for (let i=0;i<npcs;i++){
+      // Personal humano genérico 'N'
+      for (let i=0;i<staff;i++){
         const p = placeInside(map, room) || centerOf(room);
         ascii[p.ty][p.tx] = cs.spStaff || 'N';
         extra.staff.push({tx:p.tx,ty:p.ty});
@@ -772,11 +772,11 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
   function detectDefs(){
     const ENT = W.ENT||{};
     const out = {
-      enemies: {
+      animals: {
         mosquito: has(W.MosquitoAPI) || has(ENT.MOSQUITO),
         rat:      has(W.RatAPI)      || has(ENT.RAT),
       },
-      npcs: {
+      humans: {
         celador: has(W.CeladorAPI) || has(ENT.CELADOR),
         tcae: has(W.TCAEAPI) || has(ENT.TCAE),
         nurse: has(W.SexyNurseAPI) || has(ENT.NURSE_SEXY),
@@ -1301,7 +1301,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       patientsCount: Array.isArray(patients) ? patients.length : 0,
       pillsCount: Array.isArray(pills) ? pills.length : 0,
       bellsCount: Array.isArray(bells) ? bells.length : 0,
-      enemies: (
+      animalSpawns: (
         (Array.isArray(spawns.mosquito) ? spawns.mosquito.length : 0) +
         (Array.isArray(spawns.rat) ? spawns.rat.length : 0)
       )
@@ -1494,21 +1494,21 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     const W=map[0].length,H=map.length;
     const mins = { mosquito: 40, rat:30, staff:25, cart:22 };
 
-    if (defs.enemies.mosquito){
+    if (defs.animals.mosquito){
       const n = SPAWN_SCALE.mosquito(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.mosquito);
         if (!p) break; put(ascii, p.tx,p.ty, cs.spAnimal||'A'); out.mosquito.push({ ...p, prefers:'mosquito' });
       }
     }
-    if (defs.enemies.rat){
+    if (defs.animals.rat){
       const n = SPAWN_SCALE.rat(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.rat);
         if (!p) break; put(ascii, p.tx,p.ty, cs.spAnimal||'A'); out.rat.push({ ...p, prefers:'rat' });
       }
     }
-    if (defs.npcs.staff){
+    if (defs.humans.staff){
       const n = SPAWN_SCALE.staff(lvl);
       for(let i=0;i<n;i++){
         const p = farFrom(RNG(rng.rand()*1e9), map, start, mins.staff);
@@ -1673,16 +1673,16 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
       pairId++;
     }
 
-    // 6) POBLACIÓN por sala y por tramo de pasillo: [1..3] enemigos y [1..3] NPC
+    // 6) POBLACIÓN por sala y por tramo de pasillo: [1..3] animales y [1..3] humanos
     function populateAreaRect(rect){
-      const enemies = rint(1,3), npcs = rint(1,3);
-      for (let i=0;i<enemies;i++){
+      const animals = rint(1,3), humans = rint(1,3);
+      for (let i=0;i<animals;i++){
         const p = randomInside(rect, 2); const sub = (rng()<0.5) ? 'mosquito' : 'rat';
         placements.push({type:'enemy', sub, x:p.x, y:p.y});
         markAscii(p.x, p.y, sub==='mosquito' ? (charset.mosquito||'m') : (charset.rat||'r'));
       }
       const staff = ['nurse','tcae','celador','cleaner','guardia','medico'];
-      for (let i=0;i<npcs;i++){
+      for (let i=0;i<humans;i++){
         const p = randomInside(rect, 2); const sub = pick(staff);
         placements.push({type:'npc', sub, x:p.x, y:p.y});
         const ch = sub === 'nurse' ? (charset.nurse || 'n')

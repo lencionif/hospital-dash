@@ -86,7 +86,9 @@
 
   function pushEntity(e) {
     (G.entities ||= []).push(e);
-    (G.npcs ||= []).push(e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     try {
       const puppet = window.Puppet?.bind?.(e, 'npc_familiar_molesto', { z: 0, scale: 1, data: { skin: e.skin } })
         || window.PuppetAPI?.attach?.(e, { rig: 'npc_familiar_molesto', z: 0, scale: 1, data: { skin: e.skin } });

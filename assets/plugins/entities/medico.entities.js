@@ -75,7 +75,7 @@
       this.TILE = (typeof window.TILE_SIZE !== 'undefined') ? window.TILE_SIZE : 32;
       this.cfg = Object.assign({}, DEFAULTS, opts || {});
       if (!Array.isArray(this.G.entities)) this.G.entities = [];
-      if (!Array.isArray(this.G.npcs)) this.G.npcs = [];
+      try { window.EntityGroups?.ensure?.(this.G); } catch (_) {}
       return this;
     },
 
@@ -108,7 +108,9 @@
       try { window.AI?.attach?.(medicEnt, 'MEDIC'); } catch (_) {}
 
       this.G.entities.push(medicEnt);
-      this.G.npcs.push(medicEnt);
+      medicEnt.group = 'human';
+      try { window.EntityGroups?.assign?.(medicEnt); } catch (_) {}
+      try { window.EntityGroups?.register?.(medicEnt, this.G); } catch (_) {}
       this.medics.push({ e: medicEnt, tHold: 0 });
 
       if (window.Physics?.registerEntity) Physics.registerEntity(medicEnt);

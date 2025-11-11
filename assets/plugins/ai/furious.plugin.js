@@ -22,8 +22,9 @@
       this.G = Gref || window.G || (window.G={});
       this.TILE = (typeof window.TILE_SIZE!=='undefined') ? window.TILE_SIZE : 32;
       Object.assign(this.cfg, opts||{});
-      if (!Array.isArray(this.G.enemies)) this.G.enemies = [];
+      if (!Array.isArray(this.G.hostiles)) this.G.hostiles = [];
       if (!Array.isArray(this.G.entities)) this.G.entities = [];
+      try { window.EntityGroups?.ensure?.(this.G); } catch (_) {}
       return this;
     },
 
@@ -36,8 +37,8 @@
       const skipCounters = !!(opts.skipCounters || patient.__convertedViaPatientsAPI);
       if (!Array.isArray(G.entities)) G.entities = [];
       if (!Array.isArray(G.patients)) G.patients = [];
-      if (!Array.isArray(G.npcs)) G.npcs = [];
       if (!Array.isArray(G.movers)) G.movers = [];
+      try { window.EntityGroups?.ensure?.(G); } catch (_) {}
 
       const px = patient.x;
       const py = patient.y;
@@ -47,7 +48,7 @@
       patient.dead = true;
       G.entities = G.entities.filter((x) => x !== patient);
       G.patients = G.patients.filter((x) => x !== patient);
-      G.npcs = G.npcs.filter((x) => x !== patient);
+      try { window.EntityGroups?.unregister?.(patient, G); } catch (_) {}
       G.movers = G.movers.filter((x) => x !== patient);
       if (G._patientsByKey instanceof Map && patient.keyName) {
         G._patientsByKey.delete(patient.keyName);
@@ -88,11 +89,14 @@
         t: 0,
         touchCD: 0,
         ai: { lastX: 0, lastY: 1 },
-        aiId: 'FURIOUS'
+        aiId: 'FURIOUS',
+        hostile: true,
+        group: 'human'
       };
       try { window.AI?.attach?.(e, 'FURIOUS'); } catch (_) {}
       G.entities.push(e);
-      G.enemies.push(e);
+      G.hostiles.push(e);
+      try { window.EntityGroups?.register?.(e, G); } catch (_) {}
       this.live.add(e);
 
       if (window.Physics && Physics.registerEntity) Physics.registerEntity(e);
@@ -174,6 +178,7 @@
       // limpia luz y set
       if (e._lightId && window.LightingAPI){ try{ LightingAPI.removeLight?.(e._lightId); }catch(_){ } }
       this.live.delete(e);
+      try { window.EntityGroups?.unregister?.(e, this.G); } catch (_) {}
       try { window.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
     },
 
@@ -261,7 +266,7 @@
       if (!e || e.dead) return;
       e.dead = true;
       if (e._lightId && window.LightingAPI){ try{ LightingAPI.removeLight?.(e._lightId); }catch(_){ } }
-      this.G.enemies = (this.G.enemies||[]).filter(x => x !== e);
+      this.G.hostiles = (this.G.hostiles||[]).filter(x => x !== e);
       this.G.entities= (this.G.entities||[]).filter(x => x !== e);
       this.live.delete(e);
       if (window.AudioAPI) AudioAPI.play('furious_die', { at:{x:e.x,y:e.y}, volume:1.0 });
