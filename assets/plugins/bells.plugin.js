@@ -222,6 +222,11 @@
           const seconds = Number.isFinite(entry.tLeft) ? entry.tLeft : this.cfg.ringDuration;
           patient.ringDeadline = Date.now() + seconds * 1000;
           patient.ringingUrgent = !!(entry.e && entry.e._warning);
+          if (!entry._narratorAnnounced) {
+            entry._narratorAnnounced = true;
+            const name = patient.displayName || patient.name || patient.keyName;
+            try { window.Narrator?.say?.('bell_ring', { patientName: name }, { priority: 'high' }); } catch (_) {}
+          }
         } else {
           if (patient.ringDeadline) patient.ringDeadline = 0;
           patient.ringingUrgent = false;
@@ -229,6 +234,9 @@
       }
       if (entry.e) {
         entry.e.on = !!ringing;
+      }
+      if (!ringing) {
+        entry._narratorAnnounced = false;
       }
     },
 
@@ -343,6 +351,7 @@
         state: 'idle',
         tLeft: 0,
         _ringingLogged: false,
+        _narratorAnnounced: false,
       };
       this._applyRingingState(entry, false);
       this.bells.push(entry);
@@ -436,6 +445,8 @@
             const patient = b.patient || null;
             if (patient) {
               this._transformPatientToFurious(patient);
+              const name = patient.displayName || patient.name || patient.keyName;
+              try { window.Narrator?.say?.('patient_furious', { patientName: name }, { priority: 'high' }); } catch (_) {}
               try { window.LOG?.event?.('BELL_TIMEOUT', { patient: patient.id || null }); } catch (_) {}
               try {
                 if (typeof window.counterSnapshot === 'function') {
@@ -482,6 +493,8 @@
           if (bell) bell._warning = false;
           if (b.patient && typeof b.patient === 'object') {
             b.patient.ringingUrgent = false;
+            const name = b.patient.displayName || b.patient.name || b.patient.keyName;
+            try { window.Narrator?.say?.('bell_off', { patientName: name }); window.Narrator?.progress?.(); } catch (_) {}
           }
           return true;
         }

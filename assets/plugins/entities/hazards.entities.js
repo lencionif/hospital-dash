@@ -221,6 +221,13 @@
                 e.vx += (e.vx||0) * k * dt * 10;
                 e.vy += (e.vy||0) * k * dt * 10;
               }
+              if (e === this.G.player) {
+                const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                if (!e._lastNarratorSlipAt || now - e._lastNarratorSlipAt > 4500) {
+                  e._lastNarratorSlipAt = now;
+                  try { window.Narrator?.say?.('slip', {}, { progress: false }); } catch (_) {}
+                }
+              }
             }
           }
         }
@@ -302,8 +309,14 @@
         else this.G.hearts = clamp((this.G.hearts||0) - h, 0, this.G.heartsMaxHalves||14);
       } else {
         // enemigos/npc básicos
+        const wasDead = !!e.dead;
         if (typeof e.takeDamage === 'function'){ e.takeDamage(h, meta); }
         else { e.dead = true; this.G.entities = this.G.entities.filter(x=>x!==e); }
+        if (!wasDead && e.dead && meta && meta.source === 'fire' && !e._narratorFireToast) {
+          e._narratorFireToast = true;
+          const name = e.displayName || e.name || e.label || e.kindName || 'enemigo';
+          try { window.Narrator?.say?.('enemy_fire', { enemyName: name }, { progress: false }); } catch (_) {}
+        }
         if (this.G.addScore) this.G.addScore(10);
       }
     },

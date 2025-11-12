@@ -261,6 +261,10 @@
       lockBossDoor();
       syncUrgenciasFromStats();
       if (W.FogAPI && typeof W.FogAPI.reset === 'function') W.FogAPI.reset();
+      try {
+        W.Narrator?.say?.('level_start', { level: S.level });
+        W.Narrator?.progress?.();
+      } catch (_) {}
     },
 
     // Llamar cada frame con dt en segundos
@@ -487,6 +491,11 @@
         totalPatients: S.totalPatients || 0,
       });
     } catch (_) {}
+    try {
+      const remaining = Math.max(0, (S.totalPatients || 0) - (S.deliveredPatients || 0));
+      W.Narrator?.say?.('door_open', { level: S.level, remaining });
+      W.Narrator?.progress?.();
+    } catch (_) {}
   }
 
   // Fog + Zoom al boss
@@ -650,6 +659,11 @@
       cart.delivered = true;
       try { window.AudioAPI?.play?.('deliver_ok', { volume: 0.9, tag: 'cart_delivery' }); } catch (_) {}
       try { window.DialogAPI?.system?.('Paciente crítico estabilizado. ¡Entrega completada!', { ms: 4200 }); } catch (_) {}
+      try {
+        const name = patient?.displayName || patient?.name || 'el paciente crítico';
+        W.Narrator?.say?.('final_delivery', { patientName: name });
+        W.Narrator?.progress?.();
+      } catch (_) {}
     }
   }
 
@@ -672,6 +686,10 @@
         totalPatients: S.totalPatients || 0,
       });
     }
+    try {
+      W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 });
+      W.Narrator?.progress?.();
+    } catch (_) {}
   }
 
   // Helpers overlays

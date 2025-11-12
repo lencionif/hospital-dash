@@ -235,6 +235,13 @@
       patient.attended = true;
       patient.solid = false;
       patient.furious = false;
+      const name = patient.displayName || patient.name || patient.keyName;
+      const remaining = store.pending != null ? store.pending : snapshot?.pending;
+      const furious = store.furious != null ? store.furious : snapshot?.furious;
+      try {
+        W.Narrator?.say?.('patient_cured', { patientName: name, remaining, furious });
+        W.Narrator?.progress?.();
+      } catch (_) {}
       if (typeof prevOnCure === 'function') {
         try { prevOnCure.apply(patient, arguments); } catch (_) {}
       }

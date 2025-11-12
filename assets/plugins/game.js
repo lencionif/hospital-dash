@@ -1635,6 +1635,20 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       hit._lastPushedId   = p.id || p._nid || p._uid || 'player1';
       hit._pushedByEnt    = p;                // referencia útil si la necesitas
       hit._lastPushedTime = performance.now();
+      if (hit.kind === ENT.CART && !hit.dead) {
+        const cartType = (hit.cartType || hit.type || '').toLowerCase();
+        const isEmergency = cartType === 'er' || hit.cart === 'urgencias' || hit.tag === 'emergency';
+        if (isEmergency) {
+          const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+          if (!hit._narratorCartCue || now - hit._narratorCartCue > 6000) {
+            hit._narratorCartCue = now;
+            try {
+              window.Narrator?.say?.('cart_push', {});
+              window.Narrator?.progress?.();
+            } catch (_) {}
+          }
+        }
+      }
     }
   }
 
@@ -1984,6 +1998,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   function update(dt){
     window.SkyFX?.update?.(dt);
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
+    try { window.Narrator?.tick?.(dt, G); } catch(e){}
     const isPlaying = (G.state === 'PLAYING');
     if (isPlaying) {
       try { window.GameFlowAPI?.update?.(dt); } catch(err){ console.warn('[GameFlow] update error:', err); }
@@ -2784,6 +2799,15 @@ function drawEntities(c2){
       console.warn('[Bells] init error', err);
     }
 
+    try {
+      window.Narrator?.init?.({
+        container: document.getElementById('game-container'),
+        enabled: document.getElementById('opt-narrator')?.checked !== false
+      });
+    } catch (err) {
+      console.warn('[Narrator] init error', err);
+    }
+
     if (G.player && typeof G.player.hp === 'number') {
       G.healthMax = (G.player.hpMax|0) * 2;
       G.health    = Math.min(G.healthMax, (G.player.hp|0) * 2);
@@ -3182,6 +3206,27 @@ function drawEntities(c2){
     }
     document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
     document.getElementById('restartBtn')?.addEventListener('click', () => startGame());
+
+    const narratorToggle = document.getElementById('opt-narrator');
+    if (narratorToggle) {
+      try {
+        const stored = window.localStorage?.getItem('optNarrator');
+        if (stored != null) narratorToggle.checked = stored !== '0';
+      } catch (_) {}
+      narratorToggle.addEventListener('change', () => {
+        const enabled = narratorToggle.checked !== false;
+        try { window.localStorage?.setItem('optNarrator', enabled ? '1' : '0'); } catch (_) {}
+        try { window.Narrator?.setEnabled?.(enabled); } catch (_) {}
+      });
+      requestAnimationFrame(() => {
+        const enabled = narratorToggle.checked !== false;
+        try { window.Narrator?.setEnabled?.(enabled); } catch (_) {}
+      });
+    } else {
+      requestAnimationFrame(() => {
+        try { window.Narrator?.setEnabled?.(true); } catch (_) {}
+      });
+    }
   }
 
   function runBootstrapDiagnostics(){
