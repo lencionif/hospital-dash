@@ -7,6 +7,26 @@
 
 (function (global) {
   const hasWA = !!(window.AudioContext || window.webkitAudioContext);
+  const SILENCE_URL = null;
+  const SILENT_DATA_URI = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+
+  function createSilentBuffer(ctx, duration = 0.5) {
+    if (!ctx) return null;
+    const frames = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    return ctx.createBuffer(2, frames, ctx.sampleRate);
+  }
+
+  function createSilentHtmlAudio() {
+    const tag = new Audio();
+    try {
+      tag.src = SILENT_DATA_URI;
+      tag.preload = 'auto';
+      tag.load();
+    } catch (_) {
+      // Ignore unsupported assignments.
+    }
+    return tag;
+  }
 
   const MusicAPI = {
     ctx: null,
@@ -20,6 +40,8 @@
     buffers: {},       // { key: AudioBuffer }
     htmlFallback: {},  // { key: HTMLAudioElement } si no hay WebAudio
     urls: { intro: 'assets/audio/intro.ogg' },          // + 'intro' para la música de la intro
+    bufferCache: new Map(),
+    htmlCache: new Map(),
 // { level1, level2, level3, urgency, victory, gameover } (se pueden sobreescribir en init)
     currentLevelKey: null,
     isUrgency: false,
@@ -32,7 +54,21 @@
 
     /* ------------------------------- INIT ---------------------------------- */
     init(opts = {}) {
-      this.urls = Object.assign({ intro: 'assets/audio/intro.ogg' }, opts.urls || {});
+      this.urls = Object.assign({
+        intro: 'assets/audio/intro.ogg',
+        level1: SILENCE_URL,
+        level2: SILENCE_URL,
+        level3: SILENCE_URL,
+        urgency: SILENCE_URL,
+        victory: SILENCE_URL,
+        gameover: SILENCE_URL,
+      }, opts.urls || {});
+      this.buffers = {};
+      this.htmlFallback = {};
+      this.bufferCache.clear();
+      this.htmlCache.clear();
+      this._silentBuffer = null;
+      this._silentHtml = null;
       this.musicVol = clamp(+loadLS('musicVol', 0.9), 0, 1);
       this.sfxVol   = clamp(+loadLS('sfxVol',   1.0), 0, 1);
       this.muted    = loadLS('musicMuted', '0') === '1';
@@ -107,22 +143,57 @@
     /* ---------------------------- LOADING ---------------------------------- */
     async preloadAll() {
       const keys = Object.keys(this.urls);
-      await Promise.all(keys.map(k => this._ensureLoaded(k)));
+      await Promise.all(keys.map(k => this._ensureLoaded(k).catch(()=>{})));
     },
 
     async _ensureLoaded(key) {
       if (this.buffers[key] || this.htmlFallback[key]) return;
-      const url = this.urls[key];
-      if (!url) return;
+      const url = this.urls[key] ?? SILENCE_URL;
 
       if (hasWA) {
-        const buf = await fetch(url).then(r => r.arrayBuffer()).then(b => this.ctx.decodeAudioData(b));
-        this.buffers[key] = buf;
+        if (!this.ctx) return;
+        let shared = url ? this.bufferCache.get(url) : this._silentBuffer;
+        if (!shared) {
+          if (url) {
+            try {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const ab = await res.arrayBuffer();
+              shared = await this.ctx.decodeAudioData(ab);
+            } catch (_) {
+              shared = this._makeSilentBuffer();
+            }
+          } else {
+            shared = this._makeSilentBuffer();
+          }
+          if (url) {
+            if (shared) this.bufferCache.set(url, shared);
+          } else {
+            this._silentBuffer = shared;
+          }
+        }
+        if (shared) this.buffers[key] = shared;
       } else {
-        const a = new Audio(url);
-        a.loop = false;
-        a.load();
-        this.htmlFallback[key] = a;
+        let base = url ? this.htmlCache.get(url) : this._silentHtml;
+        if (!base) {
+          if (url) {
+            try {
+              base = new Audio(url);
+              base.loop = false;
+              base.load();
+            } catch (_) {
+              base = createSilentHtmlAudio();
+            }
+          } else {
+            base = createSilentHtmlAudio();
+          }
+          if (url) {
+            this.htmlCache.set(url, base);
+          } else {
+            this._silentHtml = base;
+          }
+        }
+        if (base) this.htmlFallback[key] = base;
       }
     },
 
@@ -198,12 +269,15 @@
     async _crossfadeTo(key, { loop = true, fade = 1.5 } = {}) {
       await this._ensureLoaded(key);
       if (hasWA) {
+        const buf = this.buffers[key];
+        if (!buf) return;
         const toCh  = (this.active === 'A') ? 'B' : 'A';
         const fromCh= this.active;
         const toGain= (toCh === 'A') ? this.chA : this.chB;
         const fmGain= (fromCh === 'A') ? this.chA : this.chB;
 
         const toSrc = this._makeSrc(key, loop);
+        if (!toSrc) return;
         if (toCh === 'A') { this.srcA = toSrc; this.keyA = key; } else { this.srcB = toSrc; this.keyB = key; }
 
         const t0 = this.ctx.currentTime;
@@ -228,6 +302,7 @@
 
     _makeSrc(key, loop) {
       const buf = this.buffers[key];
+      if (!buf) return null;
       const src = this.ctx.createBufferSource();
       src.buffer = buf;
       src.loop = !!loop;
@@ -246,9 +321,11 @@
     async _playSFX(key, { gain = 1 } = {}) {
       await this._ensureLoaded(key);
       if (hasWA) {
+        const buf = this.buffers[key];
+        if (!buf) return;
         const src = this.ctx.createBufferSource();
         const g = this.ctx.createGain();
-        src.buffer = this.buffers[key];
+        src.buffer = buf;
         g.gain.value = gain * (this.muted ? 0 : this.sfxVol);
         src.connect(g); g.connect(this.sfxBus);
         return new Promise(res => {
@@ -259,6 +336,12 @@
         const a = this.htmlFallback[key];
         if (a) { a.loop = false; a.volume = this.sfxVol; return a.play().catch(()=>{}); }
       }
+    },
+
+    _makeSilentBuffer() {
+      if (!this.ctx) return null;
+      if (!this._silentBuffer) this._silentBuffer = createSilentBuffer(this.ctx);
+      return this._silentBuffer;
     },
 
     _tempLowerBGM(to = 0.3, fad = 0.2) {

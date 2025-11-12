@@ -10,42 +10,64 @@
   const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
   const nowMs = ()=>performance.now();
 
+  const SILENCE_URL = null;
+  const SILENT_DATA_URI = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+
+  function createSilentBuffer(ctx, duration = 0.25) {
+    if (!ctx) return null;
+    const frames = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+    return buffer;
+  }
+
+  function createSilentHtmlAudio() {
+    const tag = new Audio();
+    try {
+      tag.src = SILENT_DATA_URI;
+      tag.preload = 'auto';
+      tag.load();
+    } catch (_) {
+      // Ignore invalid data URI assignments in legacy browsers.
+    }
+    return tag;
+  }
+
   const DEFAULT_URLS = {
     // --- UI
-    ui_click: 'assets/audio/ui_click.ogg',
-    ui_back:  'assets/audio/ui_back.ogg',
+    ui_click: SILENCE_URL,
+    ui_back:  SILENCE_URL,
 
     // --- Gameplay genérico
-    pill_pick:   'assets/audio/pill_pick.ogg',
-    deliver_ok:  'assets/audio/deliver_ok.ogg',
-    hurt:        'assets/audio/hurt.ogg',
-    heart_down:  'assets/audio/heart_down.ogg',
-    heart_up:    'assets/audio/heart_up.ogg',
-    coin:        'assets/audio/coin.ogg',
+    pill_pick:   SILENCE_URL,
+    deliver_ok:  SILENCE_URL,
+    hurt:        SILENCE_URL,
+    heart_down:  SILENCE_URL,
+    heart_up:    SILENCE_URL,
+    coin:        SILENCE_URL,
 
     // --- Clima / ambiente
-    rain_loop: 'assets/audio/rain_loop.ogg',
-    thunder:   'assets/audio/thunder.ogg',
+    rain_loop: SILENCE_URL,
+    thunder:   SILENCE_URL,
 
 
     // --- Carros / físicas
-    push_start:  'assets/audio/push_start.ogg',
-    push_slide:  'assets/audio/push_slide_loop.ogg', // loop suave
-    cart_hit:    'assets/audio/cart_hit.ogg',
-    cart_kill:   'assets/audio/cart_crush.ogg',
-    wall_bounce: 'assets/audio/wall_bounce.ogg',
+    push_start:  SILENCE_URL,
+    push_slide:  SILENCE_URL, // loop suave
+    cart_hit:    SILENCE_URL,
+    cart_kill:   SILENCE_URL,
+    wall_bounce: SILENCE_URL,
 
     // --- Puertas
-    door_open:   'assets/audio/door_open.ogg',
-    boss_door:   'assets/audio/boss_door.ogg',
+    door_open:   SILENCE_URL,
+    boss_door:   SILENCE_URL,
 
     // --- Enemigos
-    mosquito_buzz: 'assets/audio/mosquito_loop.ogg', // loop
-    mosquito_die:  'assets/audio/mosquito_die.ogg',
-    rat_squeak:    'assets/audio/rat.ogg',
+    mosquito_buzz: SILENCE_URL, // loop
+    mosquito_die:  SILENCE_URL,
+    rat_squeak:    SILENCE_URL,
 
     // --- Alarmas / ambiente
-    alarm_loop:  'assets/audio/alarm_loop.ogg',      // urgencias (amb)
+    alarm_loop:  SILENCE_URL,      // urgencias (amb)
   };
 
   const AudioAPI = {
@@ -55,8 +77,10 @@
     vol:   { master: 1, sfx: 0.95, ui: 1, ambient: 0.9, env: 0.9 },
     muted: false,
     buffers: {},          // WebAudio buffers
+    bufferCache: new Map(),
     urls: {},             // key -> url
     html: {},             // fallback HTMLAudio (base)
+    htmlCache: new Map(),
     instances: new Set(), // playing nodes (para limpieza)
     throttles: {},        // key -> lastMs
     lastListener: { x:0, y:0 },
@@ -74,6 +98,12 @@
       this.minDistance = opts.minDistance ?? this.minDistance;
       this.pitchVar    = opts.pitchVar    ?? this.pitchVar;
       this.muted       = !!opts.muted;
+      this.buffers = {};
+      this.html = {};
+      this.bufferCache.clear();
+      this.htmlCache.clear();
+      this._silentBuffer = null;
+      this._silentHtml = null;
 
       if (hasWA) {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -125,18 +155,56 @@
     /* ---------------------------- LOADING ---------------------------------- */
     async preloadAll() {
       const keys = Object.keys(this.urls);
-      await Promise.all(keys.map(k => this._ensureLoaded(k)));
+      await Promise.all(keys.map(k => this._ensureLoaded(k).catch(()=>{})));
     },
 
     async _ensureLoaded(key) {
       if (this.buffers[key] || this.html[key]) return;
-      const url = this.urls[key]; if (!url) return;
+      const url = this.urls[key] ?? SILENCE_URL;
       if (hasWA) {
-        const ab = await fetch(url).then(r=>r.arrayBuffer());
-        const buf = await this.ctx.decodeAudioData(ab);
-        this.buffers[key] = buf;
+        if (!this.ctx) return;
+        let shared = url ? this.bufferCache.get(url) : this._silentBuffer;
+        if (!shared) {
+          if (url) {
+            try {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const ab = await res.arrayBuffer();
+              shared = await this.ctx.decodeAudioData(ab);
+            } catch (_) {
+              shared = createSilentBuffer(this.ctx);
+            }
+          } else {
+            shared = createSilentBuffer(this.ctx);
+          }
+          if (url) {
+            if (shared) this.bufferCache.set(url, shared);
+          } else {
+            this._silentBuffer = shared;
+          }
+        }
+        if (shared) this.buffers[key] = shared;
       } else {
-        const a = new Audio(url); a.preload='auto'; a.load(); this.html[key]=a;
+        let base = url ? this.htmlCache.get(url) : this._silentHtml;
+        if (!base) {
+          if (url) {
+            try {
+              base = new Audio(url);
+              base.preload = 'auto';
+              base.load();
+            } catch (_) {
+              base = createSilentHtmlAudio();
+            }
+          } else {
+            base = createSilentHtmlAudio();
+          }
+          if (url) {
+            this.htmlCache.set(url, base);
+          } else {
+            this._silentHtml = base;
+          }
+        }
+        if (base) this.html[key] = base;
       }
     },
 
@@ -162,8 +230,10 @@
       await this._ensureLoaded(key);
 
       if (hasWA) {
+        const buf = this.buffers[key];
+        if (!buf) return null;
         const src = this.ctx.createBufferSource();
-        src.buffer = this.buffers[key];
+        src.buffer = buf;
         src.loop = !!loop;
 
         const gain = this.ctx.createGain();
@@ -210,7 +280,8 @@
 
       } else {
         // Fallback
-        const aBase = this.html[key]; if (!aBase) return null;
+        const aBase = this.html[key];
+        if (!aBase || typeof aBase.cloneNode !== 'function') return null;
         const a = aBase.cloneNode(true);
         a.loop = !!loop;
         a.volume = this.muted ? 0 : clamp(volume * (this.vol[group] ?? 1), 0, 1);
