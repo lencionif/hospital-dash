@@ -196,7 +196,16 @@
           p.dead = true;
           // saca de entities
           const idx = g.entities.indexOf(p);
-          if (idx>=0) g.entities.splice(idx,1);
+          if (idx>=0){
+            try {
+              if (typeof W.detachEntityRig === 'function') {
+                W.detachEntityRig(p);
+              } else {
+                W.PuppetAPI?.detach?.(p);
+              }
+            } catch (_) {}
+            g.entities.splice(idx,1);
+          }
           this.papers.splice(i,1);
         }
       }

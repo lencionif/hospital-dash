@@ -69,6 +69,17 @@
     list: [],            // entidades de peligro: {kind, x,y,w,h, ttl, ...}
     _tickAcc: 0,
 
+    _detach(entity){
+      if (!entity) return;
+      try {
+        if (typeof window.detachEntityRig === 'function') {
+          window.detachEntityRig(entity);
+        } else {
+          window.PuppetAPI?.detach?.(entity);
+        }
+      } catch (_) {}
+    },
+
     // === INIT / HELPERS ===
     init(Gref, opts={}){
       this.G = Gref || window.G || (window.G={});
@@ -292,6 +303,7 @@
       if (hz._lightId && window.LightingAPI){
         try{ LightingAPI.removeLight(hz._lightId); }catch(_){}
       }
+      this._detach(hz);
       this.list = this.list.filter(x=>x!==hz);
       this.G.entities = (this.G.entities||[]).filter(x=>x!==hz);
     },
@@ -311,7 +323,11 @@
         // enemigos/npc básicos
         const wasDead = !!e.dead;
         if (typeof e.takeDamage === 'function'){ e.takeDamage(h, meta); }
-        else { e.dead = true; this.G.entities = this.G.entities.filter(x=>x!==e); }
+        else {
+          e.dead = true;
+          this._detach(e);
+          this.G.entities = this.G.entities.filter(x=>x!==e);
+        }
         if (!wasDead && e.dead && meta && meta.source === 'fire' && !e._narratorFireToast) {
           e._narratorFireToast = true;
           const name = e.displayName || e.name || e.label || e.kindName || 'enemigo';

@@ -28,6 +28,17 @@
       return this;
     },
 
+    _detach(entity){
+      if (!entity) return;
+      try {
+        if (typeof window.detachEntityRig === 'function') {
+          window.detachEntityRig(entity);
+        } else {
+          window.PuppetAPI?.detach?.(entity);
+        }
+      } catch (_) {}
+    },
+
     // Convierte un paciente en furiosa
     spawnFromPatient(patient, opts = {}){
       if (!patient || patient.dead) return null;
@@ -46,6 +57,7 @@
       const ph = patient.h;
 
       patient.dead = true;
+      this._detach(patient);
       G.entities = G.entities.filter((x) => x !== patient);
       G.patients = G.patients.filter((x) => x !== patient);
       try { window.EntityGroups?.unregister?.(patient, G); } catch (_) {}
@@ -137,6 +149,7 @@
           const matchesPatient = patient.id && (pill.patientId === patient.id || pill.forPatientId === patient.id);
           const matchesKey = patient.keyName && pill.pairName === patient.keyName;
           if (matchesId || matchesPatient || matchesKey) {
+            this._detach(pill);
             removeRefs.add(pill);
             continue;
           }
@@ -145,8 +158,15 @@
         G.pills = keep;
       }
       if (removeRefs.size) {
-        if (Array.isArray(G.entities)) G.entities = G.entities.filter((ent) => !removeRefs.has(ent));
-        if (Array.isArray(G.movers)) G.movers = G.movers.filter((ent) => !removeRefs.has(ent));
+        if (Array.isArray(G.entities)) {
+          for (const ent of G.entities) {
+            if (removeRefs.has(ent)) this._detach(ent);
+          }
+          G.entities = G.entities.filter((ent) => !removeRefs.has(ent));
+        }
+        if (Array.isArray(G.movers)) {
+          G.movers = G.movers.filter((ent) => !removeRefs.has(ent));
+        }
       }
       if (patient.keyName && G._patientsByKey instanceof Map) {
         G._patientsByKey.delete(patient.keyName);
@@ -179,6 +199,7 @@
       if (e._lightId && window.LightingAPI){ try{ LightingAPI.removeLight?.(e._lightId); }catch(_){ } }
       this.live.delete(e);
       try { window.EntityGroups?.unregister?.(e, this.G); } catch (_) {}
+      this._detach(e);
       try { window.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
     },
 

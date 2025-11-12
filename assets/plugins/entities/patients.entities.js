@@ -105,6 +105,13 @@
 
   function removeEntity(e) {
     if (!e) return;
+    try {
+      if (typeof W.detachEntityRig === 'function') {
+        W.detachEntityRig(e);
+      } else {
+        W.PuppetAPI?.detach?.(e);
+      }
+    } catch (_) {}
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== e);
     if (Array.isArray(G.patients)) G.patients = G.patients.filter((x) => x !== e);
     if (Array.isArray(G.allPatients)) G.allPatients = G.allPatients.filter((x) => x !== e);
@@ -112,13 +119,13 @@
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== e);
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== e);
     try { W.MovementSystem?.unregister?.(e); } catch (_) {}
-      if (e.id && G._patientsByKey instanceof Map) {
-        for (const [k, v] of [...G._patientsByKey.entries()]) {
-          if (v === e) G._patientsByKey.delete(k);
-        }
+    if (e.id && G._patientsByKey instanceof Map) {
+      for (const [k, v] of [...G._patientsByKey.entries()]) {
+        if (v === e) G._patientsByKey.delete(k);
       }
-      syncPatientArrayCounters();
     }
+    syncPatientArrayCounters();
+  }
 
   function nextIdentity() {
     ensureStats();
