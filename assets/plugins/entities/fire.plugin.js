@@ -291,6 +291,13 @@
         try { LightingAPI.removeLight(fire._lightId); } catch (_) {}
       }
       fire.dead = true;
+      try {
+        if (typeof window.detachEntityRig === 'function') {
+          window.detachEntityRig(fire);
+        } else {
+          window.PuppetAPI?.detach?.(fire);
+        }
+      } catch (_) {}
       this._destroyed.add(fire);
     },
 

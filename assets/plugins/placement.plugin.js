@@ -1357,7 +1357,16 @@
         }
         if (Array.isArray(G?.entities)) {
           const idx = G.entities.indexOf(stub);
-          if (idx >= 0) G.entities.splice(idx, 1);
+          if (idx >= 0) {
+            try {
+              if (typeof root.detachEntityRig === 'function') {
+                root.detachEntityRig(stub);
+              } else {
+                root.PuppetAPI?.detach?.(stub);
+              }
+            } catch (_) {}
+            G.entities.splice(idx, 1);
+          }
         }
       }
     }

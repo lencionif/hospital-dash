@@ -149,6 +149,13 @@
       e.dead = true;
       const G=getG();
       const rm=(arr,it)=>{ const i=arr?.indexOf(it); if (i>=0) arr.splice(i,1); };
+      try {
+        if (typeof window.detachEntityRig === 'function') {
+          window.detachEntityRig(e);
+        } else {
+          window.PuppetAPI?.detach?.(e);
+        }
+      } catch (_) {}
       rm(this._list,e); rm(G.entities,e); rm(G.movers,e);
       // recicla
       this._pool.push(e);

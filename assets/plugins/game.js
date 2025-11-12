@@ -147,6 +147,22 @@
 
   let currentVisualInfo = null;
 
+  function detachEntityRig(ent){
+    if (!ent) return;
+    try {
+      if (typeof window.detachEntityRig === 'function' && window.detachEntityRig !== detachEntityRig) {
+        window.detachEntityRig(ent);
+        return;
+      }
+    } catch (_) {}
+    try {
+      window.PuppetAPI?.detach?.(ent);
+    } catch (err){
+      if (window.DEBUG_FORCE_ASCII) console.warn('[Game] detachEntityRig error', err);
+    }
+  }
+  window.detachEntityRig = detachEntityRig;
+
   function resolveVisualRadiusTiles(){
     const candidates = [
       Number.isFinite(G?.visualRadiusTiles) ? G.visualRadiusTiles : null,
@@ -190,24 +206,59 @@
     return info;
   }
 
+  function setEntityActivity(ent, active){
+    if (!ent) return;
+    const wasInactive = ent._inactive === true;
+    const nowInactive = !active;
+    if (wasInactive === nowInactive) return;
+    ent._inactive = nowInactive;
+    const hooks = active
+      ? ['onActivate', 'onWake', 'onWakeUp']
+      : ['onDeactivate', 'onSleep', 'onSleepy'];
+    for (const name of hooks){
+      const fn = ent && typeof ent[name] === 'function' ? ent[name] : null;
+      if (!fn) continue;
+      try {
+        fn.call(ent, G, currentVisualInfo);
+      } catch (err){
+        if (window.DEBUG_FORCE_ASCII) console.warn(`[Entity:${name}] error`, err);
+      }
+      break;
+    }
+  }
+
   function shouldUpdateEntity(ent){
     if (!ent) return false;
-    if (ent === G.player) return true;
+    if (ent === G.player){
+      setEntityActivity(ent, true);
+      return true;
+    }
     const info = currentVisualInfo;
-    if (!info) return true;
-    if (ent._alwaysUpdate === true) return true;
+    if (!info){
+      setEntityActivity(ent, true);
+      return true;
+    }
+    if (ent._alwaysUpdate === true){
+      setEntityActivity(ent, true);
+      return true;
+    }
     const now = info.timestamp || ((typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now());
     const awakeUntil = Number(ent._alwaysUpdateUntil);
-    if (Number.isFinite(awakeUntil) && awakeUntil > now) return true;
+    if (Number.isFinite(awakeUntil) && awakeUntil > now){
+      setEntityActivity(ent, true);
+      return true;
+    }
     const w = Number.isFinite(ent.w) ? ent.w : TILE;
     const h = Number.isFinite(ent.h) ? ent.h : TILE;
     const ex = (Number(ent.x) || 0) + w * 0.5;
     const ey = (Number(ent.y) || 0) + h * 0.5;
     const dx = ex - info.hx;
     const dy = ey - info.hy;
-    return (dx * dx + dy * dy) <= info.radiusSq;
+    const active = (dx * dx + dy * dy) <= info.radiusSq;
+    setEntityActivity(ent, active);
+    return active;
   }
   const MovementSystem = (() => {
     const states = new WeakMap();
@@ -1321,6 +1372,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // saca de las listas
     G.hostiles = G.hostiles.filter(x => x !== e);
     G.entities = G.entities.filter(x => x !== e);
+    detachEntityRig(e);
     MovementSystem.unregister(e);
     // notificar respawn diferido
     SPAWN.pending = Math.min(SPAWN.pending + 1, SPAWN.max);
@@ -1340,6 +1392,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     G.entities = G.entities.filter(x => x !== e);
     G.movers   = G.movers.filter(x => x !== e);
     G.hostiles  = G.hostiles.filter(x => x !== e);
+    detachEntityRig(e);
     try { window.EntityGroups?.unregister?.(e, G); } catch (_) {}
     G.patients = G.patients.filter(x => x !== e);
     MovementSystem.unregister(e);
@@ -1543,6 +1596,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== pill);
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== pill);
+    detachEntityRig(pill);
     pill.dead = true;
     return true;
   }

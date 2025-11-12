@@ -426,6 +426,13 @@
   function remove(e){
     e.dead = true;
     if (G.entities) G.entities = G.entities.filter(x=>x!==e);
+    try {
+      if (typeof W.detachEntityRig === 'function') {
+        W.detachEntityRig(e);
+      } else {
+        W.PuppetAPI?.detach?.(e);
+      }
+    } catch (_) {}
     try { W.EntityGroups?.unregister?.(e, G); } catch (_) {}
     S.list = S.list.filter(x=>x!==e);
   }
