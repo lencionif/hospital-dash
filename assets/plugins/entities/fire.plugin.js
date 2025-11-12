@@ -4,8 +4,8 @@
   'use strict';
 
   const DEFAULTS = {
-    ttl: 4.0,
-    extraTTL: 2.5,
+    ttl: 6.0,
+    extraTTL: 4.0,
     damage: 0.5,
     tick: 0.4,
     size: 26,
@@ -57,6 +57,13 @@
       this.state = state;
       const now = nowSeconds();
       this._purgeRecent(now);
+
+      const tileSize = this._getTileSize();
+      const tx = Math.floor((Number.isFinite(x) ? x : 0) / tileSize);
+      const ty = Math.floor((Number.isFinite(y) ? y : 0) / tileSize);
+      if (this._blockedByWater(tx, ty, x, y, opts)){
+        return null;
+      }
 
       const cooldown = (opts.cooldown != null) ? opts.cooldown : (this.cfg.spawnCooldown || 0);
       const mergeRadius = (opts.mergeRadius != null) ? opts.mergeRadius : ((opts.size != null ? opts.size : this.cfg.size || 0) * 0.55);
@@ -193,6 +200,41 @@
       return this.list.filter(f => f && !f.dead);
     },
 
+    extinguish(fire, opts = {}){
+      if (!fire || fire.dead) return false;
+      this._onExtinguish(fire, opts);
+      this._destroy(fire);
+      return true;
+    },
+
+    extinguishAt(x, y, opts = {}){
+      const radius = Number.isFinite(opts.radius) ? opts.radius : (opts.range || this.cfg.size);
+      const r2 = radius * radius;
+      let hit = false;
+      for (const fire of this.getActive()){
+        const cx = fire.x + fire.w * 0.5;
+        const cy = fire.y + fire.h * 0.5;
+        const dx = (x ?? cx) - cx;
+        const dy = (y ?? cy) - cy;
+        if ((dx * dx + dy * dy) <= r2){
+          hit = this.extinguish(fire, Object.assign({}, opts, { x: cx, y: cy })) || hit;
+        }
+      }
+      return hit;
+    },
+
+    extinguishAtTile(tx, ty, opts = {}){
+      const tileSize = this._getTileSize();
+      if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+      const px = tx * tileSize + tileSize * 0.5;
+      const py = ty * tileSize + tileSize * 0.5;
+      return this.extinguishAt(px, py, Object.assign({
+        radius: tileSize * 0.6,
+        tileX: tx,
+        tileY: ty
+      }, opts));
+    },
+
     _resolveState(state){
       let target = state && typeof state === 'object' ? state : null;
       if (!target){
@@ -259,6 +301,64 @@
         return;
       }
       this._recent = this._recent.filter(r => r && (now - r.t) <= windowSec);
+    },
+
+    _blockedByWater(tx, ty, x, y, opts){
+      const api = window.CleanerAPI;
+      if (!api) return false;
+      const wet = (typeof api.isWetAtTile === 'function')
+        ? api.isWetAtTile(tx, ty)
+        : (typeof api.isWetAtPx === 'function' ? api.isWetAtPx(x, y) : false);
+      if (!wet) return false;
+      const consumed = typeof api.evaporateWetAtTile === 'function'
+        ? api.evaporateWetAtTile(tx, ty, {
+            cause: 'agua',
+            x,
+            y,
+            tileX: tx,
+            tileY: ty,
+            log: true
+          })
+        : false;
+      if (!consumed){
+        this._onExtinguish(null, {
+          cause: 'agua',
+          x,
+          y,
+          tileX: tx,
+          tileY: ty,
+          log: true
+        });
+      }
+      return true;
+    },
+
+    _getTileSize(){
+      return (window.TILE_SIZE || window.TILE || 32) || 32;
+    },
+
+    _onExtinguish(fire, opts = {}){
+      const tileSize = this._getTileSize();
+      const px = Number.isFinite(opts.x) ? opts.x : (fire ? fire.x + fire.w * 0.5 : null);
+      const py = Number.isFinite(opts.y) ? opts.y : (fire ? fire.y + fire.h * 0.5 : null);
+      if (px == null || py == null) return;
+      const tileX = Number.isFinite(opts.tileX) ? opts.tileX : Math.round(px / tileSize);
+      const tileY = Number.isFinite(opts.tileY) ? opts.tileY : Math.round(py / tileSize);
+      const cause = opts.cause || opts.reason || 'water';
+      if (opts.sound !== false){
+        try {
+          window.AudioAPI?.play?.('steam_sizzle', { at: { x: px, y: py }, volume: opts.volume ?? 0.65 });
+        } catch (_) {}
+      }
+      const fxOpts = Object.assign({ ttl: 900 }, opts.fx || {});
+      try {
+        window.CleanerAPI?.spawnSteamFx?.(px, py, fxOpts);
+      } catch (_) {}
+      if (opts.log !== false && cause){
+        try {
+          window.LOG?.debug?.(`[Hazards] Fuego extinguido por ${cause} en (${tileX},${tileY})`);
+        } catch (_) {}
+      }
     }
   };
 

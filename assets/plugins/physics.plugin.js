@@ -21,10 +21,11 @@
     fireImpulse: 240,
     fireMinMass: 2.5,
     fireCooldown: 0.6,
-    fireTTL: 4.0,
-    fireExtraTTL: 3.0,
+    fireTTL: 6.0,
+    fireExtraTTL: 4.0,
     fireDamage: 0.5,
     fireTick: 0.4,
+    slipCrashSpeed: 120,
     shakeImpulse: 105,
     shakeDuration: 0.55,
     shakeMax: 18,
@@ -198,6 +199,26 @@
       }
     }
 
+    function handleSlipImpact(e, axis, speed, contactX, contactY){
+      if (!e || !G) return;
+      if (!(e._wetSlipTimer > 0)) return;
+      const threshold = CFG.slipCrashSpeed ?? DEFAULTS.slipCrashSpeed ?? 120;
+      if (!(speed >= threshold)) return;
+      if (G.player && e === G.player){
+        const src = { x: (contactX ?? (e.x + e.w * 0.5)) - 8, y: (contactY ?? (e.y + e.h * 0.5)) - 8, w: 16, h: 16 };
+        try { window.damagePlayer?.(src, 1); }
+        catch (_) { window.damagePlayer?.(e, 1); }
+      }
+      try { window.AudioAPI?.play?.('slip_bump', { at: { x: contactX ?? (e.x + e.w * 0.5), y: contactY ?? (e.y + e.h * 0.5) }, volume: 0.6 }); }
+      catch (_) {}
+      try {
+        window.LOG?.debug?.(`[Hazards] Golpe por resbalón eje ${axis} v=${speed.toFixed(1)}`);
+      } catch (_) {}
+      e._wetSlipTimer = 0;
+      e.vx *= 0.2;
+      e.vy *= 0.2;
+    }
+
     function notifyImpactEffects(x, y, impulse, meta = {}){
       if (!(impulse > 0)) return;
       const fx = window.CineFX;
@@ -276,6 +297,7 @@
               masses: [entMass],
               velocity: { vx: vxStep, vy: vyStep || 0 }
             });
+            handleSlipImpact(e, 'x', Math.abs(vxStep), contactX, contactY);
           }
           const v = -(e.vx || 0) * wr;
           e.vx = (Math.abs(v) < 0.001) ? 0 : v;
@@ -309,6 +331,7 @@
               masses: [entMass],
               velocity: { vx: vxStep || 0, vy: vyStep }
             });
+            handleSlipImpact(e, 'y', Math.abs(vyStep), contactX, contactY);
           }
           const v = -(e.vy || 0) * wr;
           e.vy = (Math.abs(v) < 0.001) ? 0 : v;
@@ -445,6 +468,9 @@
         e.vx = clamp(e.vx || 0, -1200, 1200);
         e.vy = clamp(e.vy || 0, -1200, 1200);
         resolveAgainstSolids(e);
+        if (typeof e._wetSlipTimer === 'number'){
+          e._wetSlipTimer = Math.max(0, e._wetSlipTimer - dt);
+        }
       }
       resolveEntityPairs(dt);
     }

@@ -113,6 +113,7 @@
   // -----------------------
   const WetMap = new Map(); // key "tx,ty" -> {born, expires}
   const WetQueue = [];
+  const SteamFx = [];
 
   function kWet(Tx,Ty){ return Tx+","+Ty; }
 
@@ -122,10 +123,16 @@
     if (Tx<0 || Ty<0 || Tx>=G.mapW || Ty>=G.mapH) return;
     if (isWallTile(Tx,Ty)) return;
     const now = performance.now();
-    const item = { born: now, expires: now + (ttl||B.ttlMs) };
     const key = kWet(Tx,Ty);
-    WetMap.set(key, item);
-    WetQueue.push(key);
+    const prev = WetMap.get(key);
+    if (prev && (now - prev.born) < 260){
+      prev.expires = Math.max(prev.expires, now + (ttl || B.ttlMs));
+    } else {
+      const item = { born: now, expires: now + (ttl||B.ttlMs) };
+      WetMap.set(key, item);
+      WetQueue.push(key);
+    }
+    maybeExtinguishTile(Tx, Ty, { cause: 'charco', px: px, py: py });
     // recorte
     while (WetQueue.length > B.maxPuddles) {
       const rm = WetQueue.shift();
@@ -139,6 +146,36 @@
     if (!it) return false;
     const now = performance.now();
     if (now > it.expires){ WetMap.delete(key); return false; }
+    return true;
+  }
+
+  function isWetAtTile(Tx, Ty){
+    if (!Number.isFinite(Tx) || !Number.isFinite(Ty)) return false;
+    const key = kWet(Tx, Ty);
+    const it = WetMap.get(key);
+    if (!it) return false;
+    const now = performance.now();
+    if (now > it.expires){ WetMap.delete(key); return false; }
+    return true;
+  }
+
+  function evaporateWetAtTile(Tx, Ty, opts = {}){
+    if (!Number.isFinite(Tx) || !Number.isFinite(Ty)) return false;
+    const key = kWet(Tx, Ty);
+    const it = WetMap.get(key);
+    if (!it) return false;
+    WetMap.delete(key);
+    const idx = WetQueue.indexOf(key);
+    if (idx >= 0) WetQueue.splice(idx, 1);
+    const px = opts.x ?? (Tx*TILE + TILE*0.5);
+    const py = opts.y ?? (Ty*TILE + TILE*0.5);
+    if (opts.fx !== false) spawnSteamFx(px, py, opts.fx);
+    if (opts.sound !== false){
+      try { W.AudioAPI?.play?.('steam_sizzle', { at:{ x:px, y:py }, volume: opts.volume ?? 0.65 }); } catch(_){}
+    }
+    if (opts.log){
+      try { W.LOG?.debug?.(`[Hazards] Fuego extinguido por ${opts.cause || 'agua'} en (${Tx},${Ty})`); } catch(_){}
+    }
     return true;
   }
 
@@ -160,6 +197,7 @@
     // 3) Si tu core usa “pushImpulse” o empujes, podemos aumentar un pelín
     if (e.pushMul == null) e.pushMul = 1.0;
     e.pushMul = Math.max(e.pushMul, B.pushMul);
+    e._wetSlipTimer = Math.max(e._wetSlipTimer || 0, 0.6);
   }
 
   // Overlay: dibuja charcos (opcional)
@@ -183,6 +221,31 @@
       ctx.fillStyle = B.color.replace(/0\.\d+\)$/, alpha.toFixed(3)+')');
       ctx.fillRect(px+2, py+2, TILE-4, TILE-4);
     }
+    const survivors = [];
+    for (const fx of SteamFx){
+      if (!fx) continue;
+      const age = now - fx.born;
+      if (age >= fx.ttl){ continue; }
+      survivors.push(fx);
+      const t = age / fx.ttl;
+      const alpha = Math.max(0, (1 - t) * 0.6);
+      const radius = fx.radius ?? (TILE * 0.45);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const cx = fx.x - (cam.x||0);
+      const cy = fx.y - (cam.y||0);
+      const r = radius * (1 + 0.15*Math.sin(now/120 + fx.seed));
+      const grad = ctx.createRadialGradient(cx, cy, r*0.15, cx, cy, r);
+      grad.addColorStop(0, 'rgba(220,240,255,0.85)');
+      grad.addColorStop(1, 'rgba(220,240,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+    SteamFx.length = 0;
+    Array.prototype.push.apply(SteamFx, survivors);
     ctx.restore();
   }
 
@@ -295,6 +358,7 @@
 
     // 6) Efecto físico del charco (sobre la propia limpiadora también)
     applyWetToEntity(e, dt);
+    maybeExtinguishFireNear(e);
 
     // 7) Frase contextual si pasa junto al jugador
     const p = G.player;
@@ -308,7 +372,16 @@
     // Evaporación de charcos
     const now = performance.now(), BW = BAL().wet;
     for (const [key, it] of WetMap){
-      if (now >= it.expires) WetMap.delete(key);
+      if (now >= it.expires){
+        WetMap.delete(key);
+        const idx = WetQueue.indexOf(key);
+        if (idx >= 0) WetQueue.splice(idx, 1);
+      }
+    }
+    for (let i=SteamFx.length-1; i>=0; i--){
+      const fx = SteamFx[i];
+      if (!fx) continue;
+      if (now - fx.born >= fx.ttl) SteamFx.splice(i,1);
     }
 
     // IA / movimiento limpiadoras
@@ -384,12 +457,69 @@
     }
   }
 
+  function spawnSteamFx(px, py, opts={}){
+    const now = performance.now();
+    const ttl = (opts && opts.ttl != null) ? opts.ttl : 900;
+    SteamFx.push({
+      x: px,
+      y: py,
+      born: now,
+      ttl: ttl,
+      radius: opts.radius ?? (TILE * (0.35 + 0.25*rng())),
+      seed: rng()*Math.PI*2
+    });
+    return true;
+  }
+
+  function maybeExtinguishFireNear(e){
+    const API = W.FireAPI || W.Entities?.Fire;
+    if (!API || typeof API.getActive !== 'function') return;
+    const cx = e.x + e.w*0.5;
+    const cy = e.y + e.h*0.5;
+    const radius = TILE * 0.7;
+    const fires = API.getActive();
+    for (const fire of fires){
+      if (!fire || fire.dead) continue;
+      const fx = fire.x + fire.w*0.5;
+      const fy = fire.y + fire.h*0.5;
+      if (Math.hypot(fx - cx, fy - cy) > radius) continue;
+      const opts = {
+        cause: 'limpiadora',
+        x: fx,
+        y: fy,
+        tileX: tx(fx),
+        tileY: ty(fy),
+        fx: { ttl: 850, radius: TILE * 0.6 },
+        log: true,
+        volume: 0.55
+      };
+      if (typeof API.extinguish === 'function'){ API.extinguish(fire, opts); return; }
+      if (typeof API.extinguishAt === 'function' && API.extinguishAt(fx, fy, opts)) return;
+    }
+  }
+
+  function maybeExtinguishTile(Tx, Ty, meta={}){
+    const API = W.FireAPI || W.Entities?.Fire;
+    if (!API) return;
+    if (typeof API.extinguishAtTile === 'function'){
+      API.extinguishAtTile(Tx, Ty, Object.assign({
+        cause: meta.cause || 'charco',
+        x: meta.px ?? (Tx*TILE + TILE*0.5),
+        y: meta.py ?? (Ty*TILE + TILE*0.5),
+        fx: { ttl: 780, radius: TILE * 0.55 },
+        log: true
+      }, meta.fireOpts || {}));
+    }
+  }
+
   // -----------------------
   // API pública
   // -----------------------
   W.CleanerAPI = {
     spawn, updateAll, renderWetOverlay,
-    applyWetToEntity, isWetAtPx,
+    applyWetToEntity, isWetAtPx, isWetAtTile,
+    evaporateWetAtTile,
+    spawnSteamFx,
     // Calidad de vida: deja charco a demanda
     leaveWetAtPx
   };

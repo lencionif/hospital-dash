@@ -21,7 +21,7 @@
 
     // Suelo mojado
     wet: {
-      ttl: 28,                 // segundos
+      ttl: 14,                 // segundos
       slipMul: 1.25,           // >1 => más deslizante (menos control)
       dragMul: 0.92,           // multiplicador a la amortiguación (se desliza más)
       color: 'rgba(120,180,255,0.65)',
