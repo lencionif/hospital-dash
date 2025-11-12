@@ -3294,9 +3294,13 @@ function drawEntities(c2){
   window.__setMinimapMode = window.__setMinimapMode || function(){ return 'small'; };
   window.__toggleMinimapMode = window.__toggleMinimapMode || function(){ return 'small'; };
 
-  // Actívalo con ?mini=1 o definiendo window.DEBUG_MINIMAP = true en consola
-  const enabled = /[?&]mini=1/.test(location.search) || window.DEBUG_MINIMAP === true || /[?&]map=debug\b/i.test(location.search || '');
-  if (!enabled) return;
+  // Actívalo siempre por defecto; permite desactivarlo explícitamente con ?mini=0
+  const searchParams = location.search || '';
+  const forcedOff = /[?&]mini=0\b/.test(searchParams);
+  if (forcedOff) {
+    window.LOG?.debug?.('[minimap] mini=0 → minimapa desactivado');
+    return;
+  }
 
   const TILE = window.TILE_SIZE || window.TILE || 32;
   const VIEW_W = window.VIEW_W || 1024;
