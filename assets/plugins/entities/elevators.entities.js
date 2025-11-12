@@ -1,8 +1,8 @@
 // filename: elevators.entities.js
-// Ascensores emparejados (par a par) con activación aleatoria cada 10 minutos.
-// Al activarse una pareja, teletransporta al instante TODO lo que esté pisando
-// cualquiera de los dos al otro lado, recolocando alrededor para evitar paredes
-// y solapes. Las parejas quedan fijas tras el arranque.
+// Ascensores emparejados controlados por el jugador.
+// Al pulsar E sobre un ascensor, teletransporta al instante TODO lo que esté
+// pisando al ascensor emparejado correspondiente, recolocando alrededor para
+// evitar paredes y solapes. Las parejas quedan fijas tras el arranque.
 //
 // API clave:
 //   Entities.Elevator.spawn(x, y, { pairId?, active?, locked? })
@@ -28,10 +28,12 @@
     freeIds: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
     frozen: false,           // cuando true, ya no se reasignan parejas
     time: 0,                 // reloj en segundos (acumulado por update(dt))
-    nextActivationAt: 600,   // primera activación a los 600s (10 min)
-    activationCooldown: 600, // 10 minutos
     allowObjects: true,      // mueve también carros / items / NPCs
+    interactBound: false,
   };
+
+  const BUSY_SECONDS = 1.1;
+  const OPEN_CLOSE_SECONDS = 0.5;
 
   // ---------- Utilidades ----------
   function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
@@ -106,6 +108,29 @@
     return { x: Math.floor(tx*TILE + (TILE-ent.w)/2), y: Math.floor(ty*TILE + (TILE-ent.h)/2) };
   }
 
+  function findElevatorUnder(ent){
+    if (!ent) return null;
+    for (const elev of S.list){
+      if (!elev || elev.dead) continue;
+      if (aabb(ent, elev)) return elev;
+    }
+    return null;
+  }
+
+  function ensureInteractBinding(){
+    if (S.interactBound) return;
+    const G = window.G || (window.G = {});
+    if (!Array.isArray(G.onInteract)) G.onInteract = [];
+    const handler = (player) => {
+      const elev = findElevatorUnder(player);
+      if (!elev) return false;
+      return travel(elev, player);
+    };
+    G.onInteract.unshift(handler);
+    S.interactBound = true;
+    S._interactHandler = handler;
+  }
+
   // ---------- Objeto-ascensor ----------
   function makeElevator(x, y, opts={}){
     const e = {
@@ -118,7 +143,10 @@
       pairRef: null,
       active: false,
       locked: !!opts.locked,
-      _cooldown: 0, // local, por si alguna vez lo quieres por-ascensor
+      busyUntil: 0,
+      lightState: 'ready',
+      _pulse: 0,
+      isPaired: false,
       aiId: 'ELEVATOR',
       draw: null,
       state: { open: false, openProgress: 0 },
@@ -129,18 +157,28 @@
     // pinta “semáforo” simple si no hay SpriteManager
     e.draw = function(ctx){
       if (!ctx) return;
-      const state = e.locked ? 'locked' : (e.active ? 'active' : 'idle');
+      const ls = e.locked ? 'locked' : (e.lightState || 'ready');
+      const mainColor = e.locked ? '#6b7280' : '#475569';
+      const lightColor = ls === 'busy' ? '#f87171'
+        : ls === 'locked' ? '#9ca3af'
+        : '#34d399';
+      const pulse = (e._pulse || 0);
+      const blink = (ls === 'busy') ? (0.5 + 0.5 * Math.sin(pulse * 4)) : 1;
       ctx.save();
-      ctx.fillStyle = e.locked ? '#6b7280' : (e.active ? '#22c55e' : '#64748b');
+      ctx.fillStyle = mainColor;
       ctx.fillRect(e.x, e.y, e.w, e.h);
       ctx.fillStyle = '#0f172a';
-      ctx.fillRect(e.x + e.w*0.2, e.y + e.h*0.2, e.w*0.6, e.h*0.15);
-      ctx.fillRect(e.x + e.w*0.45, e.y + e.h*0.35, e.w*0.1, e.h*0.45);
-      // etiqueta
-      ctx.globalAlpha = 0.9;
+      ctx.fillRect(e.x + e.w*0.2, e.y + e.h*0.25, e.w*0.6, e.h*0.18);
+      ctx.fillRect(e.x + e.w*0.42, e.y + e.h*0.43, e.w*0.16, e.h*0.42);
+      ctx.beginPath();
+      ctx.fillStyle = lightColor;
+      ctx.globalAlpha = blink;
+      ctx.arc(e.x + e.w*0.5, e.y + e.h*0.16, e.w*0.18, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 0.85;
       ctx.fillStyle = '#e5e7eb';
       ctx.font = '10px monospace';
-      ctx.fillText('EV ' + (e.pairId||'?') + ' ' + state, e.x+3, e.y+e.h-3);
+      ctx.fillText('EV ' + (e.pairId||'?'), e.x+4, e.y+e.h-4);
       ctx.restore();
     };
 
@@ -157,7 +195,7 @@
 
   // ---------- Emparejado ----------
   function _ensurePairId(e){
-    if (e.pairId || !S.freeIds.length) return;
+    if (e.pairId) return;
     // auto-asigna letras de dos en dos (A, A, B, B, C, C…)
     // estrategia: si hay una letra “en uso impar”, completa la pareja; si no, coge nueva
     const countById = {};
@@ -176,35 +214,94 @@
     if (!e.pairId) return;
     const arr = (S.pairs[e.pairId] = S.pairs[e.pairId] || []);
     if (!arr.includes(e)) arr.push(e);
-    // si hay 2, enlaza referencias
-    if (arr.length === 2){ arr[0].pairRef = arr[1]; arr[1].pairRef = arr[0]; }
+    if (arr.length === 2){
+      arr[0].pairRef = arr[1];
+      arr[1].pairRef = arr[0];
+      arr[0].isPaired = true;
+      arr[1].isPaired = true;
+    }
   }
 
   function _finalizePairsOnce(){
     if (S.frozen) return;
+    const alive = S.list.filter(e => e && !e.dead);
     // si hay impares, empareja por cercanía dentro de las que no tienen pairId
-    const unpaired = S.list.filter(e => !e.pairId);
+    const unpaired = alive.filter(e => !e.pairId);
     if (unpaired.length){
       // muy simple: orden por X,Y y empareja de dos en dos
       unpaired.sort((a,b)=> (a.x+a.y*1e-3) - (b.x+b.y*1e-3));
       for (let i=0; i<unpaired.length; i+=2){
         const a = unpaired[i], b = unpaired[i+1];
-        if (!b) break; // uno suelto, lo dejamos sin pareja
+        if (!b){
+          console.warn('[Elevators] Ascensor sin pareja, quedará fuera de servicio.', a);
+          a.isPaired = false;
+          a.locked = true;
+          continue;
+        }
         const id = S.freeIds.shift() || ('P'+(Object.keys(S.pairs).length+1));
         a.pairId = id; b.pairId = id;
       }
     }
     // re-indexa
     S.pairs = Object.create(null);
-    for (const e of S.list){ _indexPair(e); }
+    for (const e of alive){
+      _indexPair(e);
+    }
+    // marca pares incompletos como bloqueados
+    for (const id of Object.keys(S.pairs)){
+      const arr = S.pairs[id];
+      if (!Array.isArray(arr)) continue;
+      if (arr.length !== 2){
+        for (const elev of arr){
+          elev.isPaired = false;
+          elev.pairRef = null;
+          elev.locked = true;
+          elev.lightState = 'locked';
+        }
+      }
+    }
     S.frozen = true; // ¡parejas fijadas!
   }
 
   // ---------- Activación & teletransporte ----------
-  function _pickRandomReadyPairId(){
-    const ids = Object.keys(S.pairs).filter(id => (S.pairs[id] && S.pairs[id].length===2));
-    if (!ids.length) return null;
-    return ids[(Math.random()*ids.length)|0];
+  function markBusy(elev){
+    if (!elev) return;
+    const now = S.time || 0;
+    const base = Number.isFinite(elev.busyUntil) ? elev.busyUntil : 0;
+    elev.busyUntil = Math.max(base, now + BUSY_SECONDS);
+    elev.state = elev.state || { open: false, openProgress: 0 };
+    elev.state.open = true;
+    elev.lightState = elev.locked ? 'locked' : 'busy';
+    elev.active = true;
+  }
+
+  function notify(msg){
+    if (!msg) return;
+    try { W.DialogAPI?.system?.(msg, { ms: 2400 }); }
+    catch(_) { console.info('[Elevators]', msg); }
+  }
+
+  function travel(elevatorEnt, activator){
+    if (!elevatorEnt) return false;
+    ensureInteractBinding();
+    if (!S.frozen) _finalizePairsOnce();
+    if (elevatorEnt.locked){
+      notify('Este ascensor está fuera de servicio.');
+      return true;
+    }
+    if (!elevatorEnt.pairId || !S.pairs[elevatorEnt.pairId] || S.pairs[elevatorEnt.pairId].length !== 2){
+      notify('El ascensor no tiene pareja asignada.');
+      return true;
+    }
+    const moved = _teleportNowPair(elevatorEnt.pairId);
+    if (moved <= 0){
+      // Incluso si nadie viaja, mostrar feedback de activación
+      markBusy(elevatorEnt);
+      markBusy(elevatorEnt.pairRef);
+      try { W.AudioAPI?.play?.('door_open', { volume: 0.55, tag: 'elevator_door' }); } catch(_){}
+      try { W.AudioAPI?.play?.('ui_click', { volume: 0.8, tag: 'elevator_ding' }); } catch(_){}
+    }
+    return true;
   }
 
   function _teleportNowPair(pairId){
@@ -236,37 +333,12 @@
       moved++;
     }
 
-    const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-      ? performance.now()
-      : Date.now();
-    const keepAwakeMs = 3000;
-    const openFor = 2.0;
-    const markOpen = (elev) => {
-      if (!elev) return;
-      elev.state = elev.state || { open: false, openProgress: 0 };
-      elev.state.open = true;
-      elev.open = true;
-      const existing = Number.isFinite(elev._cooldown) ? elev._cooldown : 0;
-      elev._cooldown = Math.max(existing, openFor);
-      const awakeUntil = now + keepAwakeMs;
-      if (!Number.isFinite(elev._alwaysUpdateUntil) || elev._alwaysUpdateUntil < awakeUntil) {
-        elev._alwaysUpdateUntil = awakeUntil;
-      }
-    };
-    markOpen(a);
-    markOpen(b);
+    markBusy(a);
+    markBusy(b);
 
-    // pulso visual opcional (si tienes AudioAPI)
-    try { W.AudioAPI?.play?.('elevator_warp', {vol:0.9}); } catch(_){}
+    try { W.AudioAPI?.play?.('door_open', { volume: 0.7, tag: 'elevator_door' }); } catch(_){}
+    try { W.AudioAPI?.play?.('ui_click', { volume: 0.9, tag: 'elevator_ding' }); } catch(_){}
     return moved;
-  }
-
-  function _activateRandomPair(){
-    const id = _pickRandomReadyPairId();
-    if (!id) return;
-    const moved = _teleportNowPair(id);
-    // log suave
-    console.log('[Elevators] Activación pareja', id, '→ entidades movidas:', moved);
   }
 
   // ---------- API pública ----------
@@ -275,62 +347,64 @@
     spawn(x, y, opts={}){
       const e = makeElevator(x, y, opts);
       if (!Array.isArray(G.entities)) G.entities = [];
+      if (!Array.isArray(G.elevators)) G.elevators = [];
+      ensureInteractBinding();
       G.entities.push(e);
+      if (!G.elevators.includes(e)) G.elevators.push(e);
       S.list.push(e);
+      S.frozen = false;
       window.MovementSystem?.register?.(e);
       _ensurePairId(e);
-      _indexPair(e);
+      _finalizePairsOnce();
       return e;
     },
 
     // Llamar cada frame (dt en segundos)
     update(dt){
       if (!Number.isFinite(dt)) return;
+      ensureInteractBinding();
       // Primera pasada tras el poblamiento: congela parejas
       if (!S.frozen) _finalizePairsOnce();
 
       // Reloj global
       S.time += dt;
-
-      const dtMs = Math.max(0, dt * 1000);
-      const animSpeed = 0.0035 * dtMs;
+      const speed = (dt <= 0) ? 0 : clamp(dt / OPEN_CLOSE_SECONDS, 0, 1);
       for (const elev of S.list){
         if (!elev || elev.dead) continue;
         elev.state = elev.state || { open: false, openProgress: 0 };
         const st = elev.state;
-        const cooldown = Number.isFinite(elev._cooldown) ? elev._cooldown : 0;
-        if (cooldown > 0){
-          elev._cooldown = Math.max(0, cooldown - dt);
+        const busyRemaining = Math.max(0, (Number.isFinite(elev.busyUntil) ? elev.busyUntil : 0) - S.time);
+        if (busyRemaining > 0) {
           st.open = true;
-        } else if (st.open) {
+        } else if (!elev.manualHold) {
           st.open = false;
+          elev.active = false;
         }
-        if (animSpeed > 0){
-          st.openProgress += (st.open ? animSpeed : -animSpeed);
+        if (speed > 0){
+          st.openProgress += (st.open ? speed : -speed);
           if (st.openProgress < 0) st.openProgress = 0;
           if (st.openProgress > 1) st.openProgress = 1;
         }
-        elev.open = st.openProgress >= 0.5;
-      }
-
-      // ¿toca activar una pareja al azar?
-      if (S.time >= S.nextActivationAt){
-        _activateRandomPair();
-        S.nextActivationAt = S.time + S.activationCooldown; // siguiente dentro de 10 min
+        elev.open = st.openProgress >= 0.65;
+        elev.lightState = elev.locked ? 'locked'
+          : (busyRemaining > 0 ? 'busy' : 'ready');
+        elev._pulse = (elev._pulse || 0) + dt * (elev.lightState === 'busy' ? 6 : 2);
+        if (elev._pulse > Math.PI * 4) elev._pulse -= Math.PI * 4;
       }
     },
 
     // Fuerza activación inmediata de una pareja concreta (para debug)
     forceActivate(pairId){
-      if (!pairId) return _activateRandomPair();
-      _teleportNowPair(pairId);
+      if (!pairId) return false;
+      if (!S.frozen) _finalizePairsOnce();
+      return _teleportNowPair(pairId);
     },
 
     // Debug / introspección
     getPairs(){ return Object.freeze({ ...S.pairs }); },
     freezePairs(){ S.frozen = true; },
-    setGlobalCooldownSeconds(sec){ S.activationCooldown = Math.max(10, sec|0); },
-    setAllowObjects(v){ S.allowObjects = !!v; }
+    setAllowObjects(v){ S.allowObjects = !!v; },
+    travel
   };
 
   W.Entities = W.Entities || {};

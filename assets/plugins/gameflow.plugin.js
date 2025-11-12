@@ -208,7 +208,6 @@
     zooming: false,
     zoomPhase: 0,
     zoomTimer: 0,
-    finalPillSpawned: false,
     finalDelivered: false,
     // Boss y cart detectados
     boss: null,
@@ -224,7 +223,7 @@
       zoomToBossMs: 1500,
       holdOnBossMs: 900,
       zoomBackMs: 900,
-      cartBossTiles: 2.0
+      cartBossTiles: 1.5
     },
     readyOverlayActive: false
   };
@@ -287,15 +286,10 @@
         tickZoom(dt);
       }
 
-      // 4) Spawn de la pastilla final al acercar el carro de urgencias
-      if (S.fogFaded && !S.finalPillSpawned) {
-        trySpawnFinalPillWhenCartNearBoss();
-      }
-
-      // 5) Entrega de la pastilla final al boss
+      // 4) Detectar entrega del carro de urgencias al paciente crítico
       autoDetectFinalDelivery();
 
-      // 6) Victoria de nivel
+      // 5) Victoria de nivel
       if (S.finalDelivered) {
         onLevelComplete();
       }
@@ -351,7 +345,6 @@
         deliveredPatients: S.deliveredPatients,
         allDelivered: S.allDelivered,
         bossDoorOpened: S.bossDoorOpened,
-        finalPillSpawned: S.finalPillSpawned,
         finalDelivered: S.finalDelivered,
         victory: S.victory,
         gameOver: S.gameOver,
@@ -392,7 +385,6 @@
     S.zooming = false;
     S.zoomPhase = 0;
     S.zoomTimer = 0;
-    S.finalPillSpawned = false;
     S.finalDelivered = false;
     S.victory = false;
     S.gameOver = false;
@@ -451,20 +443,41 @@
   // Puerta del boss: cerrar al inicio, abrir en progreso
   function lockBossDoor() {
     if (!S.bossDoor) return;
+    try { window.DoorsAPI?.setLocked?.(S.bossDoor, true); } catch (_) {}
     S.bossDoor.open = false;
     S.bossDoor.solid = true;
     S.bossDoor.color = S.bossDoor.colorClosed || '#db6d28';
     if (S.bossDoor.spriteKey) S.bossDoor.spriteKey = '--sprite-door-closed';
+    if (S.bossDoor.state) {
+      S.bossDoor.state.open = false;
+      S.bossDoor.state.holdOpen = false;
+    }
   }
   function openBossDoor() {
     if (S.bossDoorOpened) return;
     S.bossDoorOpened = true;
     S.urgenciasOpen = true;
-    if (S.bossDoor) {
-      S.bossDoor.open = true;
-      S.bossDoor.solid = false;
-      S.bossDoor.color = S.bossDoor.colorOpen || '#3fb950';
-      if (S.bossDoor.spriteKey) S.bossDoor.spriteKey = '--sprite-door-open';
+    let openedDoor = null;
+    try {
+      const opened = window.Doors?.openUrgencias?.(S.G);
+      if (opened && Array.isArray(S.G?.doors)) {
+        openedDoor = S.G.doors.find(d => d && (d.bossDoor || d.isBossDoor || d.tag === 'bossDoor')) || null;
+      }
+    } catch (_) {}
+    const door = openedDoor || S.bossDoor;
+    if (door) {
+      S.bossDoor = door;
+      door.locked = false;
+      door.open = true;
+      door.solid = false;
+      door.color = door.colorOpen || '#3fb950';
+      if (door.spriteKey) door.spriteKey = '--sprite-door-open';
+      if (door.state) {
+        door.state.open = true;
+        door.state.holdOpen = true;
+        door.state.autoCloseTimer = 0;
+        door.state.autoCloser = null;
+      }
     }
     try {
       const level = (S.G && S.G.level) || S.level || 1;
@@ -501,12 +514,16 @@
     const ready = (stats.remainingPatients || 0) === 0 && (stats.activeFuriosas || 0) === 0;
     if (ready) {
       openBossDoor();
-      try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
     } else {
       if (S.bossDoor) {
+        try { window.DoorsAPI?.setLocked?.(S.bossDoor, true); } catch (_) {}
         S.bossDoor.open = false;
         S.bossDoor.solid = true;
         if (S.bossDoor.spriteKey) S.bossDoor.spriteKey = '--sprite-door-closed';
+        if (S.bossDoor.state) {
+          S.bossDoor.state.open = false;
+          S.bossDoor.state.holdOpen = false;
+        }
       }
       S.bossDoorOpened = false;
       S.urgenciasOpen = false;
@@ -605,111 +622,35 @@
     S.allDelivered = ready;
   }
 
-  // Spawn de la pastilla final junto al boss cuando el carro de urgencias está cerca
-  function trySpawnFinalPillWhenCartNearBoss() {
-    if (!S.boss) return;
-    const cart = S.emergencyCart || findEmergencyCart();
-    if (!cart) return;
-    const c = centerOf(cart);
-    const b = centerOf(S.boss);
-    const tiles = Math.sqrt(dist2(c.x, c.y, b.x, b.y)) / TILE;
-    if (tiles <= S.opts.cartBossTiles) {
-      spawnFinalPillNearBoss();
-      S.finalPillSpawned = true;
-    }
-  }
-
   function findEmergencyCart() {
     const G = S.G;
     if (!G || !Array.isArray(G.entities)) return null;
     return G.entities.find(e => e.kind === ENT.CART && (e.cartType === 'emergency' || e.cart === 'urgencias' || e.tag === 'emergency')) || null;
   }
 
-  function spawnFinalPillNearBoss() {
-    const G = S.G;
-    if (!G || !S.boss) return;
-    const pos = centerOf(S.boss);
-    const item = {
-      kind: ENT.ITEM,
-      itemKey: 'pill_final',
-      type: 'quest',
-      spriteKey: '--sprite-pill-final',
-      x: pos.x + TILE * 0.5,
-      y: pos.y,
-      w: 20, h: 20,
-      vx: 0, vy: 0,
-      pickup: true,
-      quest: true
-    };
-    if (!Array.isArray(G.entities)) G.entities = [];
-    G.entities.push(item);
-    // Partículas sutiles si hay sistema
-    if (G.particles && typeof G.particles.spawn === 'function') {
-      for (let i = 0; i < 10; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const sp = 60 + Math.random() * 100;
-        G.particles.spawn({
-          x: item.x + item.w / 2,
-          y: item.y + item.h / 2,
-          vx: Math.cos(ang) * sp,
-          vy: Math.sin(ang) * sp,
-          size: 2 + Math.random() * 2,
-          life: 500 + Math.random() * 400,
-          color: '#ffd1dc'
-        });
-      }
-    }
-  }
-
-  // Detección automática de entrega de pastilla final al boss
+  // Detección automática de entrega del carro de urgencias al paciente crítico
   function autoDetectFinalDelivery() {
     if (S.finalDelivered) return;
     const G = S.G;
-    if (!G || !Array.isArray(G.entities) || !S.boss) return;
+    if (!G || !Array.isArray(G.entities) || !S.boss || !S.bossDoorOpened) return;
 
-    // Si el juego tiene inventario y marca boss.cured, ya está
-    if (S.boss.cured || S.boss.finalPillGiven) {
+    const cart = S.emergencyCart || findEmergencyCart();
+    const patient = S.boss;
+    if (!cart || !patient) return;
+
+    const cartCenter = centerOf(cart);
+    const patientCenter = centerOf(patient);
+    const tiles = Math.sqrt(dist2(cartCenter.x, cartCenter.y, patientCenter.x, patientCenter.y)) / TILE;
+    if (tiles <= S.opts.cartBossTiles) {
       S.finalDelivered = true;
-      return;
+      if (patient) {
+        patient.cured = true;
+        patient.finalPillGiven = true;
+      }
+      cart.delivered = true;
+      try { window.AudioAPI?.play?.('deliver_ok', { volume: 0.9, tag: 'cart_delivery' }); } catch (_) {}
+      try { window.DialogAPI?.system?.('Paciente crítico estabilizado. ¡Entrega completada!', { ms: 4200 }); } catch (_) {}
     }
-
-    // Si existe el ítem "pill_final" y el jugador lo usa cerca del boss
-    const player = G.player;
-    const hasInInventory = !!(player && (player.carryItemKey === 'pill_final' || player.finalPill === true));
-    const pillEntity = G.entities.find(e => e.kind === ENT.ITEM && e.itemKey === 'pill_final' && !e.dead);
-    const nearBoss = (ent) => {
-      const p = centerOf(ent);
-      const b = centerOf(S.boss);
-      return dist2(p.x, p.y, b.x, b.y) <= (TILE * 1.6) * (TILE * 1.6);
-    };
-
-    // Caso 1: en inventario + acción
-    const inputUse = readUseInput();
-    if (hasInInventory && inputUse && nearBoss(player)) {
-      deliverFinalPill();
-      return;
-    }
-
-    // Caso 2: la pastilla está en el suelo y el boss la toca (auto-curado)
-    if (pillEntity && aabbOverlap(pillEntity, S.boss)) {
-      deliverFinalPill();
-      pillEntity.dead = true;
-      return;
-    }
-  }
-
-  function readUseInput() {
-    // Intenta leer input de uso/acción E
-    if (S.G && S.G.input && (S.G.input.use || S.G.input.interact)) return true;
-    if (W.keys && (W.keys['e'] || W.keys['E'])) return true;
-    return false;
-  }
-
-  function deliverFinalPill() {
-    S.finalDelivered = true;
-    if (S.boss) { S.boss.cured = true; S.boss.finalPillGiven = true; }
-    // Audio/UI
-    if (W.Audio && W.Audio.sfx) { try { W.Audio.sfx('quest_complete'); } catch (e) {} }
   }
 
   // Fin de nivel y avance
