@@ -338,7 +338,7 @@
   }
 
   function updateOne(e, dt) {
-    if (!e || e.dead) return;
+    if (!e || e.dead || e._inactive) return;
 
     // temporizadores IA
     e.ai.cd = Math.max(0, e.ai.cd - dt);
@@ -361,7 +361,7 @@
   }
 
   function list() {
-    return (G.entities || []).filter(e => e && !e.dead && (e.role === 'familiar' || e.spriteKey === CFG.skin));
+    return (G.entities || []).filter(e => e && !e.dead && !e._inactive && (e.role === 'familiar' || e.spriteKey === CFG.skin));
   }
 
   function updateAll(dt) {

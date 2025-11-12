@@ -2,6 +2,34 @@
   const API = window.PuppetAPI; if (!API) return;
 
   const TAU = Math.PI * 2;
+  const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+  const clamp255 = (v) => Math.max(0, Math.min(255, Number.isFinite(v) ? v | 0 : 0));
+  function safeAlpha(a, def = 1) {
+    return Number.isFinite(a) ? clamp01(a) : def;
+  }
+  function safeRGBA(r, g, b, a) {
+    return `rgba(${clamp255(r)},${clamp255(g)},${clamp255(b)},${safeAlpha(a)})`;
+  }
+  function safeColorStop(grad, stop, color) {
+    if (!grad) return;
+    try {
+      grad.addColorStop(clamp01(stop), color);
+    } catch (_) {
+      // ignore invalid stop
+    }
+  }
+  function safeEllipse(ctx, cx, cy, rx, ry, rot = 0, start = 0, end = TAU) {
+    if (!ctx) return false;
+    rx = Math.abs(Number(rx));
+    ry = Math.abs(Number(ry));
+    if (!(rx > 0) || !(ry > 0)) return false;
+    try {
+      ctx.ellipse(cx, cy, rx, ry, rot, start, end);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
   const Cache = Object.create(null);
   const Missing = new Set();
 
@@ -50,8 +78,7 @@
     ctx.fillStyle = color || '#455264';
     const headH = h * 0.32;
     ctx.beginPath();
-    ctx.ellipse(0, -h * 0.28, w * 0.28, headH * 0.5, 0, 0, TAU);
-    ctx.fill();
+    if (safeEllipse(ctx, 0, -h * 0.28, w * 0.28, headH * 0.5, 0, 0, TAU)) ctx.fill();
     ctx.beginPath();
     ctx.moveTo(-w * 0.22, -h * 0.08);
     ctx.quadraticCurveTo(0, headH * 0.25, w * 0.22, -h * 0.08);
@@ -60,18 +87,19 @@
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(0, h * 0.38, w * 0.22, h * 0.18, 0, 0, TAU);
-    ctx.fill();
+    if (safeEllipse(ctx, 0, h * 0.38, w * 0.22, h * 0.18, 0, 0, TAU)) ctx.fill();
     ctx.restore();
   }
 
-  function toScreen(cam, e){
-    const zoom = cam?.zoom ?? 1;
-    const cw = cam?.w ?? 0;
-    const ch = cam?.h ?? 0;
-    const cx = ((e.x + (e.w || 0) * 0.5) - (cam?.x ?? 0)) * zoom + cw * 0.5;
-    const cy = ((e.y + (e.h || 0) * 0.5) - (cam?.y ?? 0)) * zoom + ch * 0.5;
-    const scale = zoom * (e.puppet?.scale ?? 1) * (e.puppet?.zscale ?? 1) * (e.scale ?? 1);
+  function toScreen(_cam, e){
+    const tile = window.G?.TILE_SIZE || window.TILE_SIZE || window.TILE || 32;
+    const w = Number(e?.w);
+    const h = Number(e?.h);
+    const width = Number.isFinite(w) && w > 0 ? w : tile;
+    const height = Number.isFinite(h) && h > 0 ? h : tile;
+    const cx = (Number(e?.x) || 0) + width * 0.5;
+    const cy = (Number(e?.y) || 0) + height * 0.5;
+    const scale = (e?.puppet?.scale ?? 1) * (e?.puppet?.zscale ?? 1) * (e?.scale ?? 1);
     return [cx, cy, scale];
   }
 
@@ -783,8 +811,7 @@
       ctx.globalAlpha = 0.15;
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.ellipse(0, 6 * s, 12 * s + st.belly, 8 * s + st.belly * 0.8, 0, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, 0, 6 * s, 12 * s + st.belly, 8 * s + st.belly * 0.8, 0, 0, TAU)) ctx.fill();
       ctx.restore();
     },
     shadowRadius: 14,
@@ -904,8 +931,7 @@
           ctx.globalAlpha = 0.4 + 0.4 * Math.sin(st.time * 8);
           ctx.fillStyle = 'rgba(255,80,80,1)';
           ctx.beginPath();
-          ctx.ellipse(0, 0, w * 0.25, h * 0.18, 0, 0, TAU);
-          ctx.fill();
+          if (safeEllipse(ctx, 0, 0, w * 0.25, h * 0.18, 0, 0, TAU)) ctx.fill();
           ctx.restore();
         }
         if (fade >= 0.99){
@@ -991,12 +1017,10 @@
         ctx.translate(0, -6 * s);
         ctx.fillStyle = '#9c9182';
         ctx.beginPath();
-        ctx.ellipse(-4 * s, 4 * s, 12 * s, 7 * s, 0, 0, TAU);
-        ctx.fill();
+        if (safeEllipse(ctx, -4 * s, 4 * s, 12 * s, 7 * s, 0, 0, TAU)) ctx.fill();
         ctx.fillStyle = '#b8aea0';
         ctx.beginPath();
-        ctx.ellipse(4 * s, 5 * s, 9 * s, 6 * s, 0, 0, TAU);
-        ctx.fill();
+        if (safeEllipse(ctx, 4 * s, 5 * s, 9 * s, 6 * s, 0, 0, TAU)) ctx.fill();
         ctx.save();
         ctx.strokeStyle = '#8a6151';
         ctx.lineWidth = 2.2 * s;
@@ -1007,16 +1031,13 @@
         ctx.restore();
         ctx.fillStyle = '#cfc4b6';
         ctx.beginPath();
-        ctx.ellipse(12 * s + st.lunge * 2 * s, 2 * s, 6.8 * s, 5.4 * s, 0, 0, TAU);
-        ctx.fill();
+        if (safeEllipse(ctx, 12 * s + st.lunge * 2 * s, 2 * s, 6.8 * s, 5.4 * s, 0, 0, TAU)) ctx.fill();
         ctx.fillStyle = '#f3b1bb';
         ctx.beginPath();
-        ctx.ellipse(15 * s, -1.6 * s, 2.6 * s, 2.6 * s, 0, 0, TAU);
-        ctx.fill();
+        if (safeEllipse(ctx, 15 * s, -1.6 * s, 2.6 * s, 2.6 * s, 0, 0, TAU)) ctx.fill();
         ctx.fillStyle = '#2a2a2a';
         ctx.beginPath();
-        ctx.ellipse(9.8 * s, -0.5 * s, 1.2 * s, 1.6 * s, 0, 0, TAU);
-        ctx.fill();
+        if (safeEllipse(ctx, 9.8 * s, -0.5 * s, 1.2 * s, 1.6 * s, 0, 0, TAU)) ctx.fill();
         ctx.restore();
       }
     };
@@ -1061,20 +1082,16 @@
       ctx.globalAlpha = 0.3 + Math.abs(st.wing) * 0.4;
       ctx.fillStyle = '#d2f3ff';
       ctx.beginPath();
-      ctx.ellipse(-4.5 * s, -6 * s, 5 * s * (1 + st.wing * 0.3), 11 * s, -0.45, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, -4.5 * s, -6 * s, 5 * s * (1 + st.wing * 0.3), 11 * s, -0.45, 0, TAU)) ctx.fill();
       ctx.beginPath();
-      ctx.ellipse(4.5 * s, -6 * s, 5 * s * (1 - st.wing * 0.3), 11 * s, 0.45, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, 4.5 * s, -6 * s, 5 * s * (1 - st.wing * 0.3), 11 * s, 0.45, 0, TAU)) ctx.fill();
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#646464';
       ctx.beginPath();
-      ctx.ellipse(-3 * s, 0, 6 * s, 3.5 * s, 0.2, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, -3 * s, 0, 6 * s, 3.5 * s, 0.2, 0, TAU)) ctx.fill();
       ctx.fillStyle = '#2b2b2b';
       ctx.beginPath();
-      ctx.ellipse(6 * s, -1.6 * s, 3 * s, 3.4 * s, 0, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, 6 * s, -1.6 * s, 3 * s, 3.4 * s, 0, 0, TAU)) ctx.fill();
       ctx.strokeStyle = '#2f2f2f';
       ctx.lineWidth = 1.5 * s;
       ctx.beginPath();
@@ -1271,9 +1288,11 @@
       ctx.save();
       ctx.translate(0, -16 * s);
       ctx.fillStyle = `rgba(255,80,70,${0.5 + 0.4 * pulse})`;
-      ctx.beginPath(); ctx.ellipse(-8 * s, 0, 5 * s, 3 * s, 0, 0, TAU); ctx.fill();
+      ctx.beginPath();
+      if (safeEllipse(ctx, -8 * s, 0, 5 * s, 3 * s, 0, 0, TAU)) ctx.fill();
       ctx.fillStyle = `rgba(70,140,255,${0.6 + 0.4 * (1 - pulse)})`;
-      ctx.beginPath(); ctx.ellipse(8 * s, 0, 5 * s, 3 * s, 0, 0, TAU); ctx.fill();
+      ctx.beginPath();
+      if (safeEllipse(ctx, 8 * s, 0, 5 * s, 3 * s, 0, 0, TAU)) ctx.fill();
       ctx.restore();
     }
   });
@@ -1350,8 +1369,7 @@
       drawShadow(ctx, 7, sc, 0.22, 0.18);
       ctx.fillStyle = 'rgba(110,160,230,0.45)';
       ctx.beginPath();
-      ctx.ellipse(0, 0, w * 0.5 * st.ripple, h * 0.35 * st.ripple, 0, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, 0, 0, w * 0.5 * st.ripple, h * 0.35 * st.ripple, 0, 0, TAU)) ctx.fill();
       ctx.restore();
     }
   });
@@ -1439,8 +1457,7 @@
       drawSprite(ctx, st.skin, w, h, '#d7e4f6', st.tint);
       ctx.fillStyle = 'rgba(170,210,255,0.8)';
       ctx.beginPath();
-      ctx.ellipse(0, st.drop, 3 * total, 4.5 * total, 0, 0, TAU);
-      ctx.fill();
+      if (safeEllipse(ctx, 0, st.drop, 3 * total, 4.5 * total, 0, 0, TAU)) ctx.fill();
       ctx.restore();
     }
   });
@@ -1491,8 +1508,8 @@
       ctx.save();
       ctx.translate(cx, cy);
       const grad = ctx.createRadialGradient(0, 0, radius * 0.1, 0, 0, radius);
-      grad.addColorStop(0, `rgba(255,255,210,${0.45 * st.intensity * st.flick})`);
-      grad.addColorStop(1, 'rgba(255,255,210,0)');
+      safeColorStop(grad, 0, safeRGBA(255, 255, 210, 0.45 * st.intensity * st.flick));
+      safeColorStop(grad, 1, safeRGBA(255, 255, 210, 0));
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(0, 0, radius, 0, TAU); ctx.fill();
       ctx.restore();

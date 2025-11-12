@@ -32,6 +32,14 @@
     return tag;
   }
 
+  function createBufferSourceSafe(ctx){
+    try {
+      return ctx?.createBufferSource?.() || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   const DEFAULT_URLS = {
     // --- UI
     ui_click: SILENCE_URL,
@@ -171,7 +179,8 @@
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const ab = await res.arrayBuffer();
               shared = await this.ctx.decodeAudioData(ab);
-            } catch (_) {
+            } catch (err) {
+              console.warn('[AudioAPI] missing or invalid audio buffer', key, url, err);
               shared = createSilentBuffer(this.ctx);
             }
           } else {
@@ -192,7 +201,8 @@
               base = new Audio(url);
               base.preload = 'auto';
               base.load();
-            } catch (_) {
+            } catch (err) {
+              console.warn('[AudioAPI] missing audio element', key, url, err);
               base = createSilentHtmlAudio();
             }
           } else {
@@ -231,8 +241,12 @@
 
       if (hasWA) {
         const buf = this.buffers[key];
-        if (!buf) return null;
-        const src = this.ctx.createBufferSource();
+        if (!buf) {
+          console.warn('[AudioAPI] audio buffer not available', key);
+          return null;
+        }
+        const src = createBufferSourceSafe(this.ctx);
+        if (!src) return null;
         src.buffer = buf;
         src.loop = !!loop;
 

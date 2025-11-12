@@ -305,6 +305,7 @@
   }
 
   function updateCleaner(e, dt){
+    if (!e || e._inactive) return;
     const now = performance.now();
     const BC = BAL().cleaner;
     const BW = BAL().wet;
@@ -387,7 +388,7 @@
     // IA / movimiento limpiadoras
     for (let i=0;i<cleaners.length;i++){
       const e = cleaners[i];
-      if (!e || e.dead) continue;
+      if (!e || e.dead || e._inactive) continue;
       updateCleaner(e, dt);
     }
   }

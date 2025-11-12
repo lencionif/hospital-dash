@@ -253,6 +253,7 @@
 
   // ---------------- IA paso-a-paso ----------------
   function updateOne(t, dt){
+    if (!t || t._inactive) return;
     const B=BAL();
 
     // 1) Evitar peligros

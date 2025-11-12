@@ -141,7 +141,10 @@
     patientsPending: 0,
     patientsCured: 0,
     patientsFurious: 0,
-    cycleSeconds: 0
+    cycleSeconds: 0,
+    TILE_SIZE: TILE,
+    visualRadiusTiles: 8,
+    visualRadiusPx: 8 * TILE
   };
   window.G = G; // (expuesto)
 
@@ -596,6 +599,30 @@
   // Cámara
   const camera = { x: 0, y: 0, zoom: 0.45 }; // ⬅️ arranca ya alejado
   G.camera = camera;
+
+  function getCameraState(){
+    const base = G.camera || camera || { x: 0, y: 0, zoom: 1 };
+    const zoom = Number.isFinite(base.zoom) && base.zoom > 0 ? base.zoom : 1;
+    const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
+    return {
+      cam: base,
+      zoom,
+      offsetX: VIEW_W * 0.5 + (shake.x || 0),
+      offsetY: VIEW_H * 0.5 + (shake.y || 0)
+    };
+  }
+
+  function applyWorldCamera(ctx){
+    if (!ctx) return;
+    const state = getCameraState();
+    const cam = state.cam || {};
+    const cx = Number(cam.x) || 0;
+    const cy = Number(cam.y) || 0;
+    const tx = Math.round(state.offsetX - cx * state.zoom);
+    const ty = Math.round(state.offsetY - cy * state.zoom);
+    ctx.setTransform(state.zoom, 0, 0, state.zoom, tx, ty);
+  }
+  window.applyWorldCamera = applyWorldCamera;
 
   function worldToScreenBasic(worldX, worldY, cam = camera, viewportWidth = VIEW_W, viewportHeight = VIEW_H) {
     const ref = cam || camera;
@@ -2160,10 +2187,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // cámara
     ctx2d.save();
-    const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
-    ctx2d.translate(VIEW_W/2 + (shake.x || 0), VIEW_H/2 + (shake.y || 0));
-    ctx2d.scale(camera.zoom, camera.zoom);
-    ctx2d.translate(-camera.x, -camera.y);
+    applyWorldCamera(ctx2d);
 
     // mundo
     drawTiles(ctx2d);
@@ -3335,6 +3359,7 @@ function drawEntities(c2){
 
   // Exponer algunas APIs esperadas por otros plugins/sistemas
   window.TILE_SIZE = TILE;
+  G.TILE_SIZE = TILE;
   window.ENT = ENT;                 // para plugins/sprites
   window.G = G;
   window.camera = camera;

@@ -104,7 +104,7 @@
   }
 
   function update(door, state, dt){
-    if (!door) return;
+    if (!door || door._inactive) return;
     const st = door.state || (door.state = { open: false, openProgress: 0, autoCloseTimer: 0, autoCloser: null });
     const delta = Math.max(0, Number.isFinite(dt) ? dt : 0);
     if (st.autoCloseTimer > 0 && !door.bossDoor){

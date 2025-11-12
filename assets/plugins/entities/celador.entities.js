@@ -332,7 +332,7 @@
 
   // ---------- Update por entidad ----------
   function update(e, dt, all=(G.entities||[])){
-    if (e.dead) return;
+    if (!e || e.dead || e._inactive) return;
     const b = B();
     const hero = selectHero();
 
