@@ -89,6 +89,14 @@
     if (typeof player.invuln === 'number') player.invuln = Math.max(player.invuln, invuln);
     else player.invuln = invuln;
 
+    try {
+      const heroAPI = window.Entities?.Hero;
+      heroAPI?.notifyDamage?.(player, meta);
+      if (newHealth <= 0) {
+        heroAPI?.setDeathCause?.(player, meta.source || meta.attacker || null);
+      }
+    } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Damage] notify hero anim error', err); }
+
     if (meta.knockbackFrom){
       knockback(player, meta.knockbackFrom, meta.knockbackPower);
     }

@@ -159,6 +159,98 @@
   }
 
   // ===== Daño / curación ===========================================================
+  const HERO_ANIM_PROFILE = {
+    enrique: {
+      attack: 0.75,
+      attackWindup: 0.18,
+      pushPenalty: 0.86,
+      pushEase: 0.6,
+      talk: 0.8,
+      consume: { eat: 1.1, power: 1.2 },
+      hurt: 0.55,
+      flinch: 0.18,
+      idleEasing: 0.32
+    },
+    roberto: {
+      attack: 0.48,
+      attackWindup: 0.1,
+      pushPenalty: 0.52,
+      pushEase: 0.35,
+      talk: 0.55,
+      consume: { eat: 0.7, power: 0.8 },
+      hurt: 0.4,
+      flinch: 0.12,
+      idleEasing: 0.16
+    },
+    francesco: {
+      attack: 0.6,
+      attackWindup: 0.14,
+      pushPenalty: 0.7,
+      pushEase: 0.45,
+      talk: 0.7,
+      consume: { eat: 0.95, power: 1.0 },
+      hurt: 0.5,
+      flinch: 0.15,
+      idleEasing: 0.24
+    }
+  };
+
+  function ensureAnimState(e) {
+    if (!e) return null;
+    if (!e._heroAnimState) {
+      const profile = HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+      e._heroAnimState = {
+        profile,
+        action: 'idle',
+        orientation: 'down',
+        dir: 1,
+        moving: false,
+        attackTimer: 0,
+        attackWindup: 0,
+        pushTimer: 0,
+        pushHeavy: false,
+        talkTimer: 0,
+        hurtTimer: 0,
+        flinchTimer: 0,
+        consumeTimer: 0,
+        consumeType: null,
+        deathCause: null,
+        deathTimer: 0,
+        sweating: false,
+        smoke: false,
+        sparkle: false,
+        lastSpeedPenalty: 1,
+        dirty: true
+      };
+    }
+    return e._heroAnimState;
+  }
+
+  function mapDamageSourceToCause(source) {
+    if (!source) return 'generic';
+    if (typeof source === 'string') {
+      const s = source.toLowerCase();
+      if (s.includes('fire') || s.includes('fuego')) return 'fire';
+      if (s.includes('explos') || s.includes('boom')) return 'explosion';
+      if (s.includes('slip') || s.includes('ice') || s.includes('wet') || s.includes('resbal')) return 'slip';
+      if (s.includes('electric')) return 'shock';
+      if (s.includes('enemy') || s.includes('hit') || s.includes('physical')) return 'impact';
+      if (s.includes('poison')) return 'poison';
+      if (s.includes('mosquito')) return 'sting';
+      if (s.includes('rat')) return 'bite';
+    }
+    if (typeof source === 'object') {
+      const kind = String(source.kind || source.kindName || source.type || '').toLowerCase();
+      if (kind.includes('fire') || kind.includes('flame')) return 'fire';
+      if (kind.includes('explos') || kind.includes('boom')) return 'explosion';
+      if (kind.includes('mosquito')) return 'sting';
+      if (kind.includes('rat')) return 'bite';
+      if (kind.includes('water') || kind.includes('ice')) return 'slip';
+      if (kind.includes('electric')) return 'shock';
+    }
+    return 'generic';
+  }
+
   function applyDamage(e, amount, source) {
     if (!e || e.dead) return;
     const t = Date.now();
@@ -166,11 +258,203 @@
     e._lastHitAt = t;
 
     e.hp = clamp(e.hp - Math.max(0, amount|0), 0, e.hpMax);
-    if (e.hp <= 0) { e.dead = true; try{ e.onDestroy(); }catch(_){}; }
+    const st = ensureAnimState(e);
+    if (st){
+      st.hurtTimer = Math.max(st.hurtTimer, (st.profile?.hurt ?? 0.5));
+      st.flinchTimer = Math.max(st.flinchTimer, (st.profile?.flinch ?? 0.15));
+      st.deathCause = st.deathCause || mapDamageSourceToCause(source);
+      st.dirty = true;
+    }
+    if (e.hp <= 0) {
+      e.dead = true;
+      if (st){
+        st.deathCause = mapDamageSourceToCause(source);
+        st.deathTimer = 0;
+        st.dirty = true;
+      }
+      try{ e.onDestroy(); }catch(_){};
+    }
   }
-  function heal(e, amount) {
+  function heal(e, amount, opts) {
     if (!e || e.dead) return;
-    e.hp = clamp(e.hp + Math.max(0, amount||0), 0, e.hpMax);
+    const val = Math.max(0, amount||0);
+    e.hp = clamp(e.hp + val, 0, e.hpMax);
+    const st = ensureAnimState(e);
+    const profile = st?.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+    const cause = (opts && typeof opts === 'object' && opts.cause) || null;
+    if (st && val > 0) {
+      const type = cause === 'powerup' ? 'powerup' : 'eat';
+      const duration = (type === 'powerup'
+        ? (profile.consume?.power ?? 1.0)
+        : (profile.consume?.eat ?? 0.9));
+      st.consumeTimer = Math.max(st.consumeTimer, duration);
+      st.consumeType = type;
+      st.sparkle = type === 'powerup';
+      st.dirty = true;
+    }
+  }
+
+  function updateHeroAnimation(e, dt){
+    const st = ensureAnimState(e);
+    if (!st) return;
+    const prof = st.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+    const speed = Math.hypot(e.vx || 0, e.vy || 0);
+    st.moving = speed > 8;
+    if (typeof e.facing === 'string') {
+      const f = e.facing.toUpperCase();
+      if (f === 'N') st.orientation = 'up';
+      else if (f === 'S') st.orientation = 'down';
+      else st.orientation = 'side';
+      st.dir = (f === 'W') ? -1 : (f === 'E' ? 1 : st.dir || 1);
+    } else if (typeof e.lookAngle === 'number') {
+      const ang = e.lookAngle;
+      const deg = ang * 180 / Math.PI;
+      if (deg > 45 && deg <= 135) st.orientation = 'down';
+      else if (deg <= -45 && deg > -135) st.orientation = 'up';
+      else st.orientation = 'side';
+      st.dir = (deg < -90 || deg > 90) ? -1 : 1;
+    }
+
+    st.attackTimer = Math.max(0, st.attackTimer - dt);
+    if (st.attackTimer <= 0) {
+      e.isAttacking = false;
+      st.attackWindup = 0;
+    } else if (st.attackWindup > 0) {
+      st.attackWindup = Math.max(0, st.attackWindup - dt);
+    }
+
+    const pushAnimT = (typeof e.pushAnimT === 'number') ? e.pushAnimT : 0;
+    if (pushAnimT > 0.02) {
+      st.pushTimer = Math.max(st.pushTimer, pushAnimT);
+    }
+    st.pushTimer = Math.max(0, st.pushTimer - dt);
+    if (st.pushTimer <= 0 && e.pushing) e.pushing = false;
+
+    st.talkTimer = Math.max(0, st.talkTimer - dt);
+    if (st.talkTimer <= 0 && e.isTalking) e.isTalking = false;
+
+    st.hurtTimer = Math.max(0, st.hurtTimer - dt);
+    st.flinchTimer = Math.max(0, st.flinchTimer - dt);
+    if (st.flinchTimer <= 0) st.deathCause = st.deathCause || null;
+
+    st.consumeTimer = Math.max(0, st.consumeTimer - dt);
+    if (st.consumeTimer <= 0) {
+      st.consumeType = null;
+      st.sparkle = false;
+    }
+
+    if (e.dead) {
+      st.action = 'dead';
+      st.deathTimer += dt;
+    } else if (st.hurtTimer > 0) {
+      st.action = 'hurt';
+    } else if (st.attackTimer > 0 || e.isAttacking) {
+      st.action = 'attack';
+    } else if (st.consumeTimer > 0 && st.consumeType) {
+      st.action = st.consumeType === 'powerup' ? 'powerup' : 'eat';
+    } else if (st.pushTimer > 0 || e.pushing) {
+      st.action = 'push';
+    } else if (st.talkTimer > 0 || e.isTalking) {
+      st.action = 'talk';
+    } else if (st.moving) {
+      st.action = 'walk';
+    } else {
+      st.action = 'idle';
+    }
+
+    if (st.action !== 'push' && st.action !== 'attack') {
+      st.pushHeavy = false;
+    }
+
+    st.sweating = (st.pushTimer > 0.1 || e.pushing === true) && e.hero === 'roberto';
+    if (e.hero === 'enrique') {
+      st.sweating = st.pushTimer > 0.25 ? false : st.sweating;
+    }
+    st.smoke = e.dead && st.deathCause === 'fire';
+
+    // Ajusta velocidad efectiva al empujar según personaje
+    if ((st.pushTimer > 0 || e.pushing) && !e.dead) {
+      const penalty = Math.max(0.25, prof.pushPenalty || 0.6);
+      e.vx *= penalty;
+      e.vy *= penalty;
+      st.lastSpeedPenalty = penalty;
+    } else {
+      st.lastSpeedPenalty = 1;
+    }
+
+    st.dirty = true;
+  }
+
+  function startAttack(e, opts = {}) {
+    if (!e || e.dead) return;
+    const st = ensureAnimState(e);
+    const prof = st?.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+    const duration = Math.max(0.2, opts.duration || prof.attack || 0.6);
+    const windup = Math.max(0, opts.windup ?? prof.attackWindup ?? 0.12);
+    if (st) {
+      st.attackTimer = duration;
+      st.attackWindup = windup;
+      st.pushHeavy = !!opts.heavy;
+      st.dirty = true;
+    }
+    e.isAttacking = true;
+  }
+
+  function setTalking(e, active, duration) {
+    if (!e) return;
+    const st = ensureAnimState(e);
+    const prof = st?.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+    const time = Math.max(0.3, duration || prof.talk || 0.7);
+    if (active) {
+      e.isTalking = true;
+      if (st) {
+        st.talkTimer = Math.max(st.talkTimer, time);
+        st.dirty = true;
+      }
+    } else if (st) {
+      st.talkTimer = 0;
+      e.isTalking = false;
+      st.dirty = true;
+    }
+  }
+
+  function triggerPush(e, opts = {}) {
+    if (!e || e.dead) return;
+    const st = ensureAnimState(e);
+    const prof = st?.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+    const duration = Math.max(0.2, opts.duration || prof.pushEase || 0.5);
+    if (st) {
+      st.pushTimer = Math.max(st.pushTimer, duration);
+      st.pushHeavy = !!opts.heavy;
+      st.dirty = true;
+    }
+    e.pushing = true;
+  }
+
+  function notifyDamage(e, meta = {}) {
+    if (!e) return;
+    const st = ensureAnimState(e);
+    if (!st) return;
+    if (meta && meta.source) {
+      const cause = mapDamageSourceToCause(meta.source);
+      st.deathCause = cause;
+    }
+    const prof = st.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+    st.hurtTimer = Math.max(st.hurtTimer, (meta.duration || prof.hurt || 0.45));
+    st.flinchTimer = Math.max(st.flinchTimer, prof.flinch || 0.12);
+    st.dirty = true;
+  }
+
+  function setDeathCause(e, cause) {
+    if (!e) return;
+    const st = ensureAnimState(e);
+    if (!st) return;
+    st.deathCause = mapDamageSourceToCause(cause) || cause || 'generic';
+    st.dirty = true;
+  }
+
+  function getAnimationState(e){
+    return ensureAnimState(e);
   }
 
   // ===== API pública =======================================================================
@@ -201,6 +485,15 @@
         || window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { skin: `${key}.png` } });
       e.rigOk = true;
       attachFlashlight(e);
+      ensureAnimState(e);
+      updateHeroAnimation(e, 0);
+      const prevUpdate = typeof e.update === 'function' ? e.update.bind(e) : null;
+      e.update = function heroUpdate(dt){
+        if (prevUpdate) {
+          try { prevUpdate(dt); } catch(err){ console.warn('[Hero] prev update error', err); }
+        }
+        updateHeroAnimation(e, dt || 0);
+      };
       try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}
       return e;
     },
@@ -220,11 +513,28 @@
         || window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { skin: `${key}.png` } });
       e.rigOk = true;
       attachFlashlight(e);
+      ensureAnimState(e);
+      updateHeroAnimation(e, 0);
+      const prevUpdate = typeof e.update === 'function' ? e.update.bind(e) : null;
+      e.update = function followerUpdate(dt){
+        if (prevUpdate) {
+          try { prevUpdate(dt); } catch(err){ console.warn('[HeroFollower] prev update error', err); }
+        }
+        updateHeroAnimation(e, dt || 0);
+      };
       return e;
     },
 
     // Exponer utilidades (por si otras entidades las usan)
-    applyDamage, heal,
+    applyDamage,
+    heal,
+    startAttack,
+    setTalking,
+    triggerPush,
+    notifyDamage,
+    setDeathCause,
+    getAnimationState,
+    updateAnimation: updateHeroAnimation,
   };
 
   W.Entities = W.Entities || {};
