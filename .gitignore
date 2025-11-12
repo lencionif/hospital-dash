@@ -30,6 +30,7 @@ tmp/
 temp/
 *.zip
 *.7z
+docs/
 
 # Entornos
 .env

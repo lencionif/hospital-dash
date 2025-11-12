@@ -1,27 +1,130 @@
 // ./assets/plugins/puppet.plugin.js
 (function(){
+  const PuppetNS = window.Puppet || (window.Puppet = {});
+  const registry = PuppetNS.RIGS = PuppetNS.RIGS || Object.create(null);
   const rigs = new Map();
   const puppets = [];
   let needsSort = false;
 
+  const getNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now()
+    : Date.now();
+
+  function getTileSize(){
+    const size = window.G?.TILE_SIZE ?? window.TILE_SIZE ?? window.TILE ?? 32;
+    const num = Number(size);
+    return Number.isFinite(num) && num > 0 ? num : 32;
+  }
+
+  function resolveVisualRadiusTiles(){
+    const raw = Number(window.G?.visualRadiusTiles);
+    return Number.isFinite(raw) && raw > 0 ? raw : 8;
+  }
+
+  function resolveVisualRadiusPx(){
+    const G = window.G || {};
+    const px = Number(G.visualRadiusPx);
+    if (Number.isFinite(px) && px > 0) return px;
+    const tiles = resolveVisualRadiusTiles();
+    const tile = getTileSize();
+    const computed = Math.max(1, tiles * tile);
+    G.visualRadiusPx = computed;
+    return computed;
+  }
+
+  function computeHeroInfo(hero){
+    if (!hero) return null;
+    const tile = getTileSize();
+    const w = Number(hero.w);
+    const h = Number(hero.h);
+    const hw = Number.isFinite(w) && w > 0 ? w : tile;
+    const hh = Number.isFinite(h) && h > 0 ? h : tile;
+    const hx = (Number(hero.x) || 0) + hw * 0.5;
+    const hy = (Number(hero.y) || 0) + hh * 0.5;
+    return { hero, hx, hy };
+  }
+
+  function computeVisualContext(hero){
+    const base = computeHeroInfo(hero);
+    const radius = Math.max(1, resolveVisualRadiusPx());
+    const radiusSq = radius * radius;
+    const now = getNow();
+    if (!base) return { hero: null, hx: 0, hy: 0, radius, radiusSq, now };
+    return { ...base, radius, radiusSq, now };
+  }
+
+  function isEntityAlwaysActive(ent, now){
+    if (!ent) return false;
+    if (ent._alwaysUpdate === true) return true;
+    const awakeUntil = Number(ent._alwaysUpdateUntil);
+    return Number.isFinite(awakeUntil) && awakeUntil > now;
+  }
+
+  function withinVisualRadius(entity, heroInfo){
+    if (!entity) return false;
+    if (!heroInfo || !heroInfo.hero) return true;
+    if (entity === heroInfo.hero) return true;
+    const tile = getTileSize();
+    const w = Number(entity.w);
+    const h = Number(entity.h);
+    const width = Number.isFinite(w) && w > 0 ? w : tile;
+    const height = Number.isFinite(h) && h > 0 ? h : tile;
+    const ex = (Number(entity.x) || 0) + width * 0.5;
+    const ey = (Number(entity.y) || 0) + height * 0.5;
+    const dx = ex - heroInfo.hx;
+    const dy = ey - heroInfo.hy;
+    return (dx * dx + dy * dy) <= heroInfo.radiusSq;
+  }
+
+  function refreshEntityActivity(heroInfo){
+    const entities = window.G?.entities;
+    if (!Array.isArray(entities)) return;
+    const now = heroInfo?.now ?? getNow();
+    for (const ent of entities){
+      if (!ent) continue;
+      let active = true;
+      if (heroInfo?.hero && ent !== heroInfo.hero){
+        if (isEntityAlwaysActive(ent, now)) {
+          active = true;
+        } else {
+          active = withinVisualRadius(ent, heroInfo);
+        }
+      }
+      ent._inactive = !active;
+    }
+  }
+
+  function resolveRigName(name){
+    const key = typeof name === 'string' ? name : null;
+    if (key && registry[key]) return key;
+    return 'default';
+  }
+
   function registerRig(name, rig){
     if (!name || !rig) return;
     rigs.set(name, rig);
+    registry[name] = rig;
   }
 
   function detach(entity){
     if (!entity || !entity.puppet) return;
-    const idx = puppets.indexOf(entity.puppet);
+    const puppet = entity.puppet;
+    const idx = puppets.indexOf(puppet);
     if (idx >= 0) puppets.splice(idx, 1);
+    if (puppet && typeof puppet.dispose === 'function'){
+      try { puppet.dispose(); } catch (_) {}
+    }
     delete entity.puppet;
+    entity.rigOk = false;
   }
 
   function attach(entity, opts={}){
     if (!entity) return null;
     detach(entity);
+    const resolvedRig = resolveRigName(opts.rig || opts.name || entity.rigName);
     const puppet = {
       entity,
-      rigName: opts.rig || opts.name || null,
+      rigName: resolvedRig,
       scale: opts.scale ?? 1,
       z: opts.z ?? 0,
       zscale: opts.zscale ?? 1,
@@ -29,12 +132,15 @@
       state: null,
       time: 0
     };
+    puppet.dispose = function(){
+      const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
+      if (rig && typeof rig.dispose === 'function'){
+        try { rig.dispose(puppet.state, puppet.entity); } catch (_) {}
+      }
+    };
     entity.puppet = puppet;
     if (entity) {
-      const rig = puppet.rigName || null;
-      if (rig) {
-        entity.rigName = rig;
-      }
+      entity.rigName = puppet.rigName;
       entity.rigOk = true;
     }
     puppets.push(puppet);
@@ -44,10 +150,30 @@
 
   function bind(entity, rigName, opts={}){
     if (!entity) return null;
-    const puppet = attach(entity, { ...opts, rig: rigName });
-    if (entity) entity.rigOk = !!puppet;
-    if (entity && rigName) {
-      entity.rigName = rigName;
+    const name = resolveRigName(rigName);
+    const puppet = attach(entity, { ...opts, rig: name });
+    const rig = registry[name];
+    try {
+      if (rig && typeof rig.create === 'function') {
+        puppet.state = rig.create(entity, opts) || puppet.state || { e: entity };
+      }
+      entity.rigOk = true;
+    } catch (err) {
+      console.warn('[Puppet.bind] rig failed, using default', rigName, err);
+      const fallbackName = 'default';
+      puppet.rigName = fallbackName;
+      entity.rigName = fallbackName;
+      const fallback = registry[fallbackName];
+      try {
+        if (fallback && typeof fallback.create === 'function') {
+          puppet.state = fallback.create(entity, opts) || { e: entity };
+        } else {
+          puppet.state = { e: entity };
+        }
+      } catch (_) {
+        puppet.state = { e: entity };
+      }
+      entity.rigOk = true;
     }
     return puppet;
   }
@@ -72,15 +198,37 @@
 
   function ensureRigState(puppet){
     if (!puppet) return null;
-    const rig = rigs.get(puppet.rigName);
-    if (!rig) return null;
+    let rig = rigs.get(puppet.rigName);
+    if (!rig) {
+      puppet.rigName = 'default';
+      rig = rigs.get('default') || registry.default;
+      if (!rig) return null;
+    }
     if (!puppet.state){
       if (typeof rig.create === 'function'){
         try {
           puppet.state = rig.create(puppet.entity) || {};
         } catch (err){
           console.warn('[PuppetAPI] rig.create', puppet.rigName, err);
-          puppet.state = {};
+          if (puppet.rigName !== 'default'){
+            puppet.rigName = 'default';
+            const fallback = rigs.get('default') || registry.default;
+            if (fallback && typeof fallback.create === 'function'){
+              try {
+                puppet.state = fallback.create(puppet.entity) || {};
+                rig = fallback;
+              } catch (err2){
+                console.warn('[PuppetAPI] default rig.create', err2);
+                puppet.state = { e: puppet.entity };
+                rig = fallback || rig;
+              }
+            } else {
+              puppet.state = { e: puppet.entity };
+              rig = fallback || rig;
+            }
+          } else {
+            puppet.state = { e: puppet.entity };
+          }
         }
       } else if (puppet.data && typeof puppet.data === 'object'){
         puppet.state = puppet.data;
@@ -89,6 +237,33 @@
       }
     }
     return puppet.state;
+  }
+
+  if (!registry.default){
+    const defaultRig = {
+      create(e){ return { e }; },
+      update(){},
+      draw(ctx, _cam, entity, state){
+        const target = entity || state?.e;
+        if (!ctx || !target) return;
+        const tile = getTileSize();
+        const w = Number(target.w);
+        const h = Number(target.h);
+        const width = Number.isFinite(w) && w > 0 ? w : tile;
+        const height = Number.isFinite(h) && h > 0 ? h : tile;
+        const cx = (Number(target.x) || 0) + width * 0.5;
+        const cy = (Number(target.y) || 0) + height * 0.5;
+        const radius = Math.max(2, Math.min(width, height) * 0.25);
+        ctx.save();
+        ctx.fillStyle = target.teamColor || target.color || '#ccc';
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      },
+      dispose(){}
+    };
+    registerRig('default', defaultRig);
   }
 
   function shouldUpdatePuppet(puppet, info, now, tileSize){
@@ -110,19 +285,31 @@
 
   function updateAll(state, dt){
     sortPuppets();
-    const info = (state && state.__visualRadiusInfo)
-      || (window.G && window.G.__visualRadiusInfo)
-      || null;
-    const tileSize = window.TILE_SIZE || window.TILE || 32;
-    const now = info?.timestamp || ((typeof performance !== 'undefined' && typeof performance.now === 'function')
-      ? performance.now()
-      : Date.now());
+    const hero = window.G?.hero || window.G?.player || null;
+    const context = computeVisualContext(hero);
+    if (window.G) {
+      if (hero) {
+        window.G.__visualRadiusInfo = {
+          radiusTiles: resolveVisualRadiusTiles(),
+          radiusPx: context.radius,
+          radiusSq: context.radiusSq,
+          hx: context.hx,
+          hy: context.hy,
+          timestamp: context.now
+        };
+      } else {
+        window.G.__visualRadiusInfo = null;
+      }
+    }
+    refreshEntityActivity(context);
     for (const puppet of puppets){
-      if (info && !shouldUpdatePuppet(puppet, info, now, tileSize)) continue;
+      if (!puppet || !puppet.entity) continue;
+      if (puppet.entity._inactive) continue;
       puppet.time += dt;
-      const rig = rigs.get(puppet.rigName);
+      const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
       if (!rig) continue;
       const rigState = ensureRigState(puppet);
+      if (!rigState) continue;
       if (typeof rig.update === 'function'){
         try {
           if (typeof rig.create === 'function' && rig.update.length >= 3){
@@ -141,14 +328,24 @@
     if (!ctx) return;
     sortPuppets();
     const camera = ensureCamera(ctx, cam);
-    for (const puppet of puppets){
-      drawOne(puppet, ctx, camera);
+    ctx.save();
+    try {
+      if (typeof window.applyWorldCamera === 'function') {
+        window.applyWorldCamera(ctx);
+      }
+      for (const puppet of puppets){
+        if (!puppet || !puppet.entity || puppet.entity._inactive) continue;
+        drawOne(puppet, ctx, camera);
+      }
+    } finally {
+      ctx.restore();
     }
   }
 
   function drawOne(puppet, ctx, cam){
     if (!puppet || !puppet.entity) return;
-    const rig = rigs.get(puppet.rigName);
+    if (puppet.entity._inactive) return;
+    const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
     if (!rig || typeof rig.draw !== 'function') return;
     try {
       const state = ensureRigState(puppet);
@@ -167,8 +364,9 @@
 
   function updateOne(puppet, dt, state){
     if (!puppet) return;
+    if (puppet.entity && puppet.entity._inactive) return;
     puppet.time += dt;
-    const rig = rigs.get(puppet.rigName);
+    const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
     if (!rig) return;
     const rigState = ensureRigState(puppet);
     if (typeof rig.update === 'function'){
@@ -212,6 +410,6 @@
     setHeroHead,
     toggleDebug
   };
-  window.Puppet = window.Puppet || {};
-  window.Puppet.bind = bind;
+  PuppetNS.bind = bind;
+  PuppetNS.detach = detach;
 })();

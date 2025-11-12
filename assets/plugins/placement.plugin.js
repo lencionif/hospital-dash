@@ -110,15 +110,15 @@
     if (!globals || typeof globals !== 'object') return;
     if (Number.isFinite(globals.tileSize)) {
       root.TILE_SIZE = globals.tileSize;
+      G.TILE_SIZE = globals.tileSize;
     }
     G.globals = { ...(G.globals || {}), ...globals };
-    if (Number.isFinite(globals.visualRadius)) {
-      G.visualRadiusTiles = globals.visualRadius;
-      const tile = TILE_SIZE();
-      if (Number.isFinite(tile)) {
-        G.visualRadiusPx = globals.visualRadius * tile;
-      }
-    }
+    const vrRaw = Number(globals.visualRadius);
+    const vrTiles = Number.isFinite(vrRaw) && vrRaw > 0 ? vrRaw : 8;
+    G.visualRadiusTiles = vrTiles;
+    const tile = TILE_SIZE();
+    const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
+    G.visualRadiusPx = vrTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     if (typeof globals.defaultHero === 'string' && !G.selectedHero) {
       G.selectedHero = globals.defaultHero;
     }

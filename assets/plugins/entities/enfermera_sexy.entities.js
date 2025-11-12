@@ -218,6 +218,7 @@
     }catch(_){}
   }
   function updateLight(e){
+    if (!e || e._inactive) return;
     const id = S.lightIds.get(e.id);
     if (id!=null && W.LightingAPI) {
       try{ W.LightingAPI.updateLight(id, {x:e.x+e.w/2, y:e.y+e.h/2}); }catch(_){}
@@ -458,6 +459,7 @@
   function update(dt){
     if (G.state && G.state!=='PLAYING') return;
     for (const e of S.nurses){
+      if (!e || e._inactive) continue;
       const ai = e.ai;
       // perfumito contra amenazas
       perfumeRepel(e, dt);

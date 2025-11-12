@@ -398,6 +398,7 @@
     for (let i=S.list.length-1; i>=0; i--){
       const g = S.list[i];
       if (!g || g.dead){ S.list.splice(i,1); continue; }
+      if (g._inactive) { continue; }
 
       switch(g.state){
         case 'PURSUE':     statePursue(g, dt); break;
