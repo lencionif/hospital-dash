@@ -347,6 +347,172 @@
     });
   }
 
+  function createEl(tag, className, parent){
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+
+  function ensureGameContainer(){
+    return document.getElementById('game-container') || document.body || document.documentElement;
+  }
+
+  function insertHeroNode(node){
+    const container = ensureGameContainer();
+    if (!container) return;
+    const firstOverlay = container.querySelector('.overlay');
+    if (firstOverlay) {
+      container.insertBefore(node, firstOverlay);
+    } else {
+      container.appendChild(node);
+    }
+  }
+
+  function buildHeroDom(hero, cfg, entity){
+    const root = createEl('div', `puppet-hero hero-${hero}`);
+    root.dataset.hero = hero;
+    root.style.setProperty('--hero-scale-base', String(cfg.scale ?? 1));
+    root.style.setProperty('--hero-height', `${cfg.height ?? 92}px`);
+    root.style.setProperty('--hero-width', `${cfg.width ?? 60}px`);
+    if (cfg.walkDuration) root.style.setProperty('--hero-walk-duration', `${cfg.walkDuration}s`);
+    if (cfg.idleDuration) root.style.setProperty('--hero-idle-duration', `${cfg.idleDuration}s`);
+    if (cfg.attackDuration) root.style.setProperty('--hero-attack-duration', `${cfg.attackDuration}s`);
+    if (cfg.pushDuration) root.style.setProperty('--hero-push-duration', `${cfg.pushDuration}s`);
+    if (cfg.talkDuration) root.style.setProperty('--hero-talk-duration', `${cfg.talkDuration}s`);
+    root.style.setProperty('--hero-offset-y', `${cfg.offsetY ?? -10}px`);
+
+    const frame = createEl('div', 'hero-frame', root);
+    createEl('div', 'hero-shadow', frame);
+    const sprite = createEl('div', 'hero-sprite', frame);
+    const body = createEl('div', 'hero-body', sprite);
+
+    const legL = createEl('div', 'hero-leg hero-leg-left', body);
+    const legLUpper = createEl('div', 'hero-leg-upper', legL);
+    const legLLower = createEl('div', 'hero-leg-lower', legLUpper);
+    createEl('div', 'hero-foot', legLLower);
+
+    const legR = createEl('div', 'hero-leg hero-leg-right', body);
+    const legRUpper = createEl('div', 'hero-leg-upper', legR);
+    const legRLower = createEl('div', 'hero-leg-lower', legRUpper);
+    createEl('div', 'hero-foot', legRLower);
+
+    const torso = createEl('div', 'hero-torso', body);
+    createEl('div', 'hero-chest', torso);
+    createEl('div', 'hero-belly', torso);
+    createEl('div', 'hero-belt', torso);
+
+    const armL = createEl('div', 'hero-arm hero-arm-left', body);
+    const armLUpper = createEl('div', 'hero-arm-upper', armL);
+    const armLLower = createEl('div', 'hero-arm-lower', armLUpper);
+    createEl('div', 'hero-hand', armLLower);
+
+    const armR = createEl('div', 'hero-arm hero-arm-right', body);
+    const armRUpper = createEl('div', 'hero-arm-upper', armR);
+    const armRLower = createEl('div', 'hero-arm-lower', armRUpper);
+    const handR = createEl('div', 'hero-hand', armRLower);
+
+    const lantern = createEl('div', 'hero-lantern', handR);
+    createEl('div', 'hero-lantern-glow', lantern);
+
+    const head = createEl('div', 'hero-head', body);
+    createEl('div', 'hero-scalp', head);
+    const face = createEl('div', 'hero-face', head);
+    createEl('div', 'hero-brow', face);
+    createEl('div', 'hero-eyes', face);
+    createEl('div', 'hero-mouth', face);
+    createEl('div', 'hero-jaw', face);
+
+    const effects = createEl('div', 'hero-effects', sprite);
+    createEl('div', 'hero-effect hero-effect-sweat', effects);
+    createEl('div', 'hero-effect hero-effect-smoke', effects);
+    createEl('div', 'hero-effect hero-effect-spark', effects);
+
+    insertHeroNode(root);
+    if (entity){
+      entity._destroyCbs = entity._destroyCbs || [];
+      const remove = () => { if (root.parentNode) root.parentNode.removeChild(root); };
+      entity._destroyCbs.push(remove);
+    }
+
+    return {
+      hero,
+      root,
+      frame,
+      sprite,
+      body,
+      legs: { left: legL, right: legR },
+      arms: { left: armL, right: armR },
+      head,
+      effects,
+      lantern,
+      offsetY: cfg.offsetY ?? -10,
+      scale: cfg.scale ?? 1,
+      depthBias: cfg.depthBias ?? 0,
+      orientation: 'down',
+      action: 'idle',
+      dir: 1,
+      deathCause: null
+    };
+  }
+
+  function applyHeroDomState(st, e){
+    if (!st || !st.root) return;
+    const heroAPI = window.Entities?.Hero;
+    const anim = heroAPI?.getAnimationState?.(e) || null;
+    const orientation = anim?.orientation || st.orientation || 'down';
+    if (orientation !== st.orientation){
+      if (st.orientation) st.root.classList.remove(`hero-orientation-${st.orientation}`);
+      st.root.classList.add(`hero-orientation-${orientation}`);
+      st.orientation = orientation;
+    }
+    const dir = anim?.dir != null ? anim.dir : st.dir;
+    if (dir !== st.dir){
+      if (dir < 0){
+        st.root.classList.add('hero-dir-left');
+        st.root.classList.remove('hero-dir-right');
+      } else {
+        st.root.classList.add('hero-dir-right');
+        st.root.classList.remove('hero-dir-left');
+      }
+      st.dir = dir;
+    }
+    const action = anim?.action || 'idle';
+    if (action !== st.action){
+      if (st.action) st.root.classList.remove(`hero-state-${st.action}`);
+      st.root.classList.add(`hero-state-${action}`);
+      st.action = action;
+    }
+    const deathCause = e?.dead ? (anim?.deathCause || 'generic') : '';
+    if (deathCause !== st.deathCause){
+      if (st.deathCause) st.root.classList.remove(`hero-death-${st.deathCause}`);
+      if (deathCause) st.root.classList.add(`hero-death-${deathCause}`);
+      st.deathCause = deathCause;
+    }
+    st.root.classList.toggle('hero-is-talking', action === 'talk');
+    st.root.classList.toggle('hero-is-pushing', action === 'push');
+    st.root.classList.toggle('hero-is-attacking', action === 'attack');
+    st.root.classList.toggle('hero-is-hurt', action === 'hurt');
+    st.root.classList.toggle('hero-is-dead', action === 'dead');
+    st.root.classList.toggle('hero-is-eating', action === 'eat');
+    st.root.classList.toggle('hero-is-powered', action === 'powerup');
+    st.root.classList.toggle('hero-heavy', !!anim?.pushHeavy);
+    st.root.classList.toggle('hero-sweating', !!anim?.sweating);
+    st.root.classList.toggle('hero-smoking', !!anim?.smoke);
+    st.root.classList.toggle('hero-sparking', !!anim?.sparkle);
+  }
+
+  function positionHeroDom(st, cam, e){
+    if (!st || !st.root || !e) return;
+    const [cx, cy, sc] = toScreen(cam, e);
+    const totalScale = (st.scale ?? 1) * sc;
+    const offsetY = (st.offsetY ?? -10) * totalScale;
+    st.root.style.transform = `translate(${cx}px, ${cy + offsetY}px) scale(${totalScale})`;
+    const depth = Math.floor((e.y || 0) + (st.depthBias || 0));
+    st.root.style.zIndex = String(200 + depth);
+  }
+
+
   function resolveHeroState(st, e){
     let orientation = st.orientation || 'down';
     const pushing = e?.pushing === true || (typeof e?.pushAnimT === 'number' && e.pushAnimT > 0.05) || e?.state === 'pushing';
@@ -453,71 +619,63 @@
     return { state: 'idle', orientation };
   }
 
-  const HERO_ANIM_SPEED = 1.35;
-  const HERO_RIGS = {
+  const HERO_DOM_CONFIG = {
     enrique: {
-      front: 'enrique',
-      back: 'enrique_back',
       scale: 1.08,
-      spriteWidth: 42,
-      spriteHeight: 66,
-      spriteScale: 1.05,
-      walkCycle: 11.1,
-      idleCycle: 3.3,
-      walkBob: 4.6,
-      idleBob: 1.9,
-      swayFreq: 1.1,
-      swayAmp: 0.6,
-      lean: 0.18,
-      shadowRadius: 15,
-      offsetY: -8
+      height: 100,
+      width: 62,
+      walkDuration: 1.05,
+      idleDuration: 3.3,
+      attackDuration: 0.78,
+      pushDuration: 1.05,
+      talkDuration: 0.6,
+      offsetY: -16,
+      depthBias: 20
     },
     roberto: {
-      front: 'roberto',
-      back: 'roberto_back',
       scale: 1.0,
-      spriteWidth: 40,
-      spriteHeight: 64,
-      spriteScale: 1.0,
-      walkCycle: 13.2,
-      idleCycle: 3.2,
-      walkBob: 3.5,
-      idleBob: 1.4,
-      swayFreq: 1.8,
-      swayAmp: 1.1,
-      lean: 0.12,
-      shadowRadius: 14,
-      offsetY: -6
+      height: 90,
+      width: 56,
+      walkDuration: 0.82,
+      idleDuration: 2.4,
+      attackDuration: 0.48,
+      pushDuration: 0.9,
+      talkDuration: 0.42,
+      offsetY: -14,
+      depthBias: 18
     },
     francesco: {
-      front: 'francesco',
-      back: 'francesco_back',
       scale: 1.02,
-      spriteWidth: 40,
-      spriteHeight: 66,
-      spriteScale: 1.02,
-      walkCycle: 11.6,
-      idleCycle: 3.1,
-      walkBob: 3.9,
-      idleBob: 1.6,
-      swayFreq: 1.5,
-      swayAmp: 0.85,
-      lean: 0.14,
-      shadowRadius: 14,
-      offsetY: -7
+      height: 96,
+      width: 58,
+      walkDuration: 0.92,
+      idleDuration: 2.8,
+      attackDuration: 0.58,
+      pushDuration: 0.98,
+      talkDuration: 0.5,
+      offsetY: -15,
+      depthBias: 19
     }
   };
 
-  for (const [hero, cfg] of Object.entries(HERO_RIGS)){
-    const { front, back, walkCycle, idleCycle, ...rest } = cfg;
-    registerWalkerRig(`hero_${hero}`, {
-      ...rest,
-      skin: normalizeSkinAsset(front),
-      walkCycle: (walkCycle ?? 9) * HERO_ANIM_SPEED,
-      idleCycle: (idleCycle ?? 3) * HERO_ANIM_SPEED,
-      states: makeHeroStates(front, back),
-      resolveState: resolveHeroState
+  function registerHeroDomRig(hero, cfg){
+    API.registerRig(`hero_${hero}`, {
+      create(entity){
+        const state = buildHeroDom(hero, cfg, entity);
+        applyHeroDomState(state, entity);
+        return state;
+      },
+      update(state, entity){
+        applyHeroDomState(state, entity);
+      },
+      draw(ctx, cam, entity, state){
+        positionHeroDom(state, cam, entity);
+      }
     });
+  }
+
+  for (const [hero, cfg] of Object.entries(HERO_DOM_CONFIG)){
+    registerHeroDomRig(hero, cfg);
   }
 
   // ───────────────────────────── NPCs ──────────────────────────────

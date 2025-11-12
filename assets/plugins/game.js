@@ -635,6 +635,10 @@ function __onKeyDown__(e){
     }
     if (k === 'f1'){ e.preventDefault(); metrics.style.display = (metrics.style.display === 'none' ? 'block' : 'none'); }
     if (k === 'escape'){ togglePause(); }
+    if (k === 'f'){
+      if (G.state === 'PLAYING'){ e.preventDefault(); try { window.Entities?.Hero?.startAttack?.(G.player, { heavy: G.player?.hero === 'enrique' }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] attack trigger error', err); } }
+      return;
+    }
 
     // === Clima/Fog — protegidas con try/catch ===
     if (code === 'Digit1'){ e.preventDefault(); try{ SkyFX?.setLevel?.(1); FogAPI?.setEnabled?.(true); FogAPI?.setDarkness?.(0); if (window.DEBUG_FORCE_ASCII) console.log('[Key1] Día'); }catch(err){ console.warn('[Key1] error:', err); } }
@@ -1574,17 +1578,18 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         const lines = Array.isArray(npc.dialogLines)
           ? npc.dialogLines
           : (npc.dialog ? [String(npc.dialog)] : null);
-        if (lines && lines.length){
-          const title = npc.dialogTitle || npc.name || 'Conversación';
-          const text = lines.join('\n\n');
-          window.DialogAPI.open({
-            title,
-            text,
-            buttons: [{ id: 'ok', label: 'Cerrar', action: () => window.DialogAPI.close() }]
-          });
-          return;
-        }
+      if (lines && lines.length){
+        const title = npc.dialogTitle || npc.name || 'Conversación';
+        const text = lines.join('\n\n');
+        window.DialogAPI.open({
+          title,
+          text,
+          buttons: [{ id: 'ok', label: 'Cerrar', action: () => window.DialogAPI.close() }]
+        });
+        try { window.Entities?.Hero?.setTalking?.(p, true, Math.max(2.5, lines.length * 1.2)); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] talk trigger error', err); }
+        return;
       }
+    }
     }
 
     if (!p.carry && !G.carry) {
@@ -1615,6 +1620,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // Dirección desde el facing actual
     const dir = facingDir(p.facing);
     const hit = findPushableInFront(p, dir);
+    try { window.Entities?.Hero?.triggerPush?.(p, { heavy: !!(hit && (hit.mass || 0) > 140) }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] push trigger error', err); }
     if (hit) {
       // 1) Desatasco preventivo: si está tocando muro, sácalo o colócalo en un punto libre cercano
       try { if (window.Physics?.snapInsideMap) Physics.snapInsideMap(hit); } catch(_){}
@@ -1662,6 +1668,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     G.player.hp = Math.ceil(halvesAfter / 2);
     G.health     = halvesAfter;
     p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
+    try { window.Entities?.Hero?.notifyDamage?.(p, { source: src || (isRatHit ? 'bite' : 'impact'), duration: isRatHit ? 0.4 : 0.6 }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] damage notify error', err); }
 
     // knockback desde 'src' hacia fuera
     if (src){
@@ -1675,6 +1682,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (G.health <= 0){
       G.health = 0;
       G._gameOverReason = isRatHit ? 'rat_hit' : 'health_zero';
+      try { window.Entities?.Hero?.setDeathCause?.(p, isRatHit ? 'bite' : (src || 'impact')); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] set death cause error', err); }
       setGameState('GAMEOVER');
       window.GameFlowAPI?.notifyHeroDeath?.();
     }
