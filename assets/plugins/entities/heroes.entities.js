@@ -54,19 +54,18 @@
     },
     // Linterna por héroe (color + radios)
     light: {
-      colors: {
-        // AMARILLO para Enrique (antes era rojo)
-        enrique:   'rgba(255, 215,  64, 0.55)', // #FFD740 aprox
-        // NARANJA para Roberto (antes era verde)
-        roberto:   'rgba(255, 150,  60, 0.55)',
-        // AZUL para Francesco (igual que venía)
-        francesco: 'rgba( 80, 120, 255, 0.55)',
+      defaults: {
+        color: '#66b3ff',
+        radiusTiles: 6.2,
+        innerRatio: 0.52,
+        intensity: 0.58,
+        coneDeg: 80
       },
-      // Radios “interior/exterior” en tiles (se escalan con visión del héroe)
-      innerTiles: 3.6,
-      outerTiles: 7.0,
-      coneDeg: 80,       // si LightingAPI usa linterna cónica
-      intensity: 0.95
+      byHero: {
+        enrique:   { color: '#ffd34d', radiusTiles: 6.0, innerTiles: 3.2, intensity: 0.6 },
+        roberto:   { color: '#ff9f40', radiusTiles: 6.0, innerTiles: 2.9, intensity: 0.5 },
+        francesco: { color: '#66b3ff', radiusTiles: 7.5, innerTiles: 3.9, intensity: 0.62 }
+      }
     }
   };
 
@@ -126,30 +125,59 @@
 
   // ===== Linterna y visión (Fog) ===========================================================
   function attachFlashlight(e) {
-    // Colores por héroe
-    const color = CFG.light.colors[e.hero] || CFG.light.colors.francesco;
-    const scale = (CFG.visionTiles[e.hero] || CFG.visionTiles.francesco) / 4; // base 4=medio
-    const inner = (CFG.light.innerTiles * TILE) * scale;
-    const outer = (CFG.light.outerTiles * TILE) * scale;
-    // Guarda en el jugador para que el motor pueda usarlos:
-    e._visionTiles = (CFG.visionTiles[e.hero] || CFG.visionTiles.francesco);
-    e._flashInner  = inner;
-    e._flashOuter  = outer;
+    const heroKey = (e.hero || 'francesco');
+    const defaults = CFG.light.defaults || {};
+    const heroLight = (CFG.light.byHero && CFG.light.byHero[heroKey]) || {};
+    const radiusTiles = heroLight.radiusTiles ?? defaults.radiusTiles ?? 6;
+    const innerTiles = heroLight.innerTiles ?? ((heroLight.innerRatio ?? defaults.innerRatio ?? 0.5) * radiusTiles);
+    const color = heroLight.color || defaults.color || '#ffffff';
+    const intensity = heroLight.intensity ?? defaults.intensity ?? 0.6;
+    const coneDeg = heroLight.coneDeg ?? defaults.coneDeg ?? 80;
+    const radius = Math.max(1, radiusTiles) * TILE;
+    const inner = Math.max(0.5, innerTiles) * TILE;
 
-    // LightingAPI con linterna cónica (si existe)
-    if (W.LightingAPI && typeof W.LightingAPI.addLight === 'function') {
+    e._visionTiles = (CFG.visionTiles[heroKey] || CFG.visionTiles.francesco);
+    e._flashInner  = inner;
+    e._flashOuter  = radius;
+    e._flashlightSpec = { color, radiusTiles, innerTiles, intensity, coneDeg };
+
+    if (!Array.isArray(e._destroyCbs)) e._destroyCbs = [];
+    if (e._flashlightId && W.LightingAPI && typeof W.LightingAPI.removeLight === 'function') {
+      try { W.LightingAPI.removeLight(e._flashlightId); } catch (_) {}
+    }
+
+    const extAttach = W.Entities?.attachFlashlight;
+    if (typeof extAttach === 'function') {
+      try {
+        const id = extAttach(e, { color, radius, intensity, coneDeg });
+        if (id != null) {
+          e._flashlightId = id;
+          e._destroyCbs.push(() => { try { W.LightingAPI?.removeLight?.(id); } catch (_) {} });
+        }
+        console.log(`[HeroLight] Linterna ${heroKey} -> radio ${radiusTiles.toFixed(2)} tiles @ ${intensity.toFixed(2)} intensidad`);
+      } catch (err) {
+        console.warn('[HeroLight] Error al usar Entities.attachFlashlight, se intentará LightingAPI directa.', err);
+      }
+    }
+
+    if ((!e._flashlightId || !W.LightingAPI) && W.LightingAPI && typeof W.LightingAPI.addLight === 'function') {
       const id = W.LightingAPI.addLight({
-        owner: e, type: 'player',
-        color, intensity: CFG.light.intensity,
-        radius: outer, innerRadius: inner,
-        coneDeg: CFG.light.coneDeg
+        owner: e,
+        type: 'player',
+        color,
+        intensity,
+        radius,
+        innerRadius: inner,
+        coneDeg
       });
       e._flashlightId = id;
       e._destroyCbs.push(() => { try { W.LightingAPI.removeLight(id); } catch(_){} });
+      console.log(`[HeroLight] LightingAPI directa para ${heroKey} (radio ${radiusTiles.toFixed(2)} tiles).`);
+    } else if (!W.LightingAPI) {
+      console.warn(`[HeroLight] LightingAPI no disponible para ${heroKey}; sólo se verá la linterna CSS.`);
     }
 
-    // Fog-of-War (si existe, prioriza API de tu core)
-    const vt = (CFG.visionTiles[e.hero] || CFG.visionTiles.francesco);
+    const vt = (CFG.visionTiles[heroKey] || CFG.visionTiles.francesco);
     if (W.FogAPI && typeof W.FogAPI.setPlayerVisionTiles === 'function') {
       try { W.FogAPI.setPlayerVisionTiles(vt); } catch(_){}
     } else {
@@ -232,6 +260,7 @@
       const s = source.toLowerCase();
       if (s.includes('fire') || s.includes('fuego')) return 'fire';
       if (s.includes('explos') || s.includes('boom')) return 'explosion';
+      if (s.includes('crush') || s.includes('aplast')) return 'crush';
       if (s.includes('slip') || s.includes('ice') || s.includes('wet') || s.includes('resbal')) return 'slip';
       if (s.includes('electric')) return 'shock';
       if (s.includes('enemy') || s.includes('hit') || s.includes('physical')) return 'impact';
@@ -243,6 +272,7 @@
       const kind = String(source.kind || source.kindName || source.type || '').toLowerCase();
       if (kind.includes('fire') || kind.includes('flame')) return 'fire';
       if (kind.includes('explos') || kind.includes('boom')) return 'explosion';
+      if (kind.includes('crush') || kind.includes('aplast')) return 'crush';
       if (kind.includes('mosquito')) return 'sting';
       if (kind.includes('rat')) return 'bite';
       if (kind.includes('water') || kind.includes('ice')) return 'slip';
@@ -480,10 +510,42 @@
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
       e.skin = `${key}.png`;
-      const rigName = `hero_${e.key || key}`;
-      const puppet = window.Puppet?.bind?.(e, rigName, { z: 0, scale: 1, data: { skin: `${key}.png` } })
-        || window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { skin: `${key}.png` } });
-      e.rigOk = true;
+      const rigName = `hero_${key}`;
+      let puppet = null;
+      try {
+        if (window.Puppet?.bind) {
+          puppet = window.Puppet.bind(e, rigName, { z: 0, scale: 1, data: { skin: `${key}.png` } });
+        }
+      } catch (err) {
+        console.warn(`[HeroRig] Error en Puppet.bind(${rigName})`, err);
+      }
+      if (!puppet && window.PuppetAPI?.attach) {
+        try {
+          puppet = window.PuppetAPI.attach(e, { rig: rigName, z: 0, scale: 1, data: { skin: `${key}.png` } });
+        } catch (err) {
+          console.warn(`[HeroRig] Error en PuppetAPI.attach(${rigName})`, err);
+        }
+      }
+      if (!puppet && window.PuppetAPI?.attach) {
+        console.error(`[HeroRig] No se pudo enlazar ${rigName}, se usará fallback 'default'.`);
+        try {
+          puppet = window.PuppetAPI.attach(e, { rig: 'default', z: 0, scale: 1, data: { skin: `${key}.png` } });
+        } catch (err) {
+          console.error('[HeroRig] Falló el fallback "default".', err);
+        }
+      }
+      e.rigName = puppet?.rigName || rigName;
+      e.rigOk = !!(puppet && puppet.rigName === rigName);
+      if (puppet) {
+        try {
+          console.log(`[HeroRig] ${key} vinculado a ${puppet.rigName}.`);
+        } catch (_) {}
+        if (!e.rigOk) {
+          console.warn(`[HeroRig] ${key} está usando fallback (${puppet.rigName}).`);
+        }
+      } else {
+        e.rigOk = false;
+      }
       attachFlashlight(e);
       ensureAnimState(e);
       updateHeroAnimation(e, 0);
@@ -508,10 +570,42 @@
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
       e.skin = `${key}.png`;
-      const rigName = `hero_${e.key || key}`;
-      const puppet = window.Puppet?.bind?.(e, rigName, { z: 0, scale: 1, data: { skin: `${key}.png` } })
-        || window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { skin: `${key}.png` } });
-      e.rigOk = true;
+      const rigName = `hero_${key}`;
+      let puppet = null;
+      try {
+        if (window.Puppet?.bind) {
+          puppet = window.Puppet.bind(e, rigName, { z: 0, scale: 1, data: { skin: `${key}.png` } });
+        }
+      } catch (err) {
+        console.warn(`[HeroRig] Follower bind error (${rigName})`, err);
+      }
+      if (!puppet && window.PuppetAPI?.attach) {
+        try {
+          puppet = window.PuppetAPI.attach(e, { rig: rigName, z: 0, scale: 1, data: { skin: `${key}.png` } });
+        } catch (err) {
+          console.warn(`[HeroRig] Follower attach error (${rigName})`, err);
+        }
+      }
+      if (!puppet && window.PuppetAPI?.attach) {
+        console.error(`[HeroRig] Seguidor ${key} sin rig ${rigName}, aplicando fallback 'default'.`);
+        try {
+          puppet = window.PuppetAPI.attach(e, { rig: 'default', z: 0, scale: 1, data: { skin: `${key}.png` } });
+        } catch (err) {
+          console.error('[HeroRig] Follower fallback "default" también falló.', err);
+        }
+      }
+      e.rigName = puppet?.rigName || rigName;
+      e.rigOk = !!(puppet && puppet.rigName === rigName);
+      if (puppet) {
+        try {
+          console.log(`[HeroRig] follower ${key} → ${puppet.rigName}.`);
+        } catch (_) {}
+        if (!e.rigOk) {
+          console.warn(`[HeroRig] follower ${key} está en fallback (${puppet?.rigName || 'none'}).`);
+        }
+      } else {
+        e.rigOk = false;
+      }
       attachFlashlight(e);
       ensureAnimState(e);
       updateHeroAnimation(e, 0);

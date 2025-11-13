@@ -5,6 +5,9 @@
   const rigs = new Map();
   const puppets = [];
   let needsSort = false;
+  const missingRigWarnings = new Set();
+  const activityLog = new WeakMap();
+  let lastActivitySummary = '';
 
   const getNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
     ? performance.now()
@@ -60,7 +63,7 @@
     return Number.isFinite(awakeUntil) && awakeUntil > now;
   }
 
-  function withinVisualRadius(entity, heroInfo){
+  function withinVisualRadius(entity, heroInfo, details){
     if (!entity) return false;
     if (!heroInfo || !heroInfo.hero) return true;
     if (entity === heroInfo.hero) return true;
@@ -73,30 +76,65 @@
     const ey = (Number(entity.y) || 0) + height * 0.5;
     const dx = ex - heroInfo.hx;
     const dy = ey - heroInfo.hy;
-    return (dx * dx + dy * dy) <= heroInfo.radiusSq;
+    const distSq = (dx * dx + dy * dy);
+    if (details && typeof details === 'object') details.distanceSq = distSq;
+    return distSq <= heroInfo.radiusSq;
   }
 
   function refreshEntityActivity(heroInfo){
     const entities = window.G?.entities;
     if (!Array.isArray(entities)) return;
     const now = heroInfo?.now ?? getNow();
+    let activeCount = 0;
+    let inactiveCount = 0;
+    const distInfo = {};
     for (const ent of entities){
       if (!ent) continue;
       let active = true;
+      let distanceSq = null;
       if (heroInfo?.hero && ent !== heroInfo.hero){
         if (isEntityAlwaysActive(ent, now)) {
           active = true;
         } else {
-          active = withinVisualRadius(ent, heroInfo);
+          distInfo.distanceSq = null;
+          active = withinVisualRadius(ent, heroInfo, distInfo);
+          if (distInfo.distanceSq != null) distanceSq = distInfo.distanceSq;
         }
       }
       ent._inactive = !active;
+      if (active) activeCount++; else inactiveCount++;
+      const prev = activityLog.get(ent);
+      if (prev !== active){
+        activityLog.set(ent, active);
+        const label = ent.name || ent.id || ent.tag || ent.kindName || ent.rigName || `entity@${entities.indexOf(ent)}`;
+        let extra = '';
+        if (distanceSq != null && heroInfo?.hero && ent !== heroInfo.hero){
+          extra = ` (dist≈${Math.sqrt(distanceSq).toFixed(1)}px)`;
+        }
+        try {
+          console.log(`[Puppet] ${active ? 'Activando' : 'Desactivando'} ${label}${extra}`);
+        } catch (_) {}
+      }
+    }
+    const summaryKey = `${activeCount}|${inactiveCount}`;
+    if (summaryKey !== lastActivitySummary){
+      lastActivitySummary = summaryKey;
+      const radiusPx = heroInfo?.radius ? Math.round(heroInfo.radius) : 0;
+      try {
+        console.log(`[Puppet] Actividad: ${activeCount} activos, ${inactiveCount} inactivos (radio ${radiusPx}px).`);
+      } catch (_) {}
     }
   }
 
   function resolveRigName(name){
     const key = typeof name === 'string' ? name : null;
     if (key && registry[key]) return key;
+    if (key && !missingRigWarnings.has(key)){
+      missingRigWarnings.add(key);
+      try {
+        console.warn(`[Puppet] rig "${key}" no registrado, usando fallback 'default'.`);
+      } catch (_) {}
+    }
     return 'default';
   }
 
