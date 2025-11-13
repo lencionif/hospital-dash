@@ -15,6 +15,12 @@
     restitution: 0.18,
     friction: 0.045,
     slideFriction: 0.020,
+    cartRestitution: 0.68,
+    cartSlideMu: 0.015,
+    cartPushBoost: 1.45,
+    cartPushMassFactor: 0.32,
+    cartMinSpeed: 220,
+    cartMaxSpeed: 640,
     crushImpulse: 110,
     hurtImpulse: 45,
     explodeImpulse: 170,
@@ -51,6 +57,36 @@
     const nowSeconds = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? (performance.now() / 1000)
       : (Date.now() / 1000);
+
+    function isCartEntity(ent){
+      if (!ent) return false;
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
+      if (ent.kind === 5) return true;
+      if (ENT && typeof ENT.CART === 'number' && ent.kind === ENT.CART) return true;
+      if (ent.cartType || ent._tag === 'cart' || ent.type === 'cart') return true;
+      const tag = (ent.tag || '').toString().toLowerCase();
+      if (tag.includes('cart') || tag.includes('carro')) return true;
+      const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
+      if (rig.includes('cart')) return true;
+      const kindName = (ent.kindName || ent.kind || '').toString().toLowerCase();
+      return kindName.includes('cart') || kindName.includes('carro');
+    }
+
+    function resolveRestitution(ent){
+      if (!ent) return 0;
+      let base = 0;
+      if (Number.isFinite(ent.rest)) base = Math.max(base, ent.rest);
+      if (Number.isFinite(ent.restitution)) base = Math.max(base, ent.restitution);
+      if (isCartEntity(ent)){
+        const desired = CFG.cartRestitution ?? DEFAULTS.cartRestitution ?? 0;
+        if (desired > base){
+          base = desired;
+          ent.rest = desired;
+          if (!Number.isFinite(ent.restitution) || ent.restitution < desired) ent.restitution = desired;
+        }
+      }
+      return base;
+    }
 
     const updateTileSize = () => {
       TILE = window.TILE_SIZE || TILE;
@@ -166,7 +202,21 @@
 
     function massOf(e){
       if (!e) return 0;
-      if (typeof e.mass === 'number') return e.mass;
+      if (typeof e.mass === 'number' && Number.isFinite(e.mass)) return e.mass;
+      if (G && e === G.player) return MASS.HERO;
+      if (isCartEntity(e)) return MASS.CART;
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
+      if (ENT && typeof e.kind === 'number'){
+        if (ENT.PLAYER != null && e.kind === ENT.PLAYER) return MASS.HERO;
+        if (ENT.CART != null && e.kind === ENT.CART) return MASS.CART;
+        if (ENT.NPC != null && e.kind === ENT.NPC) return MASS.NPC;
+      }
+      const kindName = (e.kindName || e.kind || e.type || e.role || '').toString().toLowerCase();
+      if (kindName.includes('npc')) return MASS.NPC;
+      if (kindName.includes('cart') || kindName.includes('carro')) return MASS.CART;
+      if (kindName.includes('mosquito')) return MASS.MOSQUITO;
+      if (kindName.includes('rat') || kindName.includes('rata')) return MASS.RAT;
+      if (kindName.includes('pill') || kindName.includes('pastilla')) return MASS.PILL;
       const inv = inverseMass(e);
       if (!isFinite(inv) || inv <= 0) return e && e.static ? Infinity : 0;
       return 1 / inv;
@@ -254,10 +304,12 @@
     function moveWithCollisions(e, dt){
       if (!e) return;
       const sub = 4;
+      const wantsSlide = (e.slide != null) ? !!e.slide : isCartEntity(e);
+      const mu = (e.mu != null) ? e.mu : (wantsSlide ? (CFG.cartSlideMu ?? 0) : 0);
       const base = 1 - (CFG.friction ?? 0.02);
-      const mu = (e.mu != null) ? e.mu : 0;
       const fr = base * (1 - mu);
-      const wr = Math.max(CFG.restitution, e.rest || 0);
+      const wr = Math.max(CFG.restitution, resolveRestitution(e));
+      const slideCoef = 1 - ((CFG.slideFriction ?? CFG.friction) ?? 0.02);
       const entMass = massOf(e);
       const minFireMass = CFG.fireMinMass ?? DEFAULTS.fireMinMass ?? 0;
       const allowFireSpawn = !e.static && (Number.isFinite(entMass) ? entMass : minFireMass) >= minFireMass;
@@ -341,9 +393,10 @@
       }
       e.x = nx; e.y = ny;
       if (!isWall(e.x, e.y, e.w, e.h)) { e._lastSafeX = e.x; e._lastSafeY = e.y; }
-      const slide = (e.slide ? CFG.slideFriction : CFG.friction) ?? CFG.friction;
-      const slideBase = 1 - slide;
-      const damping = (e.slide ? slideBase : fr);
+      const damping = wantsSlide ? slideCoef : fr;
+      if (wantsSlide && (typeof e.mu !== 'number' || e.mu > mu) && mu !== 0){
+        e.mu = mu;
+      }
       e.vx *= damping;
       e.vy *= damping;
       if (isWall(e.x, e.y, e.w, e.h)){
@@ -409,7 +462,7 @@
           const relativeSpeed = Math.hypot(rvx, rvy);
           const velN = rvx * nx + rvy * ny;
           if (velN < 0){
-            const rest = Math.max(CFG.restitution, a.rest || 0, b.rest || 0);
+            const rest = Math.max(CFG.restitution, resolveRestitution(a), resolveRestitution(b));
             let j = -(1 + rest) * velN / invSum;
             j = Math.max(-1200, Math.min(1200, j));
             const ix = j * nx, iy = j * ny;
