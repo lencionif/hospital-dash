@@ -1628,6 +1628,58 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     return true;
   }
 
+  function isCartEntity(ent){
+    if (!ent) return false;
+    const ENT = window.ENT || {};
+    if (typeof ENT.CART === 'number' && ent.kind === ENT.CART) return true;
+    if (ent.kind === 5) return true;
+    if (ent.cartType || ent._tag === 'cart' || ent.type === 'cart') return true;
+    const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
+    if (rig.includes('cart')) return true;
+    const tag = (ent.tag || '').toString().toLowerCase();
+    if (tag.includes('cart') || tag.includes('carro')) return true;
+    const name = (ent.kindName || '').toString().toLowerCase();
+    return name.includes('cart') || name.includes('carro');
+  }
+
+  function pushEntityWithImpulse(target, dir, baseForce){
+    if (!target || (!dir.x && !dir.y)) return;
+    const physCfg = (window.Physics && (window.Physics.PHYS || window.Physics.DEFAULTS)) || {};
+    const mass = Number.isFinite(target.mass) ? Math.max(0.25, target.mass) : 1;
+    if (isCartEntity(target)){
+      const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.45;
+      const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.32;
+      const minSpeed = Number.isFinite(physCfg.cartMinSpeed) ? physCfg.cartMinSpeed : 220;
+      const maxSpeed = Number.isFinite(physCfg.cartMaxSpeed) ? physCfg.cartMaxSpeed : 640;
+      const slideMu = Number.isFinite(physCfg.cartSlideMu) ? physCfg.cartSlideMu : 0.015;
+      const rest = Number.isFinite(physCfg.cartRestitution) ? physCfg.cartRestitution : null;
+      const denom = Math.max(0.25, mass * massFactor);
+      const impulse = baseForce * boost / denom;
+      target.vx = (target.vx || 0) + (dir.x || 0) * impulse;
+      target.vy = (target.vy || 0) + (dir.y || 0) * impulse;
+      const speed = Math.hypot(target.vx || 0, target.vy || 0);
+      if (minSpeed > 0 && speed < minSpeed){
+        const factor = minSpeed / Math.max(speed, 1);
+        target.vx *= factor;
+        target.vy *= factor;
+      } else if (maxSpeed > 0 && speed > maxSpeed){
+        const factor = maxSpeed / speed;
+        target.vx *= factor;
+        target.vy *= factor;
+      }
+      target.slide = true;
+      if (!Number.isFinite(target.mu) || target.mu > slideMu) target.mu = slideMu;
+      if (rest != null){
+        if (!Number.isFinite(target.rest) || target.rest < rest) target.rest = rest;
+        if (!Number.isFinite(target.restitution) || target.restitution < rest) target.restitution = rest;
+      }
+    } else {
+      const scale = 1 / Math.max(1, mass * 0.5);
+      target.vx = (target.vx || 0) + (dir.x || 0) * baseForce * scale;
+      target.vy = (target.vy || 0) + (dir.y || 0) * baseForce * scale;
+    }
+  }
+
   function doAction() {
     const p = G.player;
     if (!p) return;
@@ -1713,9 +1765,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
       // 2) Empuje normal
       const F = (p.pushForce ?? p.push ?? FORCE_PLAYER);
-      const scale = 1 / Math.max(1, (hit.mass || 1) * 0.5); // objetos muy pesados salen menos
-      hit.vx += dir.x * F * scale;
-      hit.vy += dir.y * F * scale;
+      pushEntityWithImpulse(hit, dir, F);
 
       // 3) Marca de autor del empuje (para atribuir kills)
       hit._lastPushedBy   = (p.tag==='follower' ? 'HERO' : 'PLAYER');
@@ -2839,11 +2889,11 @@ function drawEntities(c2){
         if (target.pushable === true){
           const dx = (target.x + target.w*0.5) - (player.x + player.w*0.5);
           const dy = (target.y + target.h*0.5) - (player.y + player.h*0.5);
-          const L  = Math.hypot(dx,dy) || 1;
-          const F  = (player.pushForce || FORCE_PLAYER);
-          const scale = 1 / Math.max(1, (target.mass || 1) * 0.5);
-          target.vx += (dx/L) * F * scale;
-          target.vy += (dy/L) * F * scale;
+          const L  = Math.hypot(dx,dy);
+          if (L > 0.0001){
+            const F  = (player.pushForce || FORCE_PLAYER);
+            pushEntityWithImpulse(target, { x: dx / L, y: dy / L }, F);
+          }
         }
       };
     }

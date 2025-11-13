@@ -63,10 +63,13 @@
 
   // ---------------- Config por defecto ----------------
   const DEFAULT_CFG = {
-    maxSpeed: 7.0,
-    friction: 0.94,
-    restitution: 0.55,
-    playerPushImpulse: 8.5,
+    maxSpeed: 12.0,
+    friction: 0.965,
+    slideFriction: 0.015,
+    slideMu: 0.015,
+    restitution: 0.72,
+    playerPushImpulse: 9.5,
+    mass: 3.5,
     crushThreshold: 5.0,      // velocidad relativa para dañar
     explodeThreshold: 8.0,    // food/med solo
     maxBouncesToExplode: 10,
@@ -106,8 +109,27 @@
       e.cartType=(type===this.TYPES.ER||type===this.TYPES.MED)?type:this.TYPES.FOOD;
       e.x=(x|0); e.y=(y|0); e.w=(opts.w|0)||W; e.h=(opts.h|0)||H;
       e.vx=0; e.vy=0;
-      e.pushable=true; e.solid=true; e.static=false; e.mass=1.0;
-      e.friction=this._cfg.friction; e.restitution=this._cfg.restitution; e.maxSpeed=this._cfg.maxSpeed;
+      e.pushable=true; e.solid=true; e.static=false;
+      const physCfg = (window.Physics && (window.Physics.PHYS || window.Physics.DEFAULTS)) || {};
+      const cartMass = Number.isFinite(opts.mass)
+        ? opts.mass
+        : (Number.isFinite(this._cfg.mass) ? this._cfg.mass : (window.Physics?.MASS?.CART ?? 3.5));
+      e.mass = cartMass;
+      const rest = Number.isFinite(opts.rest)
+        ? opts.rest
+        : (Number.isFinite(opts.restitution)
+          ? opts.restitution
+          : (Number.isFinite(physCfg.cartRestitution) ? physCfg.cartRestitution : this._cfg.restitution));
+      e.rest = rest;
+      e.restitution = rest;
+      e.friction=this._cfg.friction;
+      e.maxSpeed=this._cfg.maxSpeed;
+      const slideMu = Number.isFinite(opts.mu)
+        ? opts.mu
+        : (Number.isFinite(this._cfg.slideMu) ? this._cfg.slideMu : (physCfg.cartSlideMu ?? 0.015));
+      e.mu = slideMu;
+      e.slide = opts.slide != null ? !!opts.slide : true;
+      e._tag = e._tag || 'cart';
       e.canExplode = (e.cartType!==this.TYPES.ER);
       e.integrity  = (e.cartType===this.TYPES.FOOD? this._cfg.integrityFood
                     : e.cartType===this.TYPES.MED ? this._cfg.integrityMed
@@ -175,7 +197,10 @@
         if (sp > cfg.maxSpeed){ const k = cfg.maxSpeed / (sp||1); e.vx*=k; e.vy*=k; }
 
         // rozamiento (si el motor no lo aplica)
-        e.vx *= cfg.friction; e.vy *= cfg.friction;
+        const damp = (cfg.slideFriction != null)
+          ? (1 - cfg.slideFriction)
+          : cfg.friction;
+        e.vx *= damp; e.vy *= damp;
         if (Math.abs(e.vx)<0.001) e.vx=0;
         if (Math.abs(e.vy)<0.001) e.vy=0;
 
