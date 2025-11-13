@@ -14,6 +14,25 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const H = Math.hypot;
 
+  function tryAttachFlashlight(e){
+    if (!e || e.flashlight === false || e._flashlightAttached) return;
+    const attach = window.Entities?.attachFlashlight;
+    if (typeof attach !== 'function') return;
+    try {
+      const tile = (typeof window.TILE_SIZE !== 'undefined') ? window.TILE_SIZE : 32;
+      const radius = Number.isFinite(e.flashlightRadius) ? e.flashlightRadius : tile * 4.8;
+      const intensity = Number.isFinite(e.flashlightIntensity) ? e.flashlightIntensity : 0.55;
+      const color = e.flashlightColor || '#fff2c0';
+      const id = attach(e, { color, radius, intensity });
+      if (id != null) {
+        e._flashlightAttached = true;
+        e._flashlightId = id;
+      }
+    } catch (err) {
+      try { console.warn('[Medico] No se pudo adjuntar linterna', err); } catch (_) {}
+    }
+  }
+
   // ---- Config por defecto ---------------------------------------------------
   const DEFAULTS = {
     speed: 62,           // px/s caminando
@@ -122,6 +141,7 @@
       } catch (_) {
         medicEnt.rigOk = true;
       }
+      tryAttachFlashlight(medicEnt);
     },
 
     // Garantiza al menos 1 médico (fallback)

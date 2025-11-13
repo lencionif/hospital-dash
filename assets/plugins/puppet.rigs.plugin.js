@@ -205,6 +205,10 @@
     const tint = parseTint(data.tint || cfg.tint);
     const scale = (typeof data.scale === 'number' ? data.scale : (cfg.scale ?? 1));
     const skin = normalizeSkinAsset(data.skin || e.skin || cfg.skin);
+    const walkCycleBase = cfg.walkCycle ?? 6;
+    const idleCycleBase = cfg.idleCycle ?? 2.2;
+    const walkBobBase = cfg.walkBob ?? 3.4;
+    const idleBobBase = cfg.idleBob ?? 1.2;
     return {
       phase: Math.random() * TAU,
       swayPhase: Math.random() * TAU,
@@ -214,6 +218,10 @@
       lean: 0,
       erratic: 0,
       dir: 1,
+      hip: 0,
+      micro: 0,
+      look: 0,
+      headTilt: 0,
       tint,
       scale,
       skin,
@@ -224,7 +232,15 @@
       stateScale: 1,
       stateBob: 1,
       stateSkin: null,
-      stateFlip: null
+      stateFlip: null,
+      walkCycleBase,
+      idleCycleBase,
+      walkBobBase,
+      idleBobBase,
+      walkCycleOverride: null,
+      idleCycleOverride: null,
+      walkBobOverride: null,
+      idleBobOverride: null
     };
   }
 
@@ -233,10 +249,16 @@
     const vy = e?.vy ?? (e?.dirY ?? 0) * (cfg.speed ?? 0);
     const speed = Math.hypot(vx, vy);
     const moving = speed > (cfg.walkThreshold ?? 16);
-    const cycle = moving ? (cfg.walkCycle ?? 6) : (cfg.idleCycle ?? 2.2);
+    const baseWalkCycle = st.walkCycleBase ?? (cfg.walkCycle ?? 6);
+    const baseIdleCycle = st.idleCycleBase ?? (cfg.idleCycle ?? 2.2);
+    const cycleOverride = moving ? st.walkCycleOverride : st.idleCycleOverride;
+    const cycle = (cycleOverride != null) ? cycleOverride : (moving ? baseWalkCycle : baseIdleCycle);
     st.time += dt;
     st.phase = (st.phase + dt * cycle) % TAU;
-    const bobAmp = moving ? (cfg.walkBob ?? 3.4) : (cfg.idleBob ?? 1.2);
+    const baseWalkBob = st.walkBobBase ?? (cfg.walkBob ?? 3.4);
+    const baseIdleBob = st.idleBobBase ?? (cfg.idleBob ?? 1.2);
+    const bobOverride = moving ? st.walkBobOverride : st.idleBobOverride;
+    const bobAmp = (bobOverride != null) ? bobOverride : (moving ? baseWalkBob : baseIdleBob);
     st.bob = Math.sin(st.phase) * bobAmp * st.scale;
     const swayFreq = cfg.swayFreq ?? 1.5;
     const swayAmp = moving ? (cfg.swayAmp ?? 0.8) : (cfg.idleSwayAmp ?? 0.3);
@@ -801,7 +823,23 @@
     shadowRadius: 12,
     offsetY: -4,
     states: makeNPCStates('medico.png'),
-    resolveState: resolveNPCState
+    resolveState: resolveNPCState,
+    extraUpdate(st, e, dt){
+      st._glanceTimer = (st._glanceTimer || 0) - dt;
+      if (!st.moving){
+        if (st._glanceTimer <= 0){
+          st._glanceTimer = 2.6 + Math.random() * 2.8;
+          st._glanceDir = (Math.random() < 0.5 ? -1 : 1) * 0.18;
+        }
+        const target = st._glanceDir || 0;
+        st.micro += (target - (st.micro || 0)) * Math.min(1, dt * 3);
+      } else {
+        st._glanceDir = 0;
+        st.micro += (0 - (st.micro || 0)) * Math.min(1, dt * 5);
+      }
+      if (st.micro > 0.28) st.micro = 0.28;
+      if (st.micro < -0.28) st.micro = -0.28;
+    }
   });
 
   registerWalkerRig('npc_supervisora', {
@@ -883,6 +921,45 @@
     shadowRadius: 11,
     offsetY: -5,
     states: makeNPCStates('familiar_molesto.png'),
+    resolveState: resolveNPCState,
+    extraUpdate(st, e, dt, speed, moving){
+      st._erraticTimer = (st._erraticTimer || 0) - dt;
+      if (st._erraticTimer <= 0){
+        st._erraticTimer = 1.2 + Math.random() * 1.6;
+        const base = st.walkCycleBase ?? 6.8;
+        st._erraticCycle = base + (Math.random() - 0.5) * 1.1;
+        st._idleShakeDir = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.35);
+      }
+      if (moving){
+        const targetCycle = st._erraticCycle ?? (st.walkCycleBase ?? 6.8);
+        st.walkCycleOverride = targetCycle;
+        const baseBob = st.walkBobBase ?? 2.9;
+        st.walkBobOverride = baseBob * (1 + Math.sin(st.time * 4.4 + st.swayPhase) * 0.12);
+        const erraticTarget = Math.sin(st.time * 9.5 + st.swayPhase) * 0.16;
+        st.erratic += (erraticTarget - st.erratic) * Math.min(1, dt * 4.2);
+        st.hip = Math.sin(st.time * 11.5 + st.swayPhase) * 0.45;
+      } else {
+        st.walkCycleOverride = null;
+        st.walkBobOverride = null;
+        const jitter = (st._idleShakeDir || 0) * Math.sin(st.time * 13.5);
+        st.hip = jitter;
+        const erraticTarget = Math.sin(st.time * 18) * 0.12;
+        st.erratic += (erraticTarget - st.erratic) * Math.min(1, dt * 3.6);
+      }
+    }
+  });
+
+  registerWalkerRig('npc_generic_human', {
+    skin: null,
+    fallbackColor: '#6d7a8e',
+    walkCycle: 6.2,
+    walkBob: 2.6,
+    idleBob: 1.0,
+    swayAmp: 0.5,
+    lean: 0.05,
+    shadowRadius: 11,
+    offsetY: -4,
+    states: makeNPCStates(null),
     resolveState: resolveNPCState
   });
 
@@ -1018,6 +1095,32 @@
         return 'walk_down';
       }
       return { state: 'idle', orientation: st.orientation };
+    },
+    extraUpdate(st, e, dt){
+      st._angerPhase = (st._angerPhase || 0) + dt * 6.4;
+      const pulse = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(st._angerPhase * 2.2));
+      st.tint = { color: 'rgba(255,64,64,1)', alpha: pulse };
+      if (e?.dead){
+        st.walkCycleOverride = null;
+        st.walkBobOverride = 0;
+        st.idleBobOverride = 0;
+        st.hip = 0;
+        return;
+      }
+      if (st.moving){
+        const baseCycle = st.walkCycleBase ?? 8;
+        const baseBob = st.walkBobBase ?? 3.5;
+        st.walkCycleOverride = baseCycle * 1.05;
+        st.walkBobOverride = baseBob * 1.05;
+        st.idleBobOverride = null;
+        st.hip = Math.sin(st.time * 10.5 + st.swayPhase) * 0.35;
+      } else {
+        st.walkCycleOverride = null;
+        st.walkBobOverride = null;
+        const baseIdle = st.idleBobBase ?? 1.4;
+        st.idleBobOverride = baseIdle * 1.25;
+        st.hip = Math.sin(st.time * 18) * 0.55;
+      }
     }
   });
 
@@ -1092,31 +1195,50 @@
         time: 0,
         bob: 0,
         wing: 0,
+        wingAmp: 0,
         sting: 0,
-        fall: 0
+        drop: 0,
+        dropSpeed: 0,
+        rotation: 0
       };
     },
     update(st, e, dt){
       const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      const dead = !!(e?.dead);
+      const attacking = !dead && speed >= 24;
       st.time += dt;
-      const hover = speed < 24;
-      const wingSpeed = hover ? 22 : 28;
+      const wingSpeed = attacking ? 28 : 22;
+      const desiredAmp = dead ? 0 : (attacking ? 1.2 : 0.9);
       st.phase = (st.phase + dt * wingSpeed) % TAU;
-      st.wing = Math.sin(st.phase) * (hover ? 0.9 : 1.2);
-      st.bob = Math.sin(st.time * (hover ? 6 : 8)) * (hover ? 4 : 2);
-      if (hover) st.sting *= Math.max(0, 1 - dt * 3);
-      else st.sting = Math.min(1.2, st.sting + dt * 4);
-      if (e?.dead) st.fall = Math.min(1, st.fall + dt * 1.2);
-      else st.fall = Math.max(0, st.fall - dt * 2);
+      st.wingAmp += (desiredAmp - st.wingAmp) * Math.min(1, dt * (dead ? 8 : 6));
+      if (st.wingAmp < 0) st.wingAmp = 0;
+      st.wing = Math.sin(st.phase) * st.wingAmp;
+      const bobFreq = attacking ? 9 : 6;
+      const bobAmp = attacking ? 1.6 : 3.8;
+      const targetBob = Math.sin(st.time * bobFreq) * bobAmp;
+      st.bob += (targetBob - st.bob) * Math.min(1, dt * 6);
+      if (attacking) st.sting = Math.min(1.4, st.sting + dt * 5.2);
+      else st.sting = Math.max(0, st.sting - dt * 3.4);
+      if (dead){
+        st.dropSpeed = Math.min(st.dropSpeed + dt * 320, 520);
+        st.drop = Math.min(st.drop + st.dropSpeed * dt, 48);
+        st.rotation = Math.min(st.rotation + dt * 4.4, 1.2);
+      } else {
+        st.dropSpeed = Math.max(0, st.dropSpeed - dt * 260);
+        st.drop = Math.max(0, st.drop - dt * 90);
+        if (st.drop < 0.2) st.drop = 0;
+        st.rotation *= Math.max(0, 1 - dt * 6);
+      }
     },
     draw(ctx, cam, e, st){
       const [cx, cy, sc] = toScreen(cam, e);
       const s = sc * 0.8;
       ctx.save();
-      ctx.translate(cx, cy - 10 * s + st.bob * s - st.fall * 6 * s);
-      drawShadow(ctx, 8, s, 0.28, 0.2);
-      ctx.translate(0, -4 * s);
-      ctx.rotate(st.sting * 0.1);
+      ctx.translate(cx, cy + st.drop);
+      const shadowAlpha = 0.2 * Math.max(0.1, 1 - Math.min(st.drop / 48, 1));
+      drawShadow(ctx, 8, s, 0.28, shadowAlpha);
+      ctx.translate(0, -10 * s + st.bob * 0.25 * s);
+      ctx.rotate((st.drop > 0.5 ? st.rotation : st.sting * 0.1));
       ctx.globalAlpha = 0.3 + Math.abs(st.wing) * 0.4;
       ctx.fillStyle = '#d2f3ff';
       ctx.beginPath();

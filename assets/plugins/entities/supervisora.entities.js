@@ -20,6 +20,24 @@
 
   const TILE = (typeof W.TILE_SIZE !== 'undefined') ? W.TILE_SIZE : 32;
 
+  function tryAttachFlashlight(e){
+    if (!e || e.flashlight === false || e._flashlightAttached) return;
+    const attach = W.Entities?.attachFlashlight;
+    if (typeof attach !== 'function') return;
+    try {
+      const radius = Number.isFinite(e.flashlightRadius) ? e.flashlightRadius : TILE * 4.8;
+      const intensity = Number.isFinite(e.flashlightIntensity) ? e.flashlightIntensity : 0.55;
+      const color = e.flashlightColor || '#fff2c0';
+      const id = attach(e, { color, radius, intensity });
+      if (id != null) {
+        e._flashlightAttached = true;
+        e._flashlightId = id;
+      }
+    } catch (err) {
+      try { console.warn('[Supervisora] No se pudo adjuntar linterna', err); } catch (_) {}
+    }
+  }
+
   // --- Utilidades geom / colisiones -----------------------------------------
   function AABB(a,b){
     return !(a.x+a.w <= b.x || b.x+b.w <= a.x || a.y+a.h <= b.y || b.y+b.h <= a.y);
@@ -88,6 +106,7 @@
     } catch (_) {
       e.rigOk = e.rigOk === true;
     }
+      tryAttachFlashlight(e);
       this.list.push(e);
 
       // Arrancar temporizador de drop aleatorio
