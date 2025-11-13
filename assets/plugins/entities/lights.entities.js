@@ -138,14 +138,23 @@
     const heroKey = (owner.skin || owner.heroId || W.selectedHeroKey || '');
     const color   = opts.color || flashlightColorForHero(heroKey);
 
+    const radius = opts.radius   || TILE * 6.5;
+    const intensity = (typeof opts.intensity === 'number' ? opts.intensity : 0.90);
     const id = W.LightingAPI.addLight({
       owner,
       color,
-      radius:  opts.radius   || TILE * 6.5,
+      radius,
       coneDeg: opts.coneDeg  || 70,
-      intensity: (typeof opts.intensity==='number'?opts.intensity:0.90),
+      intensity,
       type: 'npc'
     });
+
+    try {
+      const label = owner.displayName || owner.name || owner.heroId || owner.kindName || owner.kind || 'entidad';
+      const radiusTiles = (radius / TILE).toFixed(2);
+      console.log(`[Debug] Flashlight attached to ${label}: color=${color}, radius=${radius.toFixed(1)}px (${radiusTiles} tiles), intensity=${intensity.toFixed(2)}.`);
+    } catch (_) {}
+    try { W.Puppet?.__notifyLightsReady?.(); } catch (_) {}
 
     // Limpieza automática
     const prev = owner.onDestroy;
