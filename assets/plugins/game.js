@@ -2711,22 +2711,50 @@ function drawEntities(c2){
       const meta = payload.meta || {};
       const params = [];
       params.push('mode=normal');
+      params.push('difficulty=normal');
       params.push(`source=${source}`);
+
       const seed = meta.seed ?? levelCfg.seed ?? ((typeof G !== 'undefined' && G && typeof G.seed !== 'undefined') ? G.seed : null);
-      if (seed !== null && seed !== undefined) params.push(`seed=${seed}`);
-      if (typeof meta.roomsCount === 'number') params.push(`rooms=${meta.roomsCount}`);
+      const roomsCount = Number.isFinite(meta.roomsCount) ? meta.roomsCount : null;
+      const doorsCount = Number.isFinite(meta.doorsCount) ? meta.doorsCount : null;
       const spawns = meta.spawns || {};
       const animals = (typeof meta.animalSpawns === 'number' && !Number.isNaN(meta.animalSpawns))
         ? meta.animalSpawns
         : ((typeof spawns.mosquito === 'number' ? spawns.mosquito : 0) + (typeof spawns.rat === 'number' ? spawns.rat : 0));
-      if (Number.isFinite(animals)) params.push(`animals=${animals}`);
-      if (typeof spawns.staff === 'number') params.push(`staff=${spawns.staff}`);
-      if (typeof spawns.cart === 'number') params.push(`carts=${spawns.cart}`);
-      if (typeof meta.patientsCount === 'number') params.push(`patients=${meta.patientsCount}`);
-      if (typeof meta.pillsCount === 'number') params.push(`pills=${meta.pillsCount}`);
-      if (typeof meta.bellsCount === 'number') params.push(`bells=${meta.bellsCount}`);
-      if (typeof meta.elevatorsCount === 'number') params.push(`elevators=${meta.elevatorsCount}`);
-      if (typeof meta.lightsCount === 'number') params.push(`lights=${meta.lightsCount}`);
+      const staff = Number.isFinite(spawns.staff) ? spawns.staff : null;
+      const carts = Number.isFinite(spawns.cart) ? spawns.cart : null;
+      const patients = Number.isFinite(meta.patientsCount) ? meta.patientsCount : null;
+      const pills = Number.isFinite(meta.pillsCount) ? meta.pillsCount : null;
+      const bells = Number.isFinite(meta.bellsCount) ? meta.bellsCount : null;
+      const elevators = Number.isFinite(meta.elevatorsCount) ? meta.elevatorsCount : null;
+      const lights = Number.isFinite(meta.lightsCount) ? meta.lightsCount : null;
+
+      const headerDetails = [];
+      const pushDetail = (label, value) => {
+        if (value === null || value === undefined) return;
+        headerDetails.push(`${label}=${value}`);
+      };
+
+      if (seed !== null && seed !== undefined) {
+        params.push(`seed=${seed}`);
+        pushDetail('seed', seed);
+      }
+      pushDetail('difficulty', 'normal');
+      pushDetail('rooms', roomsCount);
+      pushDetail('doors', doorsCount);
+      if (Number.isFinite(animals)) {
+        params.push(`enemies=${animals}`);
+        pushDetail('enemies', animals);
+      }
+      if (staff !== null) params.push(`staff=${staff}`);
+      if (carts !== null) params.push(`carts=${carts}`);
+      if (patients !== null) params.push(`patients=${patients}`);
+      if (pills !== null) params.push(`pills=${pills}`);
+      if (bells !== null) params.push(`bells=${bells}`);
+      if (elevators !== null) params.push(`elevators=${elevators}`);
+      if (lights !== null) params.push(`lights=${lights}`);
+      if (doorsCount !== null) params.push(`doors=${doorsCount}`);
+      if (roomsCount !== null) params.push(`rooms=${roomsCount}`);
 
       const asciiRows = levelCfg.asciiRows.map((row) => (row == null ? '' : String(row)));
       const width = levelCfg.width ?? (asciiRows[0]?.length ?? 0);
@@ -2734,7 +2762,8 @@ function drawEntities(c2){
       const fallbackLevel = (typeof G !== 'undefined' && G && typeof G.level !== 'undefined') ? G.level : '?';
       const levelLabel = (typeof levelCfg.level === 'number') ? `Level ${levelCfg.level}` : `Level ${fallbackLevel}`;
 
-      const headerLine = `${timestamp} ${levelLabel} (Procedural, difficulty=normal)`;
+      const headerSuffix = headerDetails.length ? ` (Procedural, ${headerDetails.join(', ')})` : ' (Procedural)';
+      const headerLine = `${timestamp} ${levelLabel}${headerSuffix}`;
       const paramsLine = `Parámetros: ${params.join(', ')}`;
       const mapHeader = `Mapa ${width}x${height}:`;
       const separator = '--------------------------------------------------';
