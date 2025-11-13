@@ -409,6 +409,8 @@
     if (cfg.pushDuration) root.style.setProperty('--hero-push-duration', `${cfg.pushDuration}s`);
     if (cfg.talkDuration) root.style.setProperty('--hero-talk-duration', `${cfg.talkDuration}s`);
     root.style.setProperty('--hero-offset-y', `${cfg.offsetY ?? -10}px`);
+    if (cfg.lanternColor) root.style.setProperty('--lantern-color', cfg.lanternColor);
+    if (cfg.lanternGlow) root.style.setProperty('--lantern-glow', cfg.lanternGlow);
 
     const frame = createEl('div', 'hero-frame', root);
     createEl('div', 'hero-shadow', frame);
@@ -658,7 +660,9 @@
       pushDuration: 1.05,
       talkDuration: 0.6,
       offsetY: -16,
-      depthBias: 20
+      depthBias: 20,
+      lanternColor: '#ffd34d',
+      lanternGlow: 'rgba(255,211,77,0.55)'
     },
     roberto: {
       scale: 1.0,
@@ -670,7 +674,9 @@
       pushDuration: 0.9,
       talkDuration: 0.42,
       offsetY: -14,
-      depthBias: 18
+      depthBias: 18,
+      lanternColor: '#ff9f40',
+      lanternGlow: 'rgba(255,159,64,0.52)'
     },
     francesco: {
       scale: 1.02,
@@ -682,7 +688,9 @@
       pushDuration: 0.98,
       talkDuration: 0.5,
       offsetY: -15,
-      depthBias: 19
+      depthBias: 19,
+      lanternColor: '#66b3ff',
+      lanternGlow: 'rgba(102,179,255,0.52)'
     }
   };
 
@@ -704,6 +712,36 @@
 
   for (const [hero, cfg] of Object.entries(HERO_DOM_CONFIG)){
     registerHeroDomRig(hero, cfg);
+  }
+
+  let heroRigDiagnosticsDone = false;
+  function logHeroRigDiagnostics(){
+    if (heroRigDiagnosticsDone) return;
+    heroRigDiagnosticsDone = true;
+    if (typeof window === 'undefined') return;
+    const registry = window.Puppet?.RIGS || {};
+    for (const hero of Object.keys(HERO_DOM_CONFIG)){
+      const id = `hero_${hero}`;
+      if (registry && registry[id]){
+        try {
+          console.log(`[HeroRig] rig "${id}" listo para usarse.`);
+        } catch (_) {}
+      } else {
+        try {
+          console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
+        } catch (_) {}
+      }
+    }
+  }
+
+  if (typeof document !== 'undefined'){
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', logHeroRigDiagnostics, { once: true });
+    } else {
+      logHeroRigDiagnostics();
+    }
+  } else {
+    logHeroRigDiagnostics();
   }
 
   // ───────────────────────────── NPCs ──────────────────────────────

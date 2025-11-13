@@ -1654,6 +1654,44 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   50%{ transform: rotate(-8deg); }
 }
 
+@keyframes heroEnriqueTalkArmLeft{
+  0%{ transform: rotate(6deg); }
+  40%{ transform: rotate(-6deg); }
+  70%{ transform: rotate(2deg); }
+  100%{ transform: rotate(6deg); }
+}
+
+@keyframes heroEnriqueTalkHead{
+  0%{ transform: translate(-50%,0) rotate(0deg); }
+  45%{ transform: translate(-50%,-2px) rotate(-3deg); }
+  100%{ transform: translate(-50%,0) rotate(1deg); }
+}
+
+@keyframes heroRobertoTalkBounce{
+  0%{ transform: translate(-50%,0); }
+  28%{ transform: translate(-50%,-4px); }
+  58%{ transform: translate(-50%,1px); }
+  100%{ transform: translate(-50%,0); }
+}
+
+@keyframes heroRobertoTalkHands{
+  0%{ transform: rotate(10deg); }
+  50%{ transform: rotate(-18deg); }
+  100%{ transform: rotate(10deg); }
+}
+
+@keyframes heroFrancescoTalkPalm{
+  0%{ transform: rotate(4deg); }
+  45%{ transform: rotate(-12deg); }
+  100%{ transform: rotate(4deg); }
+}
+
+@keyframes heroFrancescoTalkNod{
+  0%{ transform: translate(-50%,0) rotate(0deg); }
+  50%{ transform: translate(-50%,-1.5px) rotate(-2deg); }
+  100%{ transform: translate(-50%,0) rotate(0.5deg); }
+}
+
 @keyframes heroEatArm{
   0%{ transform: rotate(-6deg); }
   25%{ transform: rotate(-14deg) translateY(-4px); }
@@ -1697,6 +1735,12 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 
 .puppet-hero.hero-is-talking .hero-mouth{ animation: heroTalkMouth 0.28s steps(2,end) infinite; }
 .puppet-hero.hero-is-talking .hero-arm-right{ animation: heroTalkArm var(--hero-talk-duration) ease-in-out infinite; }
+.puppet-hero.hero-enrique.hero-is-talking .hero-arm-left{ animation: heroEnriqueTalkArmLeft calc(var(--hero-talk-duration) * 1.2) ease-in-out infinite; }
+.puppet-hero.hero-enrique.hero-is-talking .hero-head{ animation: heroEnriqueTalkHead calc(var(--hero-talk-duration) * 1.4) ease-in-out infinite; }
+.puppet-hero.hero-roberto.hero-is-talking .hero-body{ animation: heroRobertoTalkBounce calc(var(--hero-talk-duration) * 0.85) cubic-bezier(0.32,0,0.4,1) infinite; }
+.puppet-hero.hero-roberto.hero-is-talking .hero-arm-left{ animation: heroRobertoTalkHands calc(var(--hero-talk-duration) * 0.7) ease-in-out infinite; }
+.puppet-hero.hero-francesco.hero-is-talking .hero-arm-left{ animation: heroFrancescoTalkPalm calc(var(--hero-talk-duration) * 1.05) ease-in-out infinite; }
+.puppet-hero.hero-francesco.hero-is-talking .hero-head{ animation: heroFrancescoTalkNod calc(var(--hero-talk-duration) * 1.2) ease-in-out infinite; }
 
 .puppet-hero.hero-is-eating .hero-arm-right,
 .puppet-hero.hero-is-powered .hero-arm-right{ animation: heroEatArm calc(var(--hero-attack-duration) * 1.4) ease-in-out 1 forwards; }
@@ -1730,8 +1774,19 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   filter: brightness(0.7) sepia(0.35);
 }
 
+.puppet-hero.hero-death-crush .hero-body{
+  transform: translate(-50%, 10px) scaleY(0.2) scaleX(1.12);
+  transition: transform 0.2s ease-out;
+  filter: brightness(0.8);
+}
+
 .puppet-hero.hero-death-explosion .hero-body{
   transform: translate(-50%, -12px) rotate(-110deg) scale(0.9);
+}
+
+.puppet-hero.hero-death-impact .hero-body{
+  transform: translate(-50%, -8px) rotate(-82deg) scale(0.94);
+  transition: transform 0.32s ease-out;
 }
 
 .puppet-hero.hero-death-slip .hero-body{
