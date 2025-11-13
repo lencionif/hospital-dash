@@ -18,6 +18,24 @@
   const ENT = (G.ENT ||= { PLAYER: 1, DOOR: 8 }); // por si no estuviera
   const TILE = (W.TILE_SIZE || W.TILE || 32);
 
+  function tryAttachFlashlight(e){
+    if (!e || e.flashlight === false || e._flashlightAttached) return;
+    const attach = W.Entities?.attachFlashlight;
+    if (typeof attach !== 'function') return;
+    try {
+      const radius = Number.isFinite(e.flashlightRadius) ? e.flashlightRadius : TILE * 4.8;
+      const intensity = Number.isFinite(e.flashlightIntensity) ? e.flashlightIntensity : 0.55;
+      const color = e.flashlightColor || '#fff2c0';
+      const id = attach(e, { color, radius, intensity });
+      if (id != null){
+        e._flashlightAttached = true;
+        e._flashlightId = id;
+      }
+    } catch (err){
+      try { console.warn('[FamiliarMolesto] No se pudo adjuntar linterna', err); } catch (_) {}
+    }
+  }
+
   // ======= Config por defecto =================================================
   const CFG = {
     size: { w: Math.floor(TILE * 0.85), h: Math.floor(TILE * 0.95) },
@@ -96,6 +114,7 @@
     } catch (_) {
       e.rigOk = true;
     }
+    tryAttachFlashlight(e);
     return e;
   }
 

@@ -1304,8 +1304,9 @@
           rigOk: false
         };
       }
-      npc.rigOk = npc.rigOk === true || true;
+      npc.rigOk = npc.rigOk === true;
       if (!npc.group) npc.group = 'human';
+      ensureNPCVisuals(npc);
       out.push(npc);
       try { root.EntityGroups?.assign?.(npc); } catch (_) {}
       try { root.EntityGroups?.register?.(npc, G); } catch (_) {}
@@ -1325,6 +1326,90 @@
     if (sub.includes('limpieza') && root.Entities?.Cleaner?.spawn) return root.Entities.Cleaner.spawn(x, y, payload);
     if (sub.includes('enfermera') && root.Entities?.NurseSexy?.spawn) return root.Entities.NurseSexy.spawn(x, y, payload);
     return null;
+  }
+
+  const NPC_RIG_BY_SKIN = {
+    'medico.png': 'npc_medico',
+    'supervisora.png': 'npc_supervisora',
+    'tcae.png': 'npc_tcae',
+    'celador.png': 'npc_celador',
+    'guardia.png': 'npc_guardia',
+    'enfermera_sexy.png': 'npc_enfermera_sexy',
+    'familiar_molesto.png': 'npc_familiar_molesto',
+    'chica_limpieza.png': 'npc_chica_limpieza',
+    'paciente_furiosa.png': 'patient_furiosa'
+  };
+
+  function entityLabel(entity){
+    if (!entity) return 'desconocido';
+    return entity.name || entity.id || entity.tag || entity.sub || entity.kind || 'npc';
+  }
+
+  function resolveRigForNPC(entity){
+    if (!entity) return null;
+    if (entity.puppet?.rigName) return entity.puppet.rigName;
+    if (typeof entity.rigName === 'string' && entity.rigName) return entity.rigName;
+    const skin = String(entity.skin || '').toLowerCase();
+    if (skin && NPC_RIG_BY_SKIN[skin]) return NPC_RIG_BY_SKIN[skin];
+    const sub = String(entity.sub || entity.role || '').toLowerCase();
+    if (sub){
+      const normalized = `npc_${sub.replace(/[^a-z0-9]+/g, '_')}`;
+      if (root.Puppet?.RIGS && root.Puppet.RIGS[normalized]) return normalized;
+    }
+    return null;
+  }
+
+  function ensureNPCPuppet(npc){
+    if (!npc) return;
+    if (npc.puppet && npc.puppet.rigName && npc.rigOk === true) return;
+    if (!root.Puppet?.bind && !root.PuppetAPI?.attach) return;
+    let rig = resolveRigForNPC(npc);
+    const fallback = 'npc_generic_human';
+    if (!rig) rig = fallback;
+    if (npc.puppet && npc.puppet.rigName === rig && npc.rigOk === true) return;
+    const data = { skin: npc.skin };
+    try {
+      const puppet = root.Puppet?.bind?.(npc, rig, { z: npc.puppet?.z ?? 0, scale: npc.puppet?.scale ?? 1, data })
+        || root.PuppetAPI?.attach?.(npc, { rig, z: npc.puppet?.z ?? 0, scale: npc.puppet?.scale ?? 1, data });
+      if (puppet){
+        npc.rigOk = true;
+        npc.rigName = rig;
+        if (rig === fallback){
+          try { console.warn(`[Placement] NPC ${entityLabel(npc)} sin rig específico, usando '${rig}'.`); } catch (_) {}
+        } else {
+          try { console.log(`[Placement] NPC ${entityLabel(npc)} vinculado al rig '${rig}'.`); } catch (_) {}
+        }
+      }
+    } catch (err){
+      try { console.warn(`[Placement] No se pudo asignar rig '${rig}' a ${entityLabel(npc)}.`, err); } catch (_) {}
+    }
+  }
+
+  function ensureNPCFlashlight(npc){
+    if (!npc || npc.group !== 'human') return;
+    if (npc.flashlight === false) return;
+    if (npc._flashlightAttached) return;
+    const attach = root.Entities?.attachFlashlight;
+    if (typeof attach !== 'function') return;
+    try {
+      const tile = TILE_SIZE();
+      const radius = Number.isFinite(npc.flashlightRadius) ? npc.flashlightRadius : tile * 4.8;
+      const intensity = Number.isFinite(npc.flashlightIntensity) ? npc.flashlightIntensity : 0.55;
+      const color = npc.flashlightColor || '#fff2c0';
+      const id = attach(npc, { color, radius, intensity });
+      if (id != null){
+        npc._flashlightAttached = true;
+        npc._flashlightId = id;
+        try { console.log(`[Placement] Linterna asignada a ${entityLabel(npc)} (${color}).`); } catch (_) {}
+      }
+    } catch (err){
+      try { console.warn(`[Placement] Error al adjuntar linterna a ${entityLabel(npc)}.`, err); } catch (_) {}
+    }
+  }
+
+  function ensureNPCVisuals(npc){
+    ensureNPCPuppet(npc);
+    ensureNPCFlashlight(npc);
   }
 
   function spawnFuriousFromPlacement(x, y, cfg, G){
@@ -1388,6 +1473,7 @@
         || root.PuppetAPI?.attach?.(furious, { rig: 'patient_furiosa', z: 0, scale: 1 });
       if (puppet) furious.rigOk = true;
     } catch (_) {}
+    ensureNPCVisuals(furious);
     return furious;
   }
 
@@ -1415,7 +1501,7 @@
         entity = root.RatsAPI.spawn(world.x, world.y, { _units: 'px' });
       }
       if (entity) {
-        entity.rigOk = entity.rigOk === true || true;
+        entity.rigOk = entity.rigOk === true;
         if (!entity.group) {
           if (subtype.includes('mosquito') || type === 'mosquito') {
             entity.group = 'animal';
@@ -1426,6 +1512,7 @@
           }
         }
         if (entity.hostile !== true) entity.hostile = true;
+        ensureNPCVisuals(entity);
         out.push(entity);
         try { root.EntityGroups?.assign?.(entity); } catch (_) {}
         try { root.EntityGroups?.register?.(entity, G); } catch (_) {}

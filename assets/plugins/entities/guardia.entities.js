@@ -22,6 +22,24 @@
   })();
   const TILE = (W.TILE_SIZE || W.TILE || 32);
 
+  function tryAttachFlashlight(e){
+    if (!e || e.flashlight === false || e._flashlightAttached) return;
+    const attach = W.Entities?.attachFlashlight;
+    if (typeof attach !== 'function') return;
+    try {
+      const radius = Number.isFinite(e.flashlightRadius) ? e.flashlightRadius : TILE * 4.8;
+      const intensity = Number.isFinite(e.flashlightIntensity) ? e.flashlightIntensity : 0.55;
+      const color = e.flashlightColor || '#fff2c0';
+      const id = attach(e, { color, radius, intensity });
+      if (id != null){
+        e._flashlightAttached = true;
+        e._flashlightId = id;
+      }
+    } catch (err){
+      try { console.warn('[Guardia] No se pudo adjuntar linterna', err); } catch (_) {}
+    }
+  }
+
   // ========================= Utilidades de entorno =========================
   function pushUnique(list, it){ if (!list) return; if (!list.includes(it)) list.push(it); }
   function aabb(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
@@ -207,6 +225,8 @@
     } catch (_) {
       e.rigOk = true;
     }
+
+    tryAttachFlashlight(e);
 
     return e;
   }
