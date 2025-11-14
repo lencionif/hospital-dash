@@ -629,10 +629,15 @@
 
   function positionHeroDom(st, cam, e){
     if (!st || !st.root || !e) return;
-    const [cx, cy, sc] = toScreen(cam, e);
+    const [worldX, worldY, sc] = toScreen(cam, e);
+    const projected = (typeof window.worldToScreen === 'function')
+      ? window.worldToScreen(worldX, worldY, cam)
+      : { sx: worldX, sy: worldY };
+    const screenX = (projected && (projected.sx ?? projected.x)) ?? worldX;
+    const screenY = (projected && (projected.sy ?? projected.y)) ?? worldY;
     const totalScale = (st.scale ?? 1) * sc;
     const offsetY = (st.offsetY ?? -10) * totalScale;
-    st.root.style.transform = `translate(${cx}px, ${cy + offsetY}px) scale(${totalScale})`;
+    st.root.style.transform = `translate(${screenX}px, ${screenY + offsetY}px) scale(${totalScale})`;
     const depth = Math.floor((e.y || 0) + (st.depthBias || 0));
     st.root.style.zIndex = String(200 + depth);
   }
@@ -1096,6 +1101,7 @@
       draw(ctx, cam, e, st){
         const [cx, cy, sc] = toScreen(cam, e);
         const stateInfo = cfg.states ? (cfg.states[st.state] || cfg.states.default) : null;
+        const attended = !!(e?.attended || e?.delivered || e?.dead || e?.hidden);
         const baseW = stateInfo?.spriteWidth ?? cfg.spriteWidth ?? (e.w || 32);
         const baseH = stateInfo?.spriteHeight ?? cfg.spriteHeight ?? (e.h || 48);
         const scaleMul = stateInfo?.scale ?? 1;

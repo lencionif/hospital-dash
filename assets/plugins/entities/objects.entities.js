@@ -334,7 +334,11 @@
     // Reemplaza sin stack (diseño)
     g.powerup = { type, t: duration, params };
     // Adaptadores de stats temporales (el engine puede leer estos multiplicadores)
-    g.pushMultiplier = (type === 'syringe-red') ? (params.pushMul || 1.6) : 1;
+    const phys = window.Physics || null;
+    const physCfg = phys ? (phys.PHYS || phys.DEFAULTS || {}) : {};
+    const pushCfg = physCfg.pushMultipliers || {};
+    const syringeMul = Number.isFinite(pushCfg.syringeRed) ? pushCfg.syringeRed : (params.pushMul || 1.6);
+    g.pushMultiplier = (type === 'syringe-red') ? syringeMul : 1;
     g.speedMultiplier = (type === 'syringe-blue') ? (params.speedMul || 1.4) : 1;
     g.visionScale = (type === 'syringe-green') ? (params.vision || 1.5) : (g.visionScale || 1);
     // HUD opcional

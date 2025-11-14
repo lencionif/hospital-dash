@@ -14,13 +14,13 @@
   const PHYS = {
     restitution: 0.18,
     friction: 0.045,
-    slideFriction: 0.020,
-    cartRestitution: 0.68,
-    cartSlideMu: 0.015,
-    cartPushBoost: 1.45,
-    cartPushMassFactor: 0.32,
-    cartMinSpeed: 220,
-    cartMaxSpeed: 640,
+    slideFriction: 0.018,
+    cartRestitution: 0.85,
+    cartSlideMu: 0.012,
+    cartPushBoost: 1.6,
+    cartPushMassFactor: 0.28,
+    cartMinSpeed: 260,
+    cartMaxSpeed: 720,
     crushImpulse: 110,
     hurtImpulse: 45,
     explodeImpulse: 170,
@@ -41,7 +41,21 @@
     slowMoRelease: 0.55,
     ragdollImpulse: 140,
     ragdollDuration: 1.1,
-    ragdollCooldown: 0.65
+    ragdollCooldown: 0.65,
+    cartProfiles: {
+      er:   { mass: 0.6, restitution: 0.85, friction: 0.92, vmax: 10 },
+      med:  { mass: 1.1, restitution: 0.55, friction: 0.90, vmax: 8 },
+      food: { mass: 2.3, restitution: 0.00, friction: 0.88, vmax: 6 }
+    },
+    bedProfiles: {
+      bed:         { mass: 2.0, restitution: 0.45, friction: 0.88, vmax: 7 },
+      bed_patient: { mass: 2.0, restitution: 0.35, friction: 0.88, vmax: 7 }
+    },
+    pushMultipliers: {
+      base: 0.9,
+      enrique: 2.0,
+      syringeRed: 2.2
+    }
   };
 
   const DEFAULTS = { ...PHYS };

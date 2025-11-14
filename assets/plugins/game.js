@@ -532,6 +532,36 @@
   const levelCompleteScreen = document.getElementById('level-complete-screen');
   const gameOverScreen = document.getElementById('game-over-screen');
 
+  function clearLights(){
+    try { window.LightingAPI?.clear?.(); } catch (_) {}
+    try { window.LightingAPI?.removeAllLights?.(); } catch (_) {}
+    if (typeof document !== 'undefined'){
+      const nodes = document.querySelectorAll('.fx-light, .fx-fire, .fx-glow');
+      nodes.forEach((node) => {
+        try { node.remove(); } catch (_) {}
+      });
+    }
+    if (Array.isArray(G?.lights)) G.lights.length = 0;
+    if (Array.isArray(G?.roomLights)) G.roomLights.length = 0;
+    if (Array.isArray(G?.dynamicLights)) G.dynamicLights.length = 0;
+    if (Array.isArray(G?.lightFX)) G.lightFX.length = 0;
+  }
+
+  function fitStartScreen(){
+    if (typeof window === 'undefined') return;
+    const root = document.querySelector('#start-screen');
+    if (!root) return;
+    const viewportH = Math.max(window.innerHeight || document.documentElement?.clientHeight || 0, 320);
+    root.style.height = `${viewportH}px`;
+    root.style.maxHeight = `${viewportH}px`;
+    root.style.setProperty('--start-screen-height', `${viewportH}px`);
+  }
+  if (typeof window !== 'undefined'){
+    window.addEventListener('resize', fitStartScreen, { passive: true });
+    window.addEventListener('orientationchange', fitStartScreen, { passive: true });
+    setTimeout(fitStartScreen, 0);
+  }
+
   // ---- Construye desglose de puntuación para el scoreboard ---------------
   function buildLevelBreakdown(){
     // Si existe ScoreAPI con breakdown, lo usamos. Si no, mostramos un único renglón.
@@ -625,20 +655,36 @@
   window.applyWorldCamera = applyWorldCamera;
 
   function worldToScreenBasic(worldX, worldY, cam = camera, viewportWidth = VIEW_W, viewportHeight = VIEW_H) {
-    const ref = cam || camera;
-    const zoom = Number(ref?.zoom) || 1;
+    const ref = cam || camera || {};
+    const zoom = Number(ref.zoom) || 1;
     const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
+    const baseX = Number(ref.x) || 0;
+    const baseY = Number(ref.y) || 0;
+    const viewportX = Number.isFinite(ref.viewportX) ? ref.viewportX : (viewportWidth * 0.5);
+    const viewportY = Number.isFinite(ref.viewportY) ? ref.viewportY : (viewportHeight * 0.5);
+    const offsetX = Number.isFinite(ref.viewportOffsetX) ? ref.viewportOffsetX : 0;
+    const offsetY = Number.isFinite(ref.viewportOffsetY) ? ref.viewportOffsetY : 0;
     return {
-      x: (worldX - (ref?.x || 0)) * zoom + viewportWidth * 0.5 + (shake.x || 0),
-      y: (worldY - (ref?.y || 0)) * zoom + viewportHeight * 0.5 + (shake.y || 0),
+      x: (worldX - baseX) * zoom + viewportX + offsetX + (shake.x || 0),
+      y: (worldY - baseY) * zoom + viewportY + offsetY + (shake.y || 0),
     };
   }
 
+  function worldToScreen(x, y, cam = camera) {
+    const viewW = cam?.viewportWidth ?? VIEW_W;
+    const viewH = cam?.viewportHeight ?? VIEW_H;
+    const point = worldToScreenBasic(x, y, cam, viewW, viewH);
+    return { sx: Math.round(point.x), sy: Math.round(point.y), x: point.x, y: point.y };
+  }
+  window.worldToScreen = worldToScreen;
+
   function bridgeToScreen(a, b, c, d) {
     if (typeof a === 'number') {
-      return worldToScreenBasic(a, b, c, d);
+      const projected = worldToScreen(a, b, c);
+      return { x: projected.x ?? projected.sx, y: projected.y ?? projected.sy };
     }
-    return worldToScreenBasic(c, d, a, b?.width ?? VIEW_W, b?.height ?? VIEW_H);
+    const projected = worldToScreen(c, d, a);
+    return { x: projected.x ?? projected.sx, y: projected.y ?? projected.sy };
   }
 
   let invalidZoomLogged = false;
@@ -937,7 +983,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
            p.facing === 'S' ? Math.PI/2 :
            p.facing === 'W' ? Math.PI : -Math.PI/2);
 
+      p.heroId = (p.heroId || key);
+      if (!p.hero) p.hero = key;
+      if (!p.inventory) p.inventory = {};
+
       G.player = p;
+      G.player.heroId = p.heroId;
       return p;
     }
 
@@ -949,6 +1000,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     p.facing = 'S';
     p.pushAnimT = 0;
     p.skin = key;
+    p.hero = key;
+    p.heroId = key;
+    p.inventory = p.inventory || {};
     p.maxSpeed = 440;
     p.accel = 1000;
 
@@ -1618,6 +1672,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     };
     carrier.carry = carry;
     G.carry = carry;
+    carrier.inventory = carrier.inventory || {};
+    carrier.inventory.medicine = Object.assign({}, carry);
     try { window.ArrowGuide?.setTargetByKeyName?.(carry.pairName); } catch (_) {}
     try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
@@ -1625,6 +1681,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== pill);
     detachEntityRig(pill);
     pill.dead = true;
+    try {
+      window.HUD?.showFloatingMessage?.(carrier, `Has cogido medicina para ${carry.patientName || 'un paciente'}`, 1.6);
+    } catch (_) {}
     return true;
   }
 
@@ -1642,41 +1701,175 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     return name.includes('cart') || name.includes('carro');
   }
 
+  function isBedEntity(ent){
+    if (!ent) return false;
+    const ENT = window.ENT || {};
+    if (typeof ENT.BED === 'number' && ent.kind === ENT.BED) return true;
+    const tag = (ent.tag || ent.type || '').toString().toLowerCase();
+    if (tag.includes('bed') || tag.includes('cama')) return true;
+    const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
+    return rig.includes('bed');
+  }
+
+  function physicsConfig(){
+    const api = window.Physics || null;
+    if (!api) return null;
+    return api.PHYS || api.DEFAULTS || null;
+  }
+
+  function ensurePushableProfile(ent){
+    if (!ent) return null;
+    const existing = ent._physProfile;
+    if (existing && typeof existing.maxSpeedPx === 'number') return existing;
+    const phys = physicsConfig();
+    if (!phys) return existing || null;
+    const tile = window.TILE_SIZE || window.TILE || TILE;
+
+    if (isCartEntity(ent) && phys.cartProfiles){
+      const raw = (ent.cartType || ent.type || ent.kindName || '').toString().toLowerCase();
+      const key = raw.includes('er') || raw.includes('urgencias') ? 'er'
+        : raw.includes('med') || raw.includes('medicine') ? 'med'
+        : 'food';
+      const profile = phys.cartProfiles[key] || phys.cartProfiles.food || null;
+      if (profile){
+        if (Number.isFinite(profile.mass)) {
+          ent.mass = profile.mass;
+          ent.invMass = profile.mass > 0 ? 1 / profile.mass : 0;
+        }
+        if (Number.isFinite(profile.restitution)) {
+          ent.rest = profile.restitution;
+          ent.restitution = profile.restitution;
+        }
+        if (Number.isFinite(profile.friction)) {
+          const friction = Math.max(0, Math.min(profile.friction, 1));
+          const slip = Math.max(0, Math.min((1 - friction) * 0.5, 0.25));
+          const slide = Math.max(0.002, Math.min(0.22, (1 - friction) * 0.2 + 0.002));
+          ent.mu = slip;
+          ent._slideFrictionOverride = slide;
+        }
+        if (Number.isFinite(profile.vmax)) ent.maxSpeed = profile.vmax;
+        const maxSpeedPx = Number.isFinite(profile.vmax) ? profile.vmax * tile : null;
+        ent._physProfile = {
+          type: 'cart',
+          key,
+          vmax: profile.vmax,
+          maxSpeedPx,
+          restitution: profile.restitution
+        };
+        ent.slide = true;
+        return ent._physProfile;
+      }
+    }
+
+    if (isBedEntity(ent) && phys.bedProfiles){
+      const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
+      const key = rig.includes('patient') || rig.includes('paciente') ? 'bed_patient' : 'bed';
+      const profile = phys.bedProfiles[key] || phys.bedProfiles.bed || null;
+      if (profile){
+        if (Number.isFinite(profile.mass)) {
+          ent.mass = profile.mass;
+          ent.invMass = profile.mass > 0 ? 1 / profile.mass : 0;
+        }
+        if (Number.isFinite(profile.restitution)) {
+          ent.rest = profile.restitution;
+          ent.restitution = profile.restitution;
+        }
+        if (Number.isFinite(profile.friction)) {
+          const friction = Math.max(0, Math.min(profile.friction, 1));
+          const slip = Math.max(0, Math.min((1 - friction) * 0.45, 0.25));
+          const slide = Math.max(0.004, Math.min(0.2, (1 - friction) * 0.18 + 0.004));
+          ent.mu = slip;
+          ent._slideFrictionOverride = slide;
+        }
+        if (Number.isFinite(profile.vmax)) ent.maxSpeed = profile.vmax;
+        const maxSpeedPx = Number.isFinite(profile.vmax) ? profile.vmax * tile : null;
+        ent._physProfile = {
+          type: 'bed',
+          key,
+          vmax: profile.vmax,
+          maxSpeedPx,
+          restitution: profile.restitution
+        };
+        ent.slide = true;
+        return ent._physProfile;
+      }
+    }
+
+    return existing || ent._physProfile || null;
+  }
+
+  function computePushForce(baseForce){
+    const phys = physicsConfig();
+    const mulCfg = phys?.pushMultipliers || {};
+    let multiplier = Number.isFinite(mulCfg.base) ? mulCfg.base : 1;
+    const hero = G.player;
+    const heroKey = ((hero && (hero.heroId || hero.hero || hero.skin)) || window.selectedHeroKey || '').toString().toLowerCase();
+    if (heroKey && Number.isFinite(mulCfg[heroKey])) {
+      multiplier *= mulCfg[heroKey];
+    }
+    const baseBuff = Number.isFinite(G.pushMultiplier) ? G.pushMultiplier : 1;
+    const syringeMul = (G.powerup && G.powerup.type === 'syringe-red' && Number.isFinite(mulCfg.syringeRed))
+      ? mulCfg.syringeRed
+      : 1;
+    multiplier *= Math.max(baseBuff, syringeMul);
+    return baseForce * multiplier;
+  }
+
   function pushEntityWithImpulse(target, dir, baseForce){
     if (!target || (!dir.x && !dir.y)) return;
-    const physCfg = (window.Physics && (window.Physics.PHYS || window.Physics.DEFAULTS)) || {};
+    const physCfg = physicsConfig() || {};
+    const totalForce = computePushForce(baseForce);
+    const profile = ensurePushableProfile(target);
+    const isCart = isCartEntity(target);
+    const isBed = isBedEntity(target);
     const mass = Number.isFinite(target.mass) ? Math.max(0.25, target.mass) : 1;
-    if (isCartEntity(target)){
-      const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.45;
-      const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.32;
-      const minSpeed = Number.isFinite(physCfg.cartMinSpeed) ? physCfg.cartMinSpeed : 220;
-      const maxSpeed = Number.isFinite(physCfg.cartMaxSpeed) ? physCfg.cartMaxSpeed : 640;
-      const slideMu = Number.isFinite(physCfg.cartSlideMu) ? physCfg.cartSlideMu : 0.015;
-      const rest = Number.isFinite(physCfg.cartRestitution) ? physCfg.cartRestitution : null;
-      const denom = Math.max(0.25, mass * massFactor);
-      const impulse = baseForce * boost / denom;
-      target.vx = (target.vx || 0) + (dir.x || 0) * impulse;
-      target.vy = (target.vy || 0) + (dir.y || 0) * impulse;
-      const speed = Math.hypot(target.vx || 0, target.vy || 0);
-      if (minSpeed > 0 && speed < minSpeed){
-        const factor = minSpeed / Math.max(speed, 1);
-        target.vx *= factor;
-        target.vy *= factor;
-      } else if (maxSpeed > 0 && speed > maxSpeed){
-        const factor = maxSpeed / speed;
-        target.vx *= factor;
-        target.vy *= factor;
-      }
-      target.slide = true;
-      if (!Number.isFinite(target.mu) || target.mu > slideMu) target.mu = slideMu;
-      if (rest != null){
-        if (!Number.isFinite(target.rest) || target.rest < rest) target.rest = rest;
-        if (!Number.isFinite(target.restitution) || target.restitution < rest) target.restitution = rest;
-      }
+    let impulse;
+    if (isCart || isBed){
+      const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.6;
+      const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.28;
+      impulse = totalForce * boost / Math.max(0.25, mass * massFactor);
     } else {
-      const scale = 1 / Math.max(1, mass * 0.5);
-      target.vx = (target.vx || 0) + (dir.x || 0) * baseForce * scale;
-      target.vy = (target.vy || 0) + (dir.y || 0) * baseForce * scale;
+      impulse = totalForce / Math.max(1, mass * 0.5);
+    }
+
+    target.vx = (target.vx || 0) + (dir.x || 0) * impulse;
+    target.vy = (target.vy || 0) + (dir.y || 0) * impulse;
+
+    const tile = window.TILE_SIZE || window.TILE || TILE;
+    let maxSpeedPx = profile && Number.isFinite(profile.maxSpeedPx) ? profile.maxSpeedPx : null;
+    if (!Number.isFinite(maxSpeedPx) && Number.isFinite(target.maxSpeed)) {
+      maxSpeedPx = target.maxSpeed * tile;
+    }
+    if ((isCart || isBed) && !Number.isFinite(maxSpeedPx) && Number.isFinite(physCfg.cartMaxSpeed)) {
+      maxSpeedPx = physCfg.cartMaxSpeed;
+    }
+    let minSpeedPx = null;
+    if (isCart || isBed){
+      if (profile && Number.isFinite(profile.maxSpeedPx)) {
+        const baseMin = Number.isFinite(physCfg.cartMinSpeed) ? physCfg.cartMinSpeed : 0;
+        const derived = profile.maxSpeedPx * 0.35;
+        minSpeedPx = Math.max(baseMin, derived);
+      } else if (Number.isFinite(physCfg.cartMinSpeed)) {
+        minSpeedPx = physCfg.cartMinSpeed;
+      }
+    }
+
+    const speed = Math.hypot(target.vx || 0, target.vy || 0);
+    if (Number.isFinite(minSpeedPx) && speed < minSpeedPx){
+      const factor = minSpeedPx / Math.max(speed, 1);
+      target.vx *= factor;
+      target.vy *= factor;
+    }
+    if (Number.isFinite(maxSpeedPx) && speed > maxSpeedPx){
+      const factor = maxSpeedPx / speed;
+      target.vx *= factor;
+      target.vy *= factor;
+    }
+
+    if (profile && Number.isFinite(profile.restitution)) {
+      const rest = profile.restitution;
+      if (!Number.isFinite(target.restitution) || target.restitution < rest) target.restitution = rest;
+      if (!Number.isFinite(target.rest) || target.rest < rest) target.rest = rest;
     }
   }
 
@@ -2038,6 +2231,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         if (delivered) {
           if (hero) hero.carry = null;
           G.carry = null;
+          if (hero?.inventory) hero.inventory.medicine = null;
           try { pac.onCure?.(); } catch (_) {}
           G.delivered = (G.delivered || 0) + 1;
           const stats = G.stats || {};
@@ -3173,6 +3367,8 @@ function drawEntities(c2){
     try { window.Placement?.reset?.(); } catch (_) {}
     try { window.AI?.clearLevel?.(); } catch (_) {}
     try { window.BellsAPI?.reset?.(); } catch (_) {}
+
+    clearLights();
 
     window.LOG?.event?.('LEVEL_RESET', { debug: DEBUG_MAP_MODE });
     logThrough('info', '[startGame] estado global reseteado', { debug: DEBUG_MAP_MODE });

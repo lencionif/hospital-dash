@@ -16,6 +16,7 @@
     if (typeof G.stats.remainingPatients !== 'number') G.stats.remainingPatients = 0;
     if (typeof G.stats.activeFuriosas !== 'number') G.stats.activeFuriosas = 0;
     if (typeof G.stats.furiosasNeutralized !== 'number') G.stats.furiosasNeutralized = 0;
+    if (typeof G.stats.attended !== 'number') G.stats.attended = 0;
     return G.stats;
   }
 
@@ -332,6 +333,7 @@
   }
 
   function getCarry(hero) {
+    if (hero?.inventory?.medicine) return hero.inventory.medicine;
     if (hero?.carry) return hero.carry;
     if (hero && !hero.carry && G.carry && hero === (G.player || null)) return G.carry;
     return G.carry;
@@ -349,9 +351,11 @@
   }
 
   function clearCarry(hero) {
-    if (hero && hero.carry) hero.carry = null;
+    if (hero) {
+      if (hero.carry) hero.carry = null;
+      if (hero.inventory && hero.inventory.medicine) hero.inventory.medicine = null;
+    }
     if (G.carry) G.carry = null;
-    try { W.ArrowGuide?.clearTarget?.(); } catch (_) {}
   }
 
   function deliverPill(hero, patient) {
@@ -365,6 +369,7 @@
     clearCarry(carrier);
     const stats = ensureStats();
     stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
+    stats.attended = (stats.attended || 0) + 1;
     patient.state = 'disappear_on_cure';
     patient.attended = true;
     patient.furious = false;

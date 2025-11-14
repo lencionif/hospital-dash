@@ -78,10 +78,8 @@
 
     _computeDefault() {
       const G = window.G || {};
-      if (!G.player) return null;
-      const stats = G.stats || {};
-      const patientsDone = ((stats.remainingPatients || 0) === 0) ||
-        (window.PatientsAPI && typeof PatientsAPI.isAllDelivered === 'function' && PatientsAPI.isAllDelivered());
+      const player = G.player;
+      if (!player) return null;
 
       if (this._targetPoint) {
         return { x: this._targetPoint.x, y: this._targetPoint.y, type: this._targetPoint.type || 'custom' };
@@ -90,63 +88,58 @@
       if (this._targetEid) {
         const ent = findEntityById(G, this._targetEid);
         if (ent) {
-          return { x: ent.x + ent.w * 0.5, y: ent.y + ent.h * 0.5, type: this._mode === 'boss' ? 'boss' : 'patient' };
+          const targetType = this._mode === 'boss' ? 'boss' : (this._mode || 'patient');
+          return { x: ent.x + ent.w * 0.5, y: ent.y + ent.h * 0.5, type: targetType };
         }
       }
 
-      if (G.carry && !patientsDone) {
-        const key = G.carry.pairName || G.carry.pillKey;
-        if (key) {
-          const ent = this.setTargetByKeyName(key);
-          if (ent) return this._computeDefault();
-        }
-        if (Array.isArray(G.patients)) {
-          const found = G.patients.find(p => p && p.name === G.carry.patientName);
-          if (found) return { x: found.x + found.w * 0.5, y: found.y + found.h * 0.5, type: 'patient' };
+      const inventory = resolveCarry(G);
+      const pendingPatients = listPendingPatients(G);
+      const playerPos = centerPoint(player);
+
+      if (!inventory) {
+        const pill = closestMedicine(G, playerPos);
+        if (pill) return pill;
+      }
+
+      if (inventory) {
+        const assigned = resolvePatientForCarry(G, inventory);
+        if (assigned) {
+          const c = centerPoint(assigned);
+          return { x: c.x, y: c.y, type: 'patient' };
         }
       }
 
-      if (!patientsDone && Array.isArray(G.patients) && G.patients.length) {
-        const px = G.player.x + G.player.w * 0.5;
-        const py = G.player.y + G.player.h * 0.5;
-        let best = null;
-        let bestD = Infinity;
-        for (const pat of G.patients) {
-          if (!pat || pat.attended || pat.dead) continue;
-          const cx = pat.x + pat.w * 0.5;
-          const cy = pat.y + pat.h * 0.5;
-          const dx = cx - px;
-          const dy = cy - py;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < bestD) {
-            bestD = d2;
-            best = { x: cx, y: cy, type: 'patient' };
-          }
-        }
-        if (best) return best;
+      if (pendingPatients.length) {
+        const nearestPatient = closestPatientFromList(pendingPatients, playerPos);
+        if (nearestPatient) return nearestPatient;
       }
 
-      if (patientsDone) {
-        const cart = findEmergencyCart(G);
-        const player = G.player;
-        if (cart && !cart.dead && !cart.delivered) {
-          const pushing = cart._grabbedBy === player || cart._pushedByEnt === player || closeTo(cart, player, 48);
-          if (!pushing) {
-            return { x: cart.x + cart.w * 0.5, y: cart.y + cart.h * 0.5, type: 'cart' };
-          }
-        }
-
-        const door = findBossDoor(G);
-        if (door && door.open) {
-          return { x: door.x + door.w * 0.5, y: door.y + door.h * 0.5, type: 'door' };
-        }
-
-        const boss = findBoss(G);
-        if (boss) {
-          return { x: boss.x + boss.w * 0.5, y: boss.y + boss.h * 0.5, type: 'boss' };
-        }
+      const cart = findEmergencyCart(G);
+      if (cart && !cart.dead && !cart.delivered) {
+        const c = centerPoint(cart);
+        return { x: c.x, y: c.y, type: 'cart' };
       }
-      return null;
+
+      const door = findBossDoor(G);
+      if (door && door.open) {
+        const c = centerPoint(door);
+        return { x: c.x, y: c.y, type: 'door' };
+      }
+
+      const boss = findBoss(G);
+      if (boss) {
+        const c = centerPoint(boss);
+        return { x: c.x, y: c.y, type: 'boss' };
+      }
+
+      if (cart) {
+        const c = centerPoint(cart);
+        return { x: c.x, y: c.y, type: 'cart' };
+      }
+
+      // Fallback: keep arrow visible pointing slightly ahead of the player.
+      return { x: playerPos.x + 32, y: playerPos.y, type: 'custom' };
     },
 
     update(dt) {
@@ -205,6 +198,101 @@
       ctx.restore();
     }
   };
+
+  function centerPoint(entity) {
+    if (!entity) return { x: 0, y: 0 };
+    return { x: (entity.x || 0) + (entity.w || 0) * 0.5, y: (entity.y || 0) + (entity.h || 0) * 0.5 };
+  }
+
+  function distSq(ax, ay, bx, by) {
+    const dx = ax - bx;
+    const dy = ay - by;
+    return dx * dx + dy * dy;
+  }
+
+  function isPillCarry(carry) {
+    if (!carry) return false;
+    const type = (carry.type || carry.kind || '').toString().toUpperCase();
+    return type === 'PILL';
+  }
+
+  function resolveCarry(G) {
+    if (!G || !G.player) return null;
+    const player = G.player;
+    if (player.inventory && isPillCarry(player.inventory.medicine)) return player.inventory.medicine;
+    if (isPillCarry(player.carry)) return player.carry;
+    if (isPillCarry(G.carry)) return G.carry;
+    return null;
+  }
+
+  function listPendingPatients(G) {
+    const patients = Array.isArray(G?.patients) ? G.patients : [];
+    return patients.filter((p) => p && !p.dead && !p.attended);
+  }
+
+  function closestPatientFromList(list, origin) {
+    let best = null;
+    let bestD = Infinity;
+    for (const pat of list) {
+      const c = centerPoint(pat);
+      const d2 = distSq(origin.x, origin.y, c.x, c.y);
+      if (d2 < bestD) {
+        bestD = d2;
+        best = { x: c.x, y: c.y, type: 'patient' };
+      }
+    }
+    return best;
+  }
+
+  function closestMedicine(G, origin) {
+    const pills = Array.isArray(G?.pills) ? G.pills : [];
+    let best = null;
+    let bestD = Infinity;
+    const consider = (pill) => {
+      if (!pill || pill.dead) return;
+      const c = centerPoint(pill);
+      const d2 = distSq(origin.x, origin.y, c.x, c.y);
+      if (d2 < bestD) {
+        bestD = d2;
+        best = { x: c.x, y: c.y, type: 'pill' };
+      }
+    };
+    for (const pill of pills) consider(pill);
+    if (!best && Array.isArray(G?.entities)) {
+      const targetKind = window.ENT?.PILL;
+      for (const ent of G.entities) {
+        if (!ent || ent.dead) continue;
+        if (targetKind != null && ent.kind !== targetKind) continue;
+        if (ent.kind === targetKind || ent.type === 'PILL' || String(ent.tag || '').toLowerCase().includes('pill')) {
+          consider(ent);
+        }
+      }
+    }
+    return best;
+  }
+
+  function resolvePatientForCarry(G, carry) {
+    if (!G || !carry) return null;
+    const patients = Array.isArray(G.patients) ? G.patients : [];
+    const byId = carry.forPatientId ?? carry.patientId;
+    if (byId != null) {
+      const direct = findEntityById(G, byId) || patients.find((p) => p && p.id === byId);
+      if (direct && !direct.dead) return direct;
+    }
+    if (carry.pairName) {
+      const byKey = patients.find((p) => p && p.keyName === carry.pairName);
+      if (byKey && !byKey.dead) return byKey;
+      if (G._patientsByKey instanceof Map) {
+        const mapped = G._patientsByKey.get(carry.pairName);
+        if (mapped && !mapped.dead) return mapped;
+      }
+    }
+    if (carry.patientName) {
+      const byName = patients.find((p) => p && (p.name === carry.patientName || p.displayName === carry.patientName));
+      if (byName && !byName.dead) return byName;
+    }
+    return null;
+  }
 
   function findEntityById(G, eid) {
     if (!eid || !G) return null;

@@ -27,6 +27,62 @@
   function sign(v){ return v<0?-1:(v>0?1:0); }
   function len(vx,vy){ return Math.sqrt((vx||0)*(vx||0)+(vy||0)*(vy||0)); }
   function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+  function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+  function physicsProfiles(){
+    const api = window.Physics || null;
+    if (!api) return null;
+    return api.PHYS || api.DEFAULTS || null;
+  }
+
+  function resolveCartProfile(type){
+    const phys = physicsProfiles();
+    if (!phys || !phys.cartProfiles) return null;
+    const kind = (type || '').toString().toLowerCase();
+    const key = (kind === 'er' || kind === 'urgencias') ? 'er'
+      : (kind === 'med' || kind === 'medicine' || kind === 'medicinas') ? 'med'
+      : 'food';
+    const profile = phys.cartProfiles[key] || null;
+    if (!profile) return null;
+    return { key, profile };
+  }
+
+  function applyCartPhysicsProfile(entity, type){
+    if (!entity) return null;
+    const info = resolveCartProfile(type);
+    const profile = info?.profile;
+    if (!profile) return null;
+    const tile = TILE || 32;
+    if (Number.isFinite(profile.mass)) {
+      entity.mass = profile.mass;
+      entity.invMass = profile.mass > 0 ? 1 / profile.mass : 0;
+    }
+    if (Number.isFinite(profile.restitution)) {
+      entity.rest = profile.restitution;
+      entity.restitution = profile.restitution;
+    }
+    const slip = Number.isFinite(profile.friction) ? clamp01(profile.friction) : null;
+    if (slip != null) {
+      const mu = Math.max(0, Math.min((1 - slip) * 0.5, 0.25));
+      const slideFriction = Math.max(0.002, Math.min(0.22, (1 - slip) * 0.2 + 0.002));
+      entity.mu = mu;
+      entity.slideFriction = slideFriction;
+      entity._slideFrictionOverride = slideFriction;
+    }
+    if (Number.isFinite(profile.vmax)) {
+      entity.maxSpeed = profile.vmax;
+    }
+    const maxSpeedPx = Number.isFinite(profile.vmax) ? profile.vmax * tile : null;
+    entity._physProfile = {
+      type: 'cart',
+      key: info.key,
+      vmax: profile.vmax,
+      maxSpeedPx,
+      restitution: profile.restitution,
+      slip: slip
+    };
+    return entity._physProfile;
+  }
 
   // ---------- Fallbacks de motor ----------
   function _AABB(a,b){
@@ -111,23 +167,33 @@
       e.vx=0; e.vy=0;
       e.pushable=true; e.solid=true; e.static=false;
       const physCfg = (window.Physics && (window.Physics.PHYS || window.Physics.DEFAULTS)) || {};
-      const cartMass = Number.isFinite(opts.mass)
-        ? opts.mass
-        : (Number.isFinite(this._cfg.mass) ? this._cfg.mass : (window.Physics?.MASS?.CART ?? 3.5));
-      e.mass = cartMass;
-      const rest = Number.isFinite(opts.rest)
-        ? opts.rest
-        : (Number.isFinite(opts.restitution)
-          ? opts.restitution
-          : (Number.isFinite(physCfg.cartRestitution) ? physCfg.cartRestitution : this._cfg.restitution));
-      e.rest = rest;
-      e.restitution = rest;
-      e.friction=this._cfg.friction;
-      e.maxSpeed=this._cfg.maxSpeed;
-      const slideMu = Number.isFinite(opts.mu)
-        ? opts.mu
-        : (Number.isFinite(this._cfg.slideMu) ? this._cfg.slideMu : (physCfg.cartSlideMu ?? 0.015));
-      e.mu = slideMu;
+      const profile = applyCartPhysicsProfile(e, e.cartType) || null;
+      if (!profile){
+        const cartMass = Number.isFinite(opts.mass)
+          ? opts.mass
+          : (Number.isFinite(this._cfg.mass) ? this._cfg.mass : (window.Physics?.MASS?.CART ?? 3.5));
+        e.mass = cartMass;
+        const rest = Number.isFinite(opts.rest)
+          ? opts.rest
+          : (Number.isFinite(opts.restitution)
+            ? opts.restitution
+            : (Number.isFinite(physCfg.cartRestitution) ? physCfg.cartRestitution : this._cfg.restitution));
+        e.rest = rest;
+        e.restitution = rest;
+        e.maxSpeed = this._cfg.maxSpeed;
+        const slideMu = Number.isFinite(opts.mu)
+          ? opts.mu
+          : (Number.isFinite(this._cfg.slideMu) ? this._cfg.slideMu : (physCfg.cartSlideMu ?? 0.015));
+        e.mu = slideMu;
+        e._physProfile = {
+          type: 'cart',
+          key: e.cartType,
+          vmax: e.maxSpeed,
+          maxSpeedPx: Number.isFinite(e.maxSpeed) ? e.maxSpeed * TILE : null,
+          restitution: rest,
+          slip: slideMu
+        };
+      }
       e.slide = opts.slide != null ? !!opts.slide : true;
       e._tag = e._tag || 'cart';
       e.canExplode = (e.cartType!==this.TYPES.ER);
@@ -193,13 +259,22 @@
         if (!e || e.dead) continue;
 
         // limitar velocidad
+        const maxSpeed = Number.isFinite(e.maxSpeed) ? e.maxSpeed : cfg.maxSpeed;
         const sp = len(e.vx,e.vy);
-        if (sp > cfg.maxSpeed){ const k = cfg.maxSpeed / (sp||1); e.vx*=k; e.vy*=k; }
+        if (maxSpeed != null && sp > maxSpeed){
+          const k = maxSpeed / (sp || 1);
+          e.vx *= k; e.vy *= k;
+        }
 
         // rozamiento (si el motor no lo aplica)
-        const damp = (cfg.slideFriction != null)
-          ? (1 - cfg.slideFriction)
-          : cfg.friction;
+        const slideFriction = (typeof e._slideFrictionOverride === 'number')
+          ? e._slideFrictionOverride
+          : (typeof e.slideFriction === 'number'
+            ? e.slideFriction
+            : cfg.slideFriction);
+        const damp = (slideFriction != null)
+          ? (1 - slideFriction)
+          : (typeof e.friction === 'number' ? e.friction : cfg.friction);
         e.vx *= damp; e.vy *= damp;
         if (Math.abs(e.vx)<0.001) e.vx=0;
         if (Math.abs(e.vy)<0.001) e.vy=0;
