@@ -146,6 +146,68 @@
     }
   }
 
+  function getEntityName(e){
+    return e?.displayName || e?.name || e?.label || e?.id || '';
+  }
+
+  function drawEntityNameTag(ctx, cam, e, opts = {}){
+    const text = getEntityName(e);
+    if (!ctx || !text) return;
+    const canvas = ctx.canvas;
+    const dpr = canvas && canvas.__hudDpr ? canvas.__hudDpr : (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+    const tile = window.G?.TILE_SIZE || window.TILE_SIZE || window.TILE || 32;
+    const width = Number.isFinite(e?.w) && e.w > 0 ? e.w : tile;
+    const offset = (opts.offsetY ?? e?.nameTagYOffset ?? 18);
+    const scale = opts.scale ?? 1;
+    const fontPx = Math.max(11, (opts.baseFontPx ?? 14) * scale);
+    const worldX = (Number(e?.x) || 0) + width * 0.5;
+    const worldY = (Number(e?.y) || 0) - offset * scale;
+    const screenPoint = (typeof window.bridgeToScreen === 'function')
+      ? window.bridgeToScreen(cam, canvas, worldX, worldY)
+      : { x: worldX, y: worldY };
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const canvasWidth = canvas ? (canvas.width || 0) / dpr : 0;
+    const canvasHeight = canvas ? (canvas.height || 0) / dpr : 0;
+    const cssX = screenPoint.x / dpr;
+    const cssY = screenPoint.y / dpr;
+    const safeX = Math.max(24, Math.min(canvasWidth - 24, cssX));
+    const safeY = Math.max(24, Math.min(canvasHeight - 24, cssY));
+    ctx.font = `600 ${fontPx}px "IBM Plex Sans", "Inter", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const metrics = ctx.measureText(text);
+    const paddingX = Math.max(8, metrics.width * 0.1);
+    const paddingY = Math.max(4, fontPx * 0.35);
+    ctx.fillStyle = 'rgba(12,16,24,0.82)';
+    ctx.beginPath();
+    const boxW = metrics.width + paddingX * 2;
+    const boxH = fontPx + paddingY * 2;
+    const radius = Math.min(18, boxH * 0.45);
+    const left = safeX - boxW * 0.5;
+    const top = safeY - boxH * 0.5;
+    ctx.moveTo(left + radius, top);
+    ctx.lineTo(left + boxW - radius, top);
+    ctx.quadraticCurveTo(left + boxW, top, left + boxW, top + radius);
+    ctx.lineTo(left + boxW, top + boxH - radius);
+    ctx.quadraticCurveTo(left + boxW, top + boxH, left + boxW - radius, top + boxH);
+    ctx.lineTo(left + radius, top + boxH);
+    ctx.quadraticCurveTo(left, top + boxH, left, top + boxH - radius);
+    ctx.lineTo(left, top + radius);
+    ctx.quadraticCurveTo(left, top, left + radius, top);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(8,12,18,0.9)';
+    ctx.lineWidth = Math.max(1, fontPx * 0.08);
+    ctx.stroke();
+    ctx.fillStyle = '#f4fbff';
+    ctx.strokeStyle = 'rgba(8,12,18,0.9)';
+    ctx.lineWidth = Math.max(2, fontPx * 0.18);
+    ctx.strokeText(text, safeX, safeY);
+    ctx.fillText(text, safeX, safeY);
+    ctx.restore();
+  }
+
   function normalizeStateResult(res){
     if (!res) return null;
     if (typeof res === 'string') return { state: res };
@@ -381,6 +443,15 @@
     if (cfg.overlay) cfg.overlay(ctx, totalScale, st, e);
     if (stateInfo.overlay) stateInfo.overlay(ctx, totalScale, st, e);
     ctx.restore();
+    const patientKind = window.ENT?.PATIENT;
+    const wantsName = cfg.showNameTag === true || e?.showNameTag === true || (cfg.showNameTag !== false && patientKind != null && e?.kind === patientKind);
+    if (wantsName && (e?.displayName || e?.name || e?.label)){
+      const tagScale = Math.max(0.7, Math.min(1.25, totalScale));
+      drawEntityNameTag(ctx, cam, e, {
+        scale: tagScale,
+        offsetY: cfg.nameTagOffset ?? e?.nameTagYOffset ?? 18
+      });
+    }
   }
 
   function registerWalkerRig(id, cfg){
@@ -481,10 +552,11 @@
     createEl('div', 'hero-effect hero-effect-spark', effects);
 
     insertHeroNode(root);
+    let cleanup = null;
     if (entity){
       entity._destroyCbs = entity._destroyCbs || [];
-      const remove = () => { if (root.parentNode) root.parentNode.removeChild(root); };
-      entity._destroyCbs.push(remove);
+      cleanup = () => { if (root.parentNode) root.parentNode.removeChild(root); };
+      entity._destroyCbs.push(cleanup);
     }
 
     return {
@@ -504,7 +576,8 @@
       orientation: 'down',
       action: 'idle',
       dir: 1,
-      deathCause: null
+      deathCause: null,
+      cleanup
     };
   }
 
@@ -728,6 +801,16 @@
       },
       draw(ctx, cam, entity, state){
         positionHeroDom(state, cam, entity);
+      },
+      dispose(state, entity){
+        if (!state) return;
+        if (typeof state.cleanup === 'function'){
+          try { state.cleanup(); } catch (_) {}
+        }
+        if (entity && Array.isArray(entity._destroyCbs) && state.cleanup){
+          entity._destroyCbs = entity._destroyCbs.filter((fn) => fn !== state.cleanup);
+        }
+        state.cleanup = null;
       }
     });
   }
@@ -1052,6 +1135,13 @@
         if (fade >= 0.99){
           try { e.rigOk = true; e._disappeared = true; } catch (_) {}
         }
+        if (!attended){
+          const tagScale = Math.max(0.7, Math.min(1.2, totalScale));
+          drawEntityNameTag(ctx, cam, e, {
+            scale: tagScale,
+            offsetY: cfg.nameTagOffset ?? e?.nameTagYOffset ?? 22
+          });
+        }
       }
     });
   }
@@ -1062,7 +1152,8 @@
     amp: 1.6,
     speed: 1.6,
     shadowRadius: 14,
-    offsetY: -6
+    offsetY: -6,
+    showNameTag: true
   });
 
   registerWalkerRig('patient_furiosa', {
@@ -1075,6 +1166,7 @@
     lean: 0.18,
     shadowRadius: 12,
     offsetY: -5,
+    showNameTag: true,
     states: {
       idle: { skin: { down: 'paciente_furiosa.png', up: 'paciente_furiosa.png', side: 'paciente_furiosa.png' }, bobMul: 0.9 },
       walk_down: { skin: 'paciente_furiosa.png', bobMul: 1.1 },

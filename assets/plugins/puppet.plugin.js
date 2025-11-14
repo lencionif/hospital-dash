@@ -6,10 +6,24 @@
   const puppets = [];
   let needsSort = false;
   const missingRigWarnings = new Set();
-  const activityLog = new WeakMap();
+  let activityLog = new WeakMap();
+  const fallbackErrorLabels = new Set();
   let lastActivitySummary = '';
   const debugStatus = { rigs: false, lights: false, activity: false, successAnnounced: false };
   const rigAuditState = { lastTime: 0, lastCount: 0 };
+  const RESET_EVENT = 'reset';
+
+  function shouldLogDebug(){
+    if (typeof window === 'undefined') return false;
+    if (window.DEBUG_FORCE_ASCII) return true;
+    try {
+      const search = typeof window.location === 'object' ? (window.location.search || '') : '';
+      if (!search) return false;
+      const params = new URLSearchParams(search);
+      if (params.has('rigdebug') || params.has('rigs') || params.get('debug') === 'rigs') return true;
+    } catch (_) {}
+    return false;
+  }
 
   const getNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
     ? performance.now()
@@ -150,22 +164,41 @@
     registry[name] = rig;
   }
 
+  function cleanupPuppet(puppet){
+    if (!puppet) return;
+    const entity = puppet.entity;
+    try {
+      const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
+      if (rig && typeof rig.dispose === 'function'){
+        try {
+          rig.dispose(puppet.state, entity, puppet);
+        } catch (err){
+          console.warn('[Puppet] rig.dispose', puppet.rigName, err);
+        }
+      }
+    } catch (err){
+      console.warn('[Puppet] cleanup error', err);
+    }
+    if (entity){
+      if (entity.puppet === puppet) delete entity.puppet;
+      if (entity.rigName === puppet.rigName) delete entity.rigName;
+      entity.rigOk = false;
+    }
+  }
+
   function detach(entity){
     if (!entity || !entity.puppet) return;
     const puppet = entity.puppet;
     const idx = puppets.indexOf(puppet);
     if (idx >= 0) puppets.splice(idx, 1);
-    if (puppet && typeof puppet.dispose === 'function'){
-      try { puppet.dispose(); } catch (_) {}
-    }
-    delete entity.puppet;
-    entity.rigOk = false;
+    cleanupPuppet(puppet);
   }
 
   function attach(entity, opts={}){
     if (!entity) return null;
     detach(entity);
-    const resolvedRig = resolveRigName(opts.rig || opts.name || entity.rigName);
+    const requestedRig = opts.rig || opts.name || entity.rigName;
+    const resolvedRig = resolveRigName(requestedRig);
     const puppet = {
       entity,
       rigName: resolvedRig,
@@ -176,16 +209,21 @@
       state: null,
       time: 0
     };
-    puppet.dispose = function(){
-      const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
-      if (rig && typeof rig.dispose === 'function'){
-        try { rig.dispose(puppet.state, puppet.entity); } catch (_) {}
-      }
-    };
     entity.puppet = puppet;
     if (entity) {
       entity.rigName = puppet.rigName;
-      entity.rigOk = true;
+      entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
+      if (puppet.rigName === 'default' && requestedRig && requestedRig !== 'default'){
+        const label = describeEntity(entity);
+        const kind = entity?.kind ?? entity?.kindName ?? entity?.tag ?? 'desconocido';
+        const key = `${label}|${kind}`;
+        if (!fallbackErrorLabels.has(key)){
+          fallbackErrorLabels.add(key);
+          try {
+            console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
+          } catch (_) {}
+        }
+      }
     }
     puppets.push(puppet);
     needsSort = true;
@@ -201,7 +239,7 @@
       if (rig && typeof rig.create === 'function') {
         puppet.state = rig.create(entity, opts) || puppet.state || { e: entity };
       }
-      entity.rigOk = true;
+      entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
     } catch (err) {
       const label = describeEntity(entity);
       try {
@@ -222,7 +260,15 @@
       } catch (_) {
         puppet.state = { e: entity };
       }
-      entity.rigOk = (puppet?.rigName === fallbackName);
+      entity.rigOk = false;
+      const kind = entity?.kind ?? entity?.kindName ?? 'desconocido';
+      const key = `${label}|${kind}`;
+      if (!fallbackErrorLabels.has(key)){
+        fallbackErrorLabels.add(key);
+        try {
+          console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
+        } catch (_) {}
+      }
       try {
         console.warn(`[Puppet.bind] Fallback aplicado a ${label || 'entidad'} (${entity.rigName}).`);
       } catch (_) {}
@@ -252,9 +298,21 @@
     if (!puppet) return null;
     let rig = rigs.get(puppet.rigName);
     if (!rig) {
+      const previous = puppet.rigName;
       puppet.rigName = 'default';
       rig = rigs.get('default') || registry.default;
       if (!rig) return null;
+      if (previous && previous !== 'default'){
+        const label = describeEntity(puppet.entity);
+        const kind = puppet.entity?.kind ?? puppet.entity?.kindName ?? 'desconocido';
+        const key = `${label}|${kind}`;
+        if (!fallbackErrorLabels.has(key)){
+          fallbackErrorLabels.add(key);
+          try {
+            console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
+          } catch (_) {}
+        }
+      }
     }
     if (!puppet.state){
       if (typeof rig.create === 'function'){
@@ -389,6 +447,17 @@
       messages.push(`[Debug] Rigs check: ${label} -> rig=${rigName || 'none'} ${ok ? '✔' : '⚠️'}`);
     }
     if (!messages.length) return;
+    const debugLogging = shouldLogDebug();
+    if (!debugLogging && fallbackCount === 0){
+      debugStatus.rigs = true;
+      maybeReportIntegrationSuccess();
+      return;
+    }
+    if (!debugLogging && fallbackCount > 0){
+      debugStatus.rigs = false;
+      debugStatus.successAnnounced = false;
+      return;
+    }
     try {
       for (const msg of messages) console.log(msg);
     } catch (_) {}
@@ -404,6 +473,47 @@
   function markLightsReady(){
     debugStatus.lights = true;
     maybeReportIntegrationSuccess();
+  }
+
+  function resetAll(opts = {}){
+    const reason = opts.reason || RESET_EVENT;
+    const countBefore = puppets.length;
+    if (shouldLogDebug() || opts.log){
+      try { console.log(`[Puppet] Reset(${reason}) antes: ${countBefore} rigs activos.`); } catch (_) {}
+    }
+    while (puppets.length){
+      const puppet = puppets.pop();
+      cleanupPuppet(puppet);
+    }
+    needsSort = false;
+    activityLog = new WeakMap();
+    if (opts.clearWarnings !== false) missingRigWarnings.clear();
+    if (opts.resetFallbacks !== false) fallbackErrorLabels.clear();
+    if (shouldLogDebug() || opts.log){
+      try { console.log(`[Puppet] Reset(${reason}) después: ${puppets.length} rigs activos.`); } catch (_) {}
+    }
+    return countBefore;
+  }
+
+  function getActiveCount(){
+    return puppets.length;
+  }
+
+  function debugListAll(reason = 'manual'){
+    if (!shouldLogDebug()) return;
+    const entities = window.G?.entities;
+    if (!Array.isArray(entities)) return;
+    try { console.groupCollapsed(`[Debug] Auditoría de rigs (${reason})`); } catch (_) {}
+    for (let i = 0; i < entities.length; i++){
+      const ent = entities[i];
+      if (!ent) continue;
+      const label = describeEntity(ent, i);
+      const rigName = ent.rigName || ent.puppet?.rigName || 'default';
+      const kind = ent.kind ?? ent.kindName ?? ent.tag ?? '—';
+      const ok = ent.rigOk === true && rigName && rigName !== 'default';
+      try { console.log(`[Debug] Entidad ${label} kind=${kind} rig=${rigName} rigOk=${ok}`); } catch (_) {}
+    }
+    try { console.groupEnd(); } catch (_) {}
   }
 
   if (!registry.default){
@@ -573,6 +683,9 @@
     attach,
     bind,
     detach,
+    reset: resetAll,
+    getActiveCount,
+    debugListAll,
     updateAll,
     drawAll,
     draw: drawOne,
@@ -583,4 +696,5 @@
   };
   PuppetNS.bind = bind;
   PuppetNS.detach = detach;
+  PuppetNS.reset = resetAll;
 })();

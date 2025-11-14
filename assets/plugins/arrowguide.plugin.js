@@ -162,6 +162,10 @@
       const point = this._getter ? this._getter() : this._computeDefault();
       if (!point) return;
 
+      const canvas = ctx.canvas;
+      const dpr = canvas && canvas.__hudDpr ? canvas.__hudDpr : (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const cam = camera || { x: 0, y: 0, zoom: 1 };
       const playerPos = toScreen(cam, ctx.canvas, player.x + player.w * 0.5, player.y + player.h * 0.5);
       const targetPos = toScreen(cam, ctx.canvas, point.x, point.y);
@@ -190,11 +194,15 @@
       ctx.shadowColor = hue;
       ctx.shadowBlur = 12;
       ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(8,12,18,0.7)';
+      ctx.stroke();
       ctx.restore();
 
       if (!isOnScreen(targetPos, ctx.canvas)) {
         drawEdgeIndicator(ctx, hue, pulse, targetPos);
       }
+      ctx.restore();
     }
   };
 
@@ -239,13 +247,18 @@
 
   function isOnScreen(pos, canvas) {
     if (!canvas || !pos) return true;
-    return pos.x >= 0 && pos.y >= 0 && pos.x <= canvas.width && pos.y <= canvas.height;
+    const dpr = canvas && canvas.__hudDpr ? canvas.__hudDpr : (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+    const w = (canvas.width || 0) / dpr;
+    const h = (canvas.height || 0) / dpr;
+    return pos.x >= 0 && pos.y >= 0 && pos.x <= w && pos.y <= h;
   }
 
   function drawEdgeIndicator(ctx, color, alpha, targetPos) {
     if (!ctx || !ctx.canvas) return;
-    const w = ctx.canvas.width;
-    const h = ctx.canvas.height;
+    const canvas = ctx.canvas;
+    const dpr = canvas && canvas.__hudDpr ? canvas.__hudDpr : (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+    const w = (canvas.width || 0) / dpr;
+    const h = (canvas.height || 0) / dpr;
     const cx = Math.min(Math.max(targetPos.x, 0), w);
     const cy = Math.min(Math.max(targetPos.y, 0), h);
     const padding = 18;
@@ -264,8 +277,15 @@
   function toScreen(camera, canvas, x, y) {
     const cam = camera || { x: 0, y: 0, zoom: 1 };
     const zoom = cam.zoom || 1;
-    const cx = canvas ? canvas.width * 0.5 : 0;
-    const cy = canvas ? canvas.height * 0.5 : 0;
+    const dpr = canvas && canvas.__hudDpr ? canvas.__hudDpr : (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+    if (typeof window.bridgeToScreen === 'function'){
+      const pt = window.bridgeToScreen(cam, canvas, x, y) || { x, y };
+      return { x: pt.x / dpr, y: pt.y / dpr };
+    }
+    const width = canvas ? (canvas.width || 0) / dpr : 0;
+    const height = canvas ? (canvas.height || 0) / dpr : 0;
+    const cx = width * 0.5;
+    const cy = height * 0.5;
     return {
       x: (x - cam.x) * zoom + cx,
       y: (y - cam.y) * zoom + cy

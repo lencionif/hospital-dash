@@ -211,6 +211,7 @@
 
     if (!patient.id) patient.id = (Math.random() * 1e9) | 0;
     patient.state = patient.state || 'idle_bed';
+    patient.showNameTag = true;
 
     try {
       const puppet = window.Puppet?.bind?.(patient, 'patient_bed', { z: 0, scale: 1, data: { skin: patient.skin } })
@@ -457,7 +458,11 @@
         vx: 0,
         vy: 0,
         color: '#ff5d6c',
-        skin: 'paciente_furiosa.png'
+        skin: 'paciente_furiosa.png',
+        displayName: patient.displayName,
+        name: patient.name,
+        nameTagYOffset: patient.nameTagYOffset,
+        showNameTag: true
       };
       addEntity(furiosa);
     }
