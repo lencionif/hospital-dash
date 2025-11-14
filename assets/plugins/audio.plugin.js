@@ -78,6 +78,16 @@
     alarm_loop:  SILENCE_URL,      // urgencias (amb)
   };
 
+  const WARNED_CLIPS = new Set();
+  function warnOnce(key, message, extra){
+    if (key != null && WARNED_CLIPS.has(key)) return;
+    if (key != null) WARNED_CLIPS.add(key);
+    try {
+      /* istanbul ignore next */
+      console.warn(message, extra);
+    } catch (_) {}
+  }
+
   const AudioAPI = {
     ctx: null,
     master: null,
@@ -242,7 +252,7 @@
       if (hasWA) {
         const buf = this.buffers[key];
         if (!buf) {
-          console.warn('[AudioAPI] audio buffer not available', key);
+          warnOnce(key || 'unknown', '[AudioAPI] audio buffer not available', key);
           return null;
         }
         const src = createBufferSourceSafe(this.ctx);

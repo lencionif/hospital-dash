@@ -80,6 +80,7 @@
       kind: ENT.PLAYER,
       tag: 'player',
       hero: key,
+      heroId: key,
       x: Math.round(x), y: Math.round(y),
       w, h,
       vx: 0, vy: 0,
