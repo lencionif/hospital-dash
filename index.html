@@ -26,12 +26,10 @@
     <canvas id="hudCanvas"></canvas>
 
     <!-- START -->
-    <div id="start-screen" class="overlay hidden start-screen">
-      <div class="menu-box start-panel">
-        <header class="start-header">
-          <h1>Il Divo: Hospital Dash!</h1>
-          <p class="subtitle">WASD para moverte · E para empujar/usar · ESC pausa · R reinicia</p>
-        </header>
+    <div id="start-screen" class="overlay hidden">
+      <div class="menu-box">
+        <h1>Il Divo: Hospital Dash!</h1>
+        <p class="subtitle">WASD para moverte · E para empujar/usar · ESC pausa · R reinicia</p>
 
         <h2 class="section-title">Elige tu personaje</h2>
 
@@ -65,17 +63,15 @@
           </button>
         </div>
 
-        <div class="start-options">
-          <label class="option-item"><input type="checkbox" id="opt-reduce-flash" checked /> Reducir destellos</label>
-          <label class="option-item"><input type="checkbox" id="opt-humor" /> Modo “Humor Suave”</label>
-          <label class="option-item"><input type="checkbox" id="opt-narrator" checked /> Narrador épico activo</label>
-          <button id="btn-3dacc" type="button" class="option-action">activa aceleración gráfica 3d</button>
+        <div class="options">
+          <label><input type="checkbox" id="opt-reduce-flash" checked /> Reducir destellos</label>
+          <label><input type="checkbox" id="opt-humor" /> Modo “Humor Suave”</label>
+          <label><input type="checkbox" id="opt-narrator" checked /> Narrador épico activo</label>
+          <button id="btn-3dacc" type="button">activa aceleración gráfica 3d</button>
         </div>
 
-        <div class="start-actions">
-          <button id="start-button" class="primary">Empezar turno</button>
-          <p class="tip">Objetivo: atiende todos los <b>P</b> para abrir <b>D</b>, y acerca el <b>carro C</b> al jefe <b>X</b> (≤2 casillas).</p>
-        </div>
+        <button id="start-button" class="primary">Empezar turno</button>
+        <p class="tip">Objetivo: atiende todos los <b>P</b> para abrir <b>D</b>, y acerca el <b>carro C</b> al jefe <b>X</b> (≤2 casillas).</p>
       </div>
     </div>
 
