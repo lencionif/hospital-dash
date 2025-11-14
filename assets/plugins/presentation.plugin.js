@@ -122,6 +122,10 @@ __on(overlay, 'pointerdown', unlock, { once:true, passive:true, capture:true });
     if (started) return;
     started = true;
 
+    try {
+      window.dispatchEvent(new Event('intro:start'));
+    } catch (_) {}
+
     // Muestra la PRIMERA viñeta en pausa (sin música aún)
     overlay.style.display = 'grid';
     overlay.classList.add('visible');

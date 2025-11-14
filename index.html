@@ -268,34 +268,51 @@
 </script>
 
 <script>
-  window.addEventListener('load', () => { 
-    // ---- flujo normal (sin ?mini=1 ni ?map=mini|debug) ----
-    if (window.MusicAPI && MusicAPI.init) {
-      MusicAPI.init({ urls: { intro: './assets/audio/intro.ogg' } });
+  (function(){
+    let startScreenVisible = false;
+
+    function revealStartScreen(){
+      if (startScreenVisible) return;
+      startScreenVisible = true;
+
+      const ss = document.getElementById('start-screen');
+      if (ss){
+        ss.classList.remove('hidden','intro-disable-ui','intro-hide-ui');
+        ss.style.animation = 'pa2FadeIn .45s ease';
+        ss.style.pointerEvents = 'auto';
+        ss.style.opacity = '1';
+        document.querySelectorAll('#start-screen button').forEach(b => b.removeAttribute('disabled'));
+
+        const killBrand = () => document.getElementById('brandWrap')?.remove();
+        document.getElementById('start-button')?.addEventListener('click', killBrand, { once:true });
+        window.addEventListener('game:start', killBrand, { once:true });
+      }
+
+      document.body.classList.remove('intro-playing');
     }
-    if (window.PresentationAPI && PresentationAPI.playIntroSequence) {
+
+    window.addEventListener('intro:complete', revealStartScreen);
+
+    window.addEventListener('load', () => {
+      if (window.MusicAPI && MusicAPI.init) {
+        MusicAPI.init({ urls: { intro: './assets/audio/intro.ogg' } });
+      }
+
+      const hasIntro = !!(window.PresentationAPI && PresentationAPI.playIntroSequence);
+      if (!hasIntro) {
+        revealStartScreen();
+        return;
+      }
+
       PresentationAPI.playIntroSequence();
-    }
-  });
 
-// Cuando la intro termina, aparece el start-screen y NOS ASEGURAMOS
-// de que nada quede por encima bloqueando clics.
-window.addEventListener('intro:complete', () => {
-  const ss = document.getElementById('start-screen');
-  if (ss){
-    ss.classList.remove('hidden','intro-disable-ui','intro-hide-ui');
-    ss.style.animation = 'pa2FadeIn .45s ease';
-    ss.style.pointerEvents = 'auto';
-    ss.style.opacity = '1';
-    document.querySelectorAll('#start-screen button').forEach(b => b.removeAttribute('disabled'));
+      const failSafe = window.setTimeout(revealStartScreen, 2800);
+      const cancelFailSafe = () => window.clearTimeout(failSafe);
 
-    // Al empezar el juego, elimina logo+halo (viven dentro del start-screen)
-    const killBrand = () => document.getElementById('brandWrap')?.remove();
-    document.getElementById('start-button')?.addEventListener('click', killBrand, { once:true });
-    window.addEventListener('game:start', killBrand, { once:true });
-  }
-  document.body.classList.remove('intro-playing');
-});
+      window.addEventListener('intro:start', cancelFailSafe, { once: true });
+      window.addEventListener('intro:complete', cancelFailSafe, { once: true });
+    });
+  })();
 </script>
 
 </body>
