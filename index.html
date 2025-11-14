@@ -225,10 +225,21 @@
     "foto_los3.png","foto_navidad.png"
   ]
   </script>
-<script>
-(function(){
-  // === Botón de "aceleración 3D" (gag) ===
-  const gags = [
+  <script>
+    // Ajuste defensivo para alturas de viewport inconsistentes
+    function fitStartScreen(){
+      const ss = document.getElementById('start-screen');
+      if (ss) ss.style.setProperty('--vh', window.innerHeight + 'px');
+    }
+    window.addEventListener('resize', fitStartScreen, {passive:true});
+    window.addEventListener('orientationchange', fitStartScreen, {passive:true});
+    fitStartScreen();
+  </script>
+
+  <script>
+    (function(){
+      // === Botón de "aceleración 3D" (gag) ===
+      const gags = [
     "No existe ninguna aceleración 3D, es broma 😜",
     "En serio: esto es 2D con mucho cariño.",
     "¿Otra vez? No funciona. Deja de clicar.",
