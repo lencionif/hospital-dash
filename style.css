@@ -674,7 +674,42 @@ button:active { transform: translateY(1px); }
   border-color: #fff;
 }
 
-#start-screen .char-card .char-info{ display: none; }
+#start-screen .char-card{
+  overflow: visible;
+}
+
+#start-screen .char-card .char-info{
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  min-width: 176px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(12,14,18,0.82);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #f0f6fc;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.32);
+  z-index: 2;
+}
+
+#start-screen .char-card .char-info strong{
+  color: #fff;
+  font-size: 12px;
+}
+
+#start-screen .char-card:hover .char-info,
+#start-screen .char-card:focus-visible .char-info,
+#start-screen .char-card.selected .char-info{
+  border-color: rgba(255,255,255,0.4);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.38);
+}
 
 #start-screen .char-card .char-avatar{
   width: 64px;
