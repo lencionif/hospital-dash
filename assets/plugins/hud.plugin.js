@@ -219,6 +219,7 @@
     const canvas = ctx.canvas;
     for (const pat of G.patients || []) {
       if (!pat || pat.dead || pat.attended) continue;
+      if (pat.puppet && pat.rigOk) continue;
       const pos = toScreen(camera, canvas, pat.x + pat.w * 0.5, pat.y - (pat.nameTagYOffset || 18));
       ctx.save();
       ctx.font = 'bold 13px sans-serif';
@@ -425,65 +426,67 @@
       const furiosas = snap.furious || 0;
       const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
 
-      const statsX = heartsX + 22 * maxHearts + 20;
-      const statsY = panelY + 20;
+      const statsX = heartsX + 22 * maxHearts + 28;
+      const statsY = panelY + 12;
+      const statsStep = 18;
       ctx.font = S.font;
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
       ctx.fillStyle = THEME.text;
-      const pacLine = `Pacientes: ${cured}/${total}`;
-      ctx.fillText(pacLine, statsX, statsY);
-      let cursor = statsX + ctx.measureText(pacLine).width + 16;
-      ctx.fillStyle = THEME.text;
-      const pendLine = `Pendientes: ${remaining}`;
-      ctx.fillText(pendLine, cursor, statsY);
-      cursor += ctx.measureText(pendLine).width + 16;
+      ctx.fillText(`Pacientes: ${cured}/${total}`, statsX, statsY);
+      ctx.fillText(`Pendientes: ${remaining}`, statsX, statsY + statsStep);
       ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : THEME.text;
-      const furLine = `Furiosas: ${furiosas}`;
-      ctx.fillText(furLine, cursor, statsY);
-      cursor += ctx.measureText(furLine).width + 16;
+      ctx.fillText(`Furiosas activas: ${furiosas}`, statsX, statsY + statsStep * 2);
       ctx.fillStyle = urgOpen ? THEME.ok : THEME.warn;
-      // pinta en la línea siguiente para que no se solape
-      ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, statsX, statsY + 18);
+      ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, statsX, statsY + statsStep * 3);
 
+      const scoreX = panelX + panelWidth - 18;
       ctx.textAlign = 'right';
       ctx.fillStyle = THEME.text;
-      ctx.fillText(`Puntos: ${G.score ?? 0}`, panelX + panelWidth - 18, statsY);
+      ctx.fillText(`Puntos: ${G.score ?? 0}`, scoreX, statsY);
       ctx.textAlign = 'left';
-
-      const infoWidth = panelX + panelWidth - statsX - 24;
-      let infoY = statsY + 24;
-      const carry = G.player?.carry || G.carry;
-      if (infoWidth > 40 && carry){
-        ctx.fillStyle = THEME.text;
-        const c1 = ellipsize(ctx, `Llevas: ${carry.label || '—'}`, infoWidth);
-        ctx.fillText(c1, statsX, infoY);
-        infoY += 18;
-        const c2 = ellipsize(ctx, `→ Para: ${carry.patientName || carry.pairName || '—'}`, infoWidth);
-        ctx.fillText(c2, statsX, infoY);
-        infoY += 18;
-        if (carry.anagram){
-          ctx.fillStyle = '#9fb0cc';
-          ctx.fillText(ellipsize(ctx, `Pista: ${carry.anagram}`, infoWidth), statsX, infoY);
-          ctx.fillStyle = THEME.text;
-          infoY += 18;
-        }
-      }
 
       const objetivoRaw = computeObjective(G);
       const objectiveWidth = panelWidth - 36;
       const basePx = parseInt(S.font, 10) || 14;
       const { px, lines } = fitAndWrap(ctx, basePx, objetivoRaw, objectiveWidth, 2, 12);
+      const objectiveLines = lines.length ? lines : [objetivoRaw];
+      const lineGap = 6;
+      const totalObjectiveHeight = objectiveLines.length > 1 ? (objectiveLines.length - 1) * (px + lineGap) + px : px;
+      const objectiveTop = panelY + panelHeight - totalObjectiveHeight - 12;
+
+      ctx.font = S.font;
+      const infoWidth = panelX + panelWidth - statsX - 24;
+      let infoY = statsY + statsStep * 4 + 6;
+      const carry = G.player?.carry || G.carry;
+      if (infoWidth > 40 && carry){
+        ctx.fillStyle = THEME.text;
+        const c1 = ellipsize(ctx, `Llevas: ${carry.label || '—'}`, infoWidth);
+        if (infoY + statsStep < objectiveTop){
+          ctx.fillText(c1, statsX, infoY);
+          infoY += statsStep;
+        }
+        const c2 = ellipsize(ctx, `→ Para: ${carry.patientName || carry.pairName || '—'}`, infoWidth);
+        if (infoY + statsStep < objectiveTop){
+          ctx.fillText(c2, statsX, infoY);
+          infoY += statsStep;
+        }
+        if (carry.anagram && infoY + statsStep < objectiveTop){
+          ctx.fillStyle = '#9fb0cc';
+          ctx.fillText(ellipsize(ctx, `Pista: ${carry.anagram}`, infoWidth), statsX, infoY);
+          ctx.fillStyle = THEME.text;
+          infoY += statsStep;
+        }
+      }
+
       ctx.font = `${px}px monospace`;
       ctx.fillStyle = THEME.accent;
       ctx.textAlign = 'center';
       const objectiveX = panelX + panelWidth * 0.5;
-      const objectiveTop = panelY + panelHeight - (lines.length > 1 ? px * 2 + 6 : px + 8);
-      if (lines.length <= 1){
-        ctx.fillText(lines[0] || objetivoRaw, objectiveX, objectiveTop);
-      } else {
-        ctx.fillText(lines[0], objectiveX, objectiveTop);
-        ctx.fillText(lines[1], objectiveX, objectiveTop + px + 6);
+      for (let i = 0; i < objectiveLines.length; i++){
+        const line = objectiveLines[i] || objetivoRaw;
+        const y = objectiveTop + i * (px + lineGap);
+        ctx.fillText(line, objectiveX, y);
       }
 
       ctx.restore();

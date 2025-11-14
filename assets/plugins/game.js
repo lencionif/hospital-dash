@@ -3110,6 +3110,23 @@ function drawEntities(c2){
   }
 
   function resetGlobalLevelState(){
+    try {
+      const rigCountBefore = window.PuppetAPI?.getActiveCount?.();
+      const entityCountBefore = Array.isArray(G.entities) ? G.entities.filter(Boolean).length : 0;
+      if (rigCountBefore != null){
+        console.log(`[Puppet] Reset rigs (level-reset) -> antes: rigs=${rigCountBefore}, entidades=${entityCountBefore}`);
+      }
+      if (window.PuppetAPI?.reset){
+        window.PuppetAPI.reset({ reason: 'level-reset', log: false });
+      }
+      const rigCountAfter = window.PuppetAPI?.getActiveCount?.();
+      if (rigCountAfter != null){
+        console.log(`[Puppet] Reset rigs (level-reset) -> después: rigs=${rigCountAfter}`);
+      }
+    } catch (err){
+      console.warn('[Puppet] resetGlobalLevelState', err);
+    }
+
     const arrayKeys = [
       'entities','movers','hostiles','humans','animals','objects','patients','pills','lights','roomLights','items'
     ];
@@ -3306,6 +3323,17 @@ function drawEntities(c2){
         window.GameFlowAPI?.startLevel?.(targetLevel);
       } catch (err){
         console.warn('[GameFlow] startLevel error:', err);
+      }
+
+      try {
+        const rigCount = window.PuppetAPI?.getActiveCount?.();
+        const entityCount = Array.isArray(G.entities) ? G.entities.filter(Boolean).length : 0;
+        if (rigCount != null){
+          console.log(`[Puppet] Rigs tras seed: ${rigCount} / entidades=${entityCount}`);
+        }
+        window.PuppetAPI?.debugListAll?.('level-ready');
+      } catch (err){
+        if (window.DEBUG_FORCE_ASCII) console.warn('[Puppet] level-ready audit error', err);
       }
 
       setGameState('READY');
