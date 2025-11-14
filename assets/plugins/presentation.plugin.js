@@ -122,6 +122,15 @@ __on(overlay, 'pointerdown', unlock, { once:true, passive:true, capture:true });
     if (started) return;
     started = true;
 
+    try {
+      D?.body?.classList?.add('intro-playing');
+    } catch (_) {}
+
+    const menu = D.getElementById('start-screen');
+    if (menu){
+      menu.classList.add('hidden', 'intro-hide-ui', 'intro-disable-ui');
+    }
+
     // Muestra la PRIMERA viñeta en pausa (sin música aún)
     overlay.style.display = 'grid';
     overlay.classList.add('visible');
