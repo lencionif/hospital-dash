@@ -491,9 +491,13 @@ button:hover { background-color: var(--button-bg-hover); }
 button:active { transform: translateY(1px); }
 
 .tip{
-  font-size: 12px; line-height: 1.5; margin-top: 10px;
-  display: inline-block; padding: 6px 10px;
-  background: rgba(0,0,0,.45); border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 8px;         /* un poco menos para que quepa todo */
+  display: inline-block;
+  padding: 6px 10px;
+  background: rgba(0,0,0,.45);
+  border-radius: 8px;
   text-shadow: 1px 1px 2px #000;
 }
 
@@ -546,7 +550,11 @@ button:active { transform: translateY(1px); }
 
 /* Opciones */
 .options {
-  display: flex; gap: 18px; justify-content: flex-start; margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;         /* <- que no se corte si estrecha */
+  gap: 14px 18px;
+  justify-content: flex-start;
+  margin-top: 10px;
   font-size: 12px;
 }
 .options input { transform: translateY(1px); }
@@ -591,16 +599,16 @@ button:active { transform: translateY(1px); }
 
 /* START SCREEN responsive ----------------------------------------------- */
 #start-screen{
-  background-color: #05070b;
-  background-image: var(--sprite-main);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
+  /* Foto completa sin recortes; fondo negro para bandas si las hubiera */
+  background: var(--sprite-main) center / contain no-repeat, #000;
   padding: max(2vh, 16px) max(3vw, 20px) max(calc(2vh + env(safe-area-inset-bottom)), 24px);
   display: grid;
-  place-items: center;
-  min-height: min(100vh, var(--start-screen-height, 100vh));
-  height: min(100vh, var(--start-screen-height, 100vh));
+  align-content: start;
+  justify-content: start;
+  align-items: start;
+  justify-items: start;
+  min-height: min(var(--vh, 100vh), var(--start-screen-height, 100vh));
+  height: min(var(--vh, 100vh), var(--start-screen-height, 100vh));
 }
 
 .start-panel{
@@ -616,6 +624,20 @@ button:active { transform: translateY(1px); }
   display: flex;
   flex-direction: column;
   gap: clamp(16px, 3vh, 32px);
+}
+
+#start-screen .menu-box{
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  /* ↑ Texto visible: padding superior responsivo (antes 236px fijo) */
+  padding: clamp(72px, 15vh, 140px) clamp(14px, 3vw, 32px) clamp(8px, 2vh, 14px);
+  /* Si hiciera falta, deja hacer scroll dentro de la caja sin mover la foto */
+  max-height: min(100%, 92vh);
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
 }
 
 .start-header{ display:flex; flex-direction:column; gap: clamp(8px, 1.8vh, 18px); }
@@ -1320,7 +1342,7 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 
 /* (opcional) si ves que el tip de “Objetivo…” roza los botones, empújalo un poco */
 #start-screen .menu-box .tip{
-  margin-top: 12px;
+  margin-top: 8px;
   line-height: 1.25;
 }
 
