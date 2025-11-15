@@ -56,15 +56,15 @@
     light: {
       defaults: {
         color: '#66b3ff',
-        radiusTiles: 6.2,
-        innerRatio: 0.52,
-        intensity: 0.58,
+        radiusTiles: 5.2,
+        innerRatio: 0.48,
+        intensity: 0.42,
         coneDeg: 80
       },
       byHero: {
-        enrique:   { color: '#ffd34d', radiusTiles: 6.0, innerTiles: 3.2, intensity: 0.6 },
-        roberto:   { color: '#ff9f40', radiusTiles: 6.0, innerTiles: 2.9, intensity: 0.5 },
-        francesco: { color: '#66b3ff', radiusTiles: 7.5, innerTiles: 3.9, intensity: 0.62 }
+        enrique:   { color: '#ffd34d', radiusTiles: 4.8, innerTiles: 2.6, intensity: 0.45 },
+        roberto:   { color: '#ff9f40', radiusTiles: 5.0, innerTiles: 2.5, intensity: 0.38 },
+        francesco: { color: '#66b3ff', radiusTiles: 5.8, innerTiles: 3.0, intensity: 0.48 }
       }
     }
   };

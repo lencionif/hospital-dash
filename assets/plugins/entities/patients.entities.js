@@ -197,7 +197,7 @@
       name: identity.displayName,
       keyName: identity.keyName,
       anagram: identity.anagram,
-      nameTagYOffset: identity.nameTagYOffset ?? 18,
+      nameTagYOffset: 0,
       attended: false,
       furious: false,
       requiredKeyName: identity.keyName,

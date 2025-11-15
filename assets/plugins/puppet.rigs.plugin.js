@@ -639,7 +639,7 @@
     const offsetY = (st.offsetY ?? -10) * totalScale;
     st.root.style.transform = `translate(${screenX}px, ${screenY + offsetY}px) scale(${totalScale})`;
     const depth = Math.floor((e.y || 0) + (st.depthBias || 0));
-    st.root.style.zIndex = String(200 + depth);
+    st.root.style.zIndex = String(50 + depth);
   }
 
 

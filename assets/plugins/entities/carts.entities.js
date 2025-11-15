@@ -212,6 +212,10 @@
       try {
         const puppet = window.Puppet?.bind?.(e, rigName, { z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } })
           || window.PuppetAPI?.attach?.(e, { rig: rigName, z: 0, scale: 1, data: { phase: Math.random() * Math.PI * 2 } });
+        if (puppet) {
+          e.puppet = puppet;
+          e.rig = puppet;
+        }
         e.rigOk = e.rigOk === true || !!puppet;
       } catch (_) {
         e.rigOk = e.rigOk === true;

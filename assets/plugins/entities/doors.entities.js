@@ -45,6 +45,10 @@
     try {
       const puppet = window.Puppet?.bind?.(ent, 'door', { z: 0, scale: 1 })
         || window.PuppetAPI?.attach?.(ent, { rig: 'door', z: 0, scale: 1 });
+      if (puppet) {
+        ent.puppet = puppet;
+        ent.rig = puppet;
+      }
       ent.rigOk = ent.rigOk === true || !!puppet;
     } catch (_) {
       ent.rigOk = ent.rigOk === true;

@@ -254,6 +254,10 @@
       try {
         const puppet = window.Puppet?.bind?.(it, rigName, { z: 0, scale: 1, data: rigData })
           || window.PuppetAPI?.attach?.(it, { rig: rigName, z: 0, scale: 1, data: rigData });
+        if (puppet) {
+          it.puppet = puppet;
+          it.rig = puppet;
+        }
         it.rigOk = it.rigOk === true || !!puppet;
       } catch (_) {
         it.rigOk = it.rigOk === true;
