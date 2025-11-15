@@ -6,6 +6,7 @@
     maxHeroes="2"
     defaultHero="enrique"
     visualRadius="8"
+    visibleTilesRadius="8"
     massHero="1.0"
     massCart="3.5"
     massRat="0.5"

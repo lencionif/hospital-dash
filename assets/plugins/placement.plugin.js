@@ -116,6 +116,12 @@
     const vrRaw = Number(globals.visualRadius);
     const vrTiles = Number.isFinite(vrRaw) && vrRaw > 0 ? vrRaw : 8;
     G.visualRadiusTiles = vrTiles;
+    const visibleRaw = Number(globals.visibleTilesRadius);
+    if (Number.isFinite(visibleRaw) && visibleRaw > 0) {
+      G.visibleTilesRadius = visibleRaw;
+    } else if (!Number.isFinite(G.visibleTilesRadius) || G.visibleTilesRadius <= 0) {
+      G.visibleTilesRadius = 8;
+    }
     const tile = TILE_SIZE();
     const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
     G.visualRadiusPx = vrTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
@@ -743,6 +749,10 @@
     }
 
     applyGlobals(globals, G);
+    const levelVisibleRaw = Number(level.visibleTilesRadius);
+    if (Number.isFinite(levelVisibleRaw) && levelVisibleRaw > 0) {
+      G.visibleTilesRadius = levelVisibleRaw;
+    }
 
     const rng = (typeof root.MapGen?.createRNG === 'function')
       ? root.MapGen.createRNG(level.seed)

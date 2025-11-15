@@ -143,8 +143,10 @@
     patientsFurious: 0,
     cycleSeconds: 0,
     TILE_SIZE: TILE,
+    visibleTilesRadius: 8,
     visualRadiusTiles: 8,
-    visualRadiusPx: 8 * TILE
+    visualRadiusPx: 8 * TILE,
+    isDebugMap: DEBUG_MAP_MODE
   };
   window.G = G; // (expuesto)
 
@@ -2455,11 +2457,30 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   }
 
 function drawEntities(c2){
+  const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
+  const radiusValue = Number(G?.visibleTilesRadius);
+  const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
+  const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
+  const hasPlayer = !!G.player;
+  const applyCull = hasPlayer && !G.isDebugMap && tileSize > 0;
+  const playerX = hasPlayer ? Number(G.player.x) || 0 : 0;
+  const playerY = hasPlayer ? Number(G.player.y) || 0 : 0;
+
   for (const e of G.entities){
     if (!e || e.dead) continue;
 
+    const isPlayerEntity = (e === G.player || e.kind === ENT.PLAYER);
+    if (applyCull && !isPlayerEntity) {
+      const dx = (Number(e.x) || 0) - playerX;
+      const dy = (Number(e.y) || 0) - playerY;
+      const distTiles = Math.max(Math.abs(dx / tileSize), Math.abs(dy / tileSize));
+      if (distTiles > entityRadius) {
+        continue;
+      }
+    }
+
     // El jugador se pinta aparte con su rig (más nítido)
-    if (e === G.player || e.kind === ENT.PLAYER) continue;
+    if (isPlayerEntity) continue;
 
     if (e.puppet && window.PuppetAPI) continue;
 
@@ -2987,6 +3008,7 @@ function drawEntities(c2){
   async function buildLevelForCurrentMode(levelNumber){
     const level = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
     G.debugMap = DEBUG_MAP_MODE;
+    G.isDebugMap = DEBUG_MAP_MODE;
     G.mode = DEBUG_MAP_MODE ? 'debug' : 'normal';
     G._placementMode = G.mode;
     G._placementsFinalized = false;
@@ -3388,6 +3410,7 @@ function drawEntities(c2){
     const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
     G.level = targetLevel;
     G.debugMap = DEBUG_MAP_MODE;
+    G.isDebugMap = DEBUG_MAP_MODE;
     G._hasPlaced = false;
     G.__placementsApplied = false;
     G._gameOverLogged = false;

@@ -158,20 +158,46 @@
     // ---------------------------------------------------------
     drawFloorAndWalls(ctx, G) {
       if (!G || !Array.isArray(G.map)) return;
-      const T = (this._opts.tile|0) || (global.TILE_SIZE|0) || 32;
-      for (let y = 0; y < G.mapH; y++) {
-        for (let x = 0; x < G.mapW; x++) {
-          const px = x * T, py = y * T;
-          const isWall = !!G.map[y][x];
+      const fallbackTile = (this._opts.tile|0) || (global.TILE_SIZE|0) || 32;
+      const tile = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : fallbackTile;
+      const mapH = Number.isFinite(G?.mapH) && G.mapH > 0 ? G.mapH : (Array.isArray(G.map) ? G.map.length : 0);
+      const mapW = Number.isFinite(G?.mapW) && G.mapW > 0 ? G.mapW : (mapH > 0 && Array.isArray(G.map[0]) ? G.map[0].length : 0);
+      if (!mapW || !mapH) return;
+
+      let minX = 0;
+      let maxX = mapW - 1;
+      let minY = 0;
+      let maxY = mapH - 1;
+
+      if (!G.isDebugMap && G.player) {
+        const radiusValue = Number(G.visibleTilesRadius);
+        const radius = Math.max(0, Math.ceil(Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8));
+        const playerTileX = Math.max(0, Math.min(mapW - 1, Math.floor((Number(G.player.x) || 0) / tile)));
+        const playerTileY = Math.max(0, Math.min(mapH - 1, Math.floor((Number(G.player.y) || 0) / tile)));
+        minX = Math.max(0, playerTileX - radius);
+        maxX = Math.min(mapW - 1, playerTileX + radius);
+        minY = Math.max(0, playerTileY - radius);
+        maxY = Math.min(mapH - 1, playerTileY + radius);
+        if (minX > maxX || minY > maxY) {
+          minX = 0; maxX = mapW - 1; minY = 0; maxY = mapH - 1;
+        }
+      }
+
+      for (let y = minY; y <= maxY; y++) {
+        const row = G.map[y];
+        for (let x = minX; x <= maxX; x++) {
+          const px = x * tile;
+          const py = y * tile;
+          const isWall = !!(row && row[x]);
           if (isWall) {
             const img = this._imgs['pared'];
-            img ? ctx.drawImage(img, px, py, T, T) : (ctx.fillStyle='#5d4037', ctx.fillRect(px,py,T,T));
+            img ? ctx.drawImage(img, px, py, tile, tile) : (ctx.fillStyle='#5d4037', ctx.fillRect(px,py,tile,tile));
           } else {
             // ajedrez (clarito/normal)
             const useLight = ((x + y) & 1) === 0;
             const img = useLight ? (this._imgs['suelo_claro'] || this._imgs['suelo'])
                                  : (this._imgs['suelo_oscuro'] || this._imgs['suelo']);
-            img ? ctx.drawImage(img, px, py, T, T) : (ctx.fillStyle='#37474f', ctx.fillRect(px,py,T,T));
+            img ? ctx.drawImage(img, px, py, tile, tile) : (ctx.fillStyle='#37474f', ctx.fillRect(px,py,tile,tile));
           }
         }
       }
