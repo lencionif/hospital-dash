@@ -115,6 +115,8 @@
     time: 0,
     score: 0,
     health: 6, // medias vidas (0..6)
+    levelState: 'READY_TO_START', // READY_TO_START | LOADING | READY | PLAYING | PAUSED | IDLE
+    pendingLevel: null,
     entities: [],
     movers: [],
     hostiles: [],
@@ -489,6 +491,7 @@
   const canvas    = document.getElementById('gameCanvas');
   const ctx       = canvas.getContext('2d');
   const fogCanvas = document.getElementById('fogCanvas');
+  const fogCtx    = fogCanvas ? fogCanvas.getContext('2d') : null;
   const hudCanvas = document.getElementById('hudCanvas');
   const hudCtx    = hudCanvas.getContext('2d');
 
@@ -547,6 +550,74 @@
     if (Array.isArray(G?.roomLights)) G.roomLights.length = 0;
     if (Array.isArray(G?.dynamicLights)) G.dynamicLights.length = 0;
     if (Array.isArray(G?.lightFX)) G.lightFX.length = 0;
+  }
+
+  function clearCanvasContext(targetCtx, width, height){
+    if (!targetCtx) return;
+    const w = Number.isFinite(width) && width > 0
+      ? width
+      : (targetCtx.canvas && Number.isFinite(targetCtx.canvas.width) ? targetCtx.canvas.width : VIEW_W);
+    const h = Number.isFinite(height) && height > 0
+      ? height
+      : (targetCtx.canvas && Number.isFinite(targetCtx.canvas.height) ? targetCtx.canvas.height : VIEW_H);
+    try {
+      targetCtx.save();
+      targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+      targetCtx.clearRect(0, 0, w, h);
+      targetCtx.restore();
+    } catch (err){
+      try {
+        targetCtx.clearRect(0, 0, w, h);
+      } catch (_) {}
+    }
+  }
+
+  function resetGameWorld(opts = {}){
+    const options = opts || {};
+    const levelState = options.levelState || 'READY_TO_START';
+    const reason = options.reason || 'world-reset';
+
+    clearCanvasContext(ctx, canvas?.width, canvas?.height);
+    clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
+    clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
+
+    try { window.FogAPI?.reset?.(); } catch (_) {}
+    try { window.FogAPI?.clear?.(); } catch (_) {}
+    try { window.LightingAPI?.reset?.(); } catch (_) {}
+    try { window.SkyFX?.reset?.(); } catch (_) {}
+    try { window.SkyFX?.clear?.(); } catch (_) {}
+    try { window.Physics?.reset?.(); } catch (_) {}
+    try { window.ArrowGuide?.reset?.(); } catch (_) {}
+    try { window.GameFlowAPI?.cancelReadyOverlay?.(); } catch (_) {}
+
+    resetGlobalLevelState();
+
+    if (options.pendingLevel !== undefined) {
+      const pending = Number(options.pendingLevel);
+      G.pendingLevel = Number.isFinite(pending) ? pending : options.pendingLevel;
+    } else if (options.keepPendingLevel !== true) {
+      G.pendingLevel = null;
+    }
+
+    G.levelState = levelState;
+
+    window.LOG?.event?.('WORLD_RESET', {
+      reason,
+      state: levelState,
+      debug: DEBUG_MAP_MODE
+    });
+  }
+
+  function resetAndLoadLevel(levelNumber){
+    const numericLevel = Number(levelNumber);
+    const nextLevel = Number.isFinite(numericLevel) && numericLevel > 0
+      ? numericLevel
+      : (G.level || 1);
+    G.pendingLevel = nextLevel;
+    if (G.levelState !== 'READY_TO_START') {
+      resetGameWorld({ levelState: 'READY_TO_START', pendingLevel: nextLevel, reason: 'queue-level', keepPendingLevel: true });
+    }
+    requestAnimationFrame(() => startGame(nextLevel));
   }
 
   function fitStartScreen(){
@@ -2577,6 +2648,13 @@ function drawEntities(c2){
   // Draw + loop
   // ------------------------------------------------------------
   function draw(){
+    const canRenderWorld = (G.levelState === 'PLAYING' || G.levelState === 'PAUSED' || G.levelState === 'READY');
+    if (!canRenderWorld) {
+      clearCanvasContext(ctx, canvas?.width, canvas?.height);
+      clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
+      clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
+      return;
+    }
     // actualizar cámara centrada en jugador
     if (G.player){
       camera.x = G.player.x + G.player.w/2;
@@ -3209,6 +3287,14 @@ function drawEntities(c2){
       applyStateVisuals(true);
       return;
     }
+    if (next === 'READY') {
+      G.levelState = 'READY';
+    } else if (next === 'PLAYING') {
+      G.levelState = 'PLAYING';
+      G.pendingLevel = null;
+    } else if (next === 'PAUSED') {
+      G.levelState = 'PAUSED';
+    }
     G.state = next;
     window.LOG?.event?.('STATE', { state: next, level: G.level || null });
     applyStateVisuals(true);
@@ -3263,6 +3349,11 @@ function drawEntities(c2){
         break;
       }
       case 'GAMEOVER': {
+        if (G.levelState !== 'READY_TO_START') {
+          resetGameWorld({ levelState: 'READY_TO_START', reason: 'gameover' });
+        } else {
+          G.levelState = 'READY_TO_START';
+        }
         window.__toggleMinimap?.(false);
         levelCompleteScreen.classList.add('hidden');
         gameOverScreen.classList.remove('hidden');
@@ -3288,6 +3379,11 @@ function drawEntities(c2){
         break;
       }
       case 'COMPLETE': {
+        if (G.levelState !== 'READY_TO_START') {
+          resetGameWorld({ levelState: 'READY_TO_START', reason: 'level-complete', keepPendingLevel: true });
+        } else {
+          G.levelState = 'READY_TO_START';
+        }
         window.__toggleMinimap?.(false);
         gameOverScreen.classList.add('hidden');
         levelCompleteScreen.classList.remove('hidden');
@@ -3353,7 +3449,7 @@ function drawEntities(c2){
     }
 
     const arrayKeys = [
-      'entities','movers','hostiles','humans','animals','objects','patients','pills','lights','roomLights','items'
+      'entities','movers','hostiles','humans','animals','objects','patients','pills','lights','roomLights','items','spawners','onInteract'
     ];
     for (const key of arrayKeys) {
       if (!Array.isArray(G[key])) {
@@ -3449,7 +3545,8 @@ function drawEntities(c2){
     window.__setMinimapMode?.('small');
     window.__toggleMinimap?.(true);
 
-    resetGlobalLevelState();
+    resetGameWorld({ levelState: 'LOADING', pendingLevel: targetLevel, keepPendingLevel: true, reason: 'start-game' });
+    G.levelState = 'LOADING';
 
     G.time = 0;
     G.cycleSeconds = 0;
@@ -3611,8 +3708,16 @@ function drawEntities(c2){
 
 
   function togglePause(){
-    if (G.state==='PLAYING'){ G.state='PAUSED'; pausedScreen.classList.remove('hidden'); }
-    else if (G.state==='PAUSED'){ G.state='PLAYING'; pausedScreen.classList.add('hidden'); }
+    if (G.state==='PLAYING'){
+      G.state='PAUSED';
+      G.levelState = 'PAUSED';
+      pausedScreen.classList.remove('hidden');
+    }
+    else if (G.state==='PAUSED'){
+      G.state='PLAYING';
+      G.levelState = 'PLAYING';
+      pausedScreen.classList.add('hidden');
+    }
   }
 
   function attachUIHandlers(){
@@ -3667,6 +3772,7 @@ function drawEntities(c2){
 
   function bootstrapGame(){
     attachUIHandlers();
+    resetGameWorld({ levelState: 'READY_TO_START', reason: 'bootstrap' });
     if (window.LOG?.init){
       window.LOG.init({ buffer: 2000, uiHotkey: 'F10', verbose: DIAG_MODE, level: DIAG_MODE ? 'debug' : 'info' });
       if (DIAG_MODE) window.LOG.level = 'debug';
@@ -3698,6 +3804,9 @@ function drawEntities(c2){
   window.ENT = ENT;                 // para plugins/sprites
   window.G = G;
   window.camera = camera;
+  G.resetGameWorld = resetGameWorld;
+  G.resetAndLoadLevel = resetAndLoadLevel;
+  window.resetGameWorld = resetGameWorld;
   window.toScreen = bridgeToScreen;
   window.startGame = startGame;
   window.damagePlayer = damagePlayer; // ⬅️ EXponer daño del héroe para las ratas
