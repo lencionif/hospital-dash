@@ -596,153 +596,59 @@ button:active { transform: translateY(1px); }
 #game-container { position: relative; }
 #gameCanvas     { position: relative; z-index: 1; }
 
-/* START SCREEN cinematic HUD -------------------------------------------- */
+/* === START SCREEN como foto + pines sobre cabezas ======================= */
 #start-screen{
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  padding: clamp(24px, 5vh, 64px) clamp(28px, 5vw, 72px);
-  gap: clamp(24px, 5vh, 48px);
-  background:
-    radial-gradient(130% 140% at 50% 12%, rgba(6,10,18,0.15) 0%, rgba(6,10,18,0.65) 55%, rgba(6,10,18,0.9) 100%),
-    linear-gradient(180deg, rgba(7,12,20,0.12) 0%, rgba(7,12,20,0.55) 64%, rgba(6,10,18,0.88) 100%),
-    var(--sprite-main) center 8% / contain no-repeat,
-    #03060c;
-  overflow: hidden;
+  background: var(--sprite-main) center 8% / cover no-repeat;
 }
 
-#start-screen::before{
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(255,255,255,0.08), transparent 55%),
-    radial-gradient(120% 120% at 50% 100%, rgba(2,4,8,0.9), transparent 55%);
-  mix-blend-mode: soft-light;
-  pointer-events: none;
-  z-index: 0;
-}
-
+/* Desnudamos la caja para que no tape la foto */
 #start-screen .menu-box{
-  position: relative;
-  z-index: 3;
-  width: 100%;
-  padding: clamp(20px, 3.6vh, 36px) clamp(24px, 4.6vw, 44px) clamp(28px, 4.2vh, 40px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(16px, 3vh, 32px);
-  background: linear-gradient(180deg, rgba(10,16,25,0.85) 0%, rgba(10,16,25,0.94) 52%, rgba(6,12,21,0.98) 100%);
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: clamp(18px, 3vw, 26px);
-  box-shadow:
-    0 28px 48px rgba(0,0,0,0.58),
-    0 0 0 1px rgba(255,255,255,0.08) inset;
-  backdrop-filter: blur(14px);
-  color: rgba(235,242,250,0.98);
-  text-align: center;
-  opacity: 0.5;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  /* subimos un poco para que el texto “Objetivo…” no quede fuera */
+  padding: 236px 0 0 56px;
 }
 
-#start-screen .start-header{
-  display: flex;
-  flex-direction: column;
-  gap: clamp(6px, 1.4vh, 14px);
-}
-
-#start-screen .start-header h1{
-  margin: 0;
-  font-size: clamp(1.35rem, 4vh, 2.45rem);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-shadow: 0 3px 12px rgba(0,0,0,0.55);
-}
-
-#start-screen .start-header .subtitle{
-  margin: 0;
-  font-size: clamp(0.7rem, 2vh, 0.95rem);
-  line-height: 1.35;
-  color: rgba(210,225,240,0.85);
-}
-
-#start-screen .section-title{
-  margin: clamp(4px, 0.6vh, 8px) 0 0;
-  font-size: clamp(0.85rem, 2.4vh, 1.2rem);
-  letter-spacing: 0.08em;
-  color: rgba(255,255,255,0.9);
-  text-transform: uppercase;
-}
-
+/* La grilla ocupa la pantalla y sirve de capa de pines */
 #start-screen .char-grid{
   position: absolute;
-  z-index: 2;
-  top: clamp(32px, 12vh, 38%);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(94vw, 860px);
-  height: clamp(160px, 38vh, 240px);
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 52%;
+  pointer-events: auto;
+  /* pines clicables sin tapar los botones */
 }
 
+/* Cada tarjeta se convierte en botón redondo tipo “pin” */
 #start-screen .char-card{
   position: absolute;
+  width: 84px;
+  height: 84px;
+  transform: translate(-50%, -120%);
+  /* justo encima de la cabeza */
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.85);
+  background: rgba(12,14,18,.55);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 10px 24px rgba(0,0,0,.35), inset 0 0 0 2px rgba(0,0,0,.35);
   display: grid;
   place-items: center;
-  width: clamp(62px, 7.4vw, 84px);
-  height: clamp(62px, 7.4vw, 84px);
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.32);
-  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), rgba(255,255,255,0)) rgba(17,25,37,0.82);
-  box-shadow:
-    0 16px 26px rgba(0,0,0,0.55),
-    0 0 0 2px rgba(12,20,32,0.65) inset;
-  transform: translate(-50%, -112%);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   pointer-events: auto;
+  /* clicable de nuevo */
+  transition: transform .12s, border-color .12s, box-shadow .12s;
 }
 
-#start-screen .char-card::after{
-  content: "";
-  position: absolute;
-  bottom: clamp(-18px, -2.4vh, -10px);
-  left: 50%;
-  width: clamp(10px, 1.4vw, 14px);
-  height: clamp(16px, 2.4vh, 22px);
-  transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(17,25,37,0.1));
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
-  filter: drop-shadow(0 6px 6px rgba(0,0,0,0.35));
-}
-
-#start-screen .char-card:hover,
-#start-screen .char-card:focus-visible{
-  transform: translate(-50%, -115%) scale(1.05);
-  border-color: rgba(47,129,247,0.85);
-  box-shadow:
-    0 22px 38px rgba(0,0,0,0.55),
-    0 0 18px rgba(47,129,247,0.45);
+#start-screen .char-card:hover{
+  transform: translate(-50%, -120%) scale(1.06);
+  border-color: #fff;
+  box-shadow: 0 10px 24px rgba(0,0,0,.45), 0 0 2px rgba(255,255,255,.12) inset;
 }
 
 #start-screen .char-card.selected{
-  border-color: rgba(63,185,80,0.95);
-  box-shadow:
-    0 0 24px rgba(63,185,80,0.45),
-    0 18px 32px rgba(0,0,0,0.5),
-    0 0 0 2px rgba(63,185,80,0.4) inset;
-}
-
-#start-screen .char-card .char-avatar{
-  width: 74%;
-  height: 74%;
-  border-radius: 50%;
-  background-size: cover;
-  background-position: center;
-  box-shadow:
-    0 0 0 2px rgba(6,9,14,0.55),
-    inset 0 0 0 2px rgba(255,255,255,0.55);
+  border-color: var(--accent);
+  box-shadow: 0 0 2px rgba(47,129,247,0.55) inset;
 }
 
 #start-screen .char-card .char-info{
@@ -758,110 +664,41 @@ button:active { transform: translateY(1px); }
   white-space: nowrap;
 }
 
-#start-screen .char-card:nth-child(1){ left: 19%; top: 68%; }
-#start-screen .char-card:nth-child(3){ left: 50%; top: 58%; }
-#start-screen .char-card:nth-child(2){ left: 81%; top: 70%; }
+/* Posiciones de los pines (en este orden: 1=Enrique izq, 3=Francesco centro, 2=Roberto dcha) */
+#start-screen .char-card:nth-child(1){
+  left: 18%;
+  top: 32%;
+}
 
-#start-screen .options,
-#start-screen .start-options{
+#start-screen .char-card:nth-child(3){
+  left: 50%;
+  top: 26%;
+}
+
+#start-screen .char-card:nth-child(2){
+  left: 78%;
+  top: 33%;
+}
+
+/* Opciones en línea (checkboxes y botón 3D) */
+.options{
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: clamp(10px, 2vh, 18px);
-  font-size: clamp(0.62rem, 1.8vh, 0.85rem);
+  gap: 18px;
+  justify-content: flex-start;
+  margin-top: 10px;
+  font-size: 12px;
 }
 
-#start-screen .options label,
-#start-screen .options #btn-3dacc,
-#start-screen .start-options .option-item,
-#start-screen .start-options .option-action{
-  display: inline-flex;
-  align-items: center;
-  gap: clamp(6px, 1.2vw, 10px);
-  padding: clamp(6px, 1.4vh, 10px) clamp(12px, 2.4vw, 20px);
-  border-radius: 999px;
-  background: rgba(14,22,34,0.78);
-  border: 1px solid rgba(255,255,255,0.22);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);
-}
-
-#start-screen .options label,
-#start-screen .start-options .option-item{
-  color: rgba(220,232,245,0.9);
-}
-
-#start-screen .options input,
-#start-screen .start-options input{
-  transform: scale(0.9);
-}
-
-#start-screen .options #btn-3dacc,
-#start-screen .start-options .option-action{
-  font-size: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  color: #f5f9ff;
-  background: linear-gradient(90deg, rgba(47,129,247,0.75), rgba(111,201,255,0.85));
-  box-shadow:
-    0 12px 22px rgba(35,111,197,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.35);
-}
-
-#start-screen .start-actions{
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(12px, 2vh, 20px);
-}
-
-#start-screen #start-button{
-  font-size: clamp(0.75rem, 2.2vh, 1rem);
-  padding: clamp(12px, 2.4vh, 18px) clamp(32px, 6vw, 54px);
-  border-radius: 999px;
-  background: linear-gradient(90deg, #2ea043, #3fb950);
-  border: 1px solid rgba(255,255,255,0.24);
-  box-shadow:
-    0 18px 32px rgba(46,160,67,0.35),
-    inset 0 -3px 0 rgba(0,0,0,0.3);
-  color: #fff;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-}
-
-#start-screen .tip{
-  margin: 0;
-  padding: clamp(10px, 1.8vh, 16px) clamp(16px, 3vw, 26px);
-  max-width: 42ch;
-  font-size: clamp(0.62rem, 1.8vh, 0.85rem);
+/* Tip al final del menú */
+.tip{
+  font-size: 12px;
   line-height: 1.5;
-  color: rgba(222,234,247,0.9);
-  background: rgba(6,12,20,0.82);
-  border: 1px solid rgba(255,255,255,0.18);
-  border-radius: 18px;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
-}
-
-@media (max-width: 720px){
-  #start-screen{
-    padding: clamp(14px, 4vh, 28px) clamp(16px, 6vw, 32px) clamp(20px, 6vh, 34px);
-  }
-  #start-screen .menu-box{
-    width: 100%;
-    padding: clamp(16px, 4vh, 26px) clamp(18px, 5vw, 32px);
-  }
-  #start-screen .char-grid{
-    top: clamp(28px, 18vh, 52%);
-    height: clamp(160px, 52vh, 220px);
-  }
-  #start-screen .char-card{
-    width: clamp(58px, 12vw, 74px);
-    height: clamp(58px, 12vw, 74px);
-  }
-  #start-screen .options{
-    gap: clamp(8px, 2vh, 14px);
-  }
+  margin-top: 10px;
+  display: inline-block;
+  padding: 6px 10px;
+  background: rgba(0,0,0,.45);
+  border-radius: 8px;
+  text-shadow: 1px 1px 2px #000;
 }
 
 /* viñeteado suave sobre la foto */
@@ -1043,9 +880,9 @@ body.intro-playing #game-container{ visibility: hidden; }
 }
 
 /* Main sin botones durante la intro */
-#start-screen.intro-hide-ui .start-panel,
+#start-screen.intro-hide-ui .menu-box,
 #start-screen.intro-hide-ui .char-grid,
-#start-screen.intro-hide-ui .start-options,
+#start-screen.intro-hide-ui .options,
 #start-screen.intro-hide-ui .tip{
   display: none !important;
 }
@@ -1055,9 +892,9 @@ body.intro-playing #game-container{ visibility: hidden; }
 #start-button[disabled]{ opacity:.5; pointer-events:none; }
 
 /* === Durante la intro, mostrar el main pero con UI deshabilitada === */
-#start-screen.intro-disable-ui .start-panel,
+#start-screen.intro-disable-ui .menu-box,
 #start-screen.intro-disable-ui .char-grid,
-#start-screen.intro-disable-ui .start-options,
+#start-screen.intro-disable-ui .options,
 #start-screen.intro-disable-ui .tip {
   filter: grayscale(0.2) opacity(.85);
 }

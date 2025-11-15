@@ -52,8 +52,10 @@
       bed_patient: { mass: 2.0, restitution: 0.35, friction: 0.88, vmax: 7 }
     },
     pushMultipliers: {
-      base: 0.9,
-      enrique: 2.0,
+      base: 1.25,
+      enrique: 2.2,
+      roberto: 1.65,
+      francesco: 1.45,
       syringeRed: 2.2
     }
   };

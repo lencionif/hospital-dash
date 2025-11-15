@@ -606,8 +606,8 @@
       if (!window.selectedHeroKey) {
         const first = document.querySelector('#start-screen .char-card[data-hero]');
         window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
-        window.G.selectedHero = window.selectedHeroKey;
       }
+      window.G.selectedHero = window.selectedHeroKey || 'francesco';
     });
   })();
 
@@ -2248,8 +2248,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
-    const HERO_LIGHT_ALPHA = 0.60;
-    const NPC_LIGHT_ALPHA = 0.45;
+    const HERO_LIGHT_ALPHA = 0.35;
+    const NPC_LIGHT_ALPHA = 0.40;
     const NPC_RADIUS_RATIO = 0.55;
 
     function flashlightColorForHero(e){
@@ -2293,11 +2293,20 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       const hero = (G.player && !G.player.dead) ? G.player : null;
       const heroDist = hero ? (hero._flashOuter || 740) : 620;
       const npcRadiusBase = heroDist * NPC_RADIUS_RATIO;
-      const computeAngle = (e) => (
-        (typeof e.lookAngle === 'number')
-          ? e.lookAngle
-          : (Math.hypot(e.vx || 0, e.vy || 0) > 0.01 ? Math.atan2(e.vy || 0, e.vx || 0) : Math.PI / 2)
-      );
+      const computeAngle = (e) => {
+        if (hero && matchesKind(e, 'PATIENT')) {
+          const ex = (e.x || 0) + (e.w || 0) * 0.5;
+          const ey = (e.y || 0) + (e.h || 0) * 0.5;
+          const hx = (hero.x || 0) + (hero.w || 0) * 0.5;
+          const hy = (hero.y || 0) + (hero.h || 0) * 0.5;
+          return Math.atan2(hy - ey, hx - ex);
+        }
+        if (typeof e.lookAngle === 'number') return e.lookAngle;
+        if (Math.hypot(e.vx || 0, e.vy || 0) > 0.01) {
+          return Math.atan2(e.vy || 0, e.vx || 0);
+        }
+        return Math.PI / 2;
+      };
       const add = (e, fov, dist, color, opts = {}) => {
         const cx = e.x + e.w*0.5, cy = e.y + e.h*0.5;
         const ang = computeAngle(e);

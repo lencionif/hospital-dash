@@ -219,16 +219,19 @@
     const canvas = ctx.canvas;
     for (const pat of G.patients || []) {
       if (!pat || pat.dead || pat.attended) continue;
-      if (pat.puppet && pat.rigOk) continue;
-      const pos = toScreen(camera, canvas, pat.x + pat.w * 0.5, pat.y - (pat.nameTagYOffset || 18));
+      const name = pat.displayName || pat.name || 'Paciente';
+      const centerX = (pat.x || 0) + (pat.w || 0) * 0.5;
+      const offsetBase = Number.isFinite(pat.nameTagYOffset) ? pat.nameTagYOffset : 0;
+      const pos = toScreen(camera, canvas, centerX, (pat.y || 0) - offsetBase - 30);
       ctx.save();
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      ctx.strokeText(pat.displayName || pat.name || 'Paciente', pos.x, pos.y);
+      ctx.strokeText(name, pos.x, pos.y);
       ctx.fillStyle = '#ffe27a';
-      ctx.fillText(pat.displayName || pat.name || 'Paciente', pos.x, pos.y);
+      ctx.fillText(name, pos.x, pos.y);
       ctx.restore();
     }
   }

@@ -10,9 +10,9 @@
 
   const TAU = Math.PI * 2;
   const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
-  const ALPHA_HERO = 0.60;
-  const ALPHA_NPC  = 0.45;
-  const HERO_RADIUS_FACTOR = 6.5;
+  const ALPHA_HERO = 0.35;
+  const ALPHA_NPC  = 0.40;
+  const HERO_RADIUS_FACTOR = 5.0;
   const RATIO_NPC = 0.55;
 
   // ─────────────────────────────────────────────────────
