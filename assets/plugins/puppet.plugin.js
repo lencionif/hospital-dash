@@ -609,6 +609,16 @@
     if (!ctx) return;
     sortPuppets();
     const camera = ensureCamera(ctx, cam);
+    const G = window.G || {};
+    const player = G.player || null;
+    const tileSize = getTileSize();
+    const radiusValue = Number(G.visibleTilesRadius);
+    const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
+    const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
+    const applyCull = !!player && !G.isDebugMap && tileSize > 0;
+    const playerX = player ? (Number(player.x) || 0) : 0;
+    const playerY = player ? (Number(player.y) || 0) : 0;
+
     ctx.save();
     try {
       if (typeof window.applyWorldCamera === 'function') {
@@ -616,6 +626,12 @@
       }
       for (const puppet of puppets){
         if (!puppet || !puppet.entity || puppet.entity._inactive) continue;
+        if (applyCull && puppet.entity !== player) {
+          const ex = Number(puppet.entity.x) || 0;
+          const ey = Number(puppet.entity.y) || 0;
+          const distTiles = Math.max(Math.abs((ex - playerX) / tileSize), Math.abs((ey - playerY) / tileSize));
+          if (distTiles > entityRadius) continue;
+        }
         drawOne(puppet, ctx, camera);
       }
     } finally {
