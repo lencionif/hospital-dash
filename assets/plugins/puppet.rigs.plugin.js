@@ -103,6 +103,21 @@
     return [cx, cy, scale];
   }
 
+  const nowMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now());
+
+  function isEntityCulled(e){
+    if (!e) return false;
+    if (e.hidden || e.disabled || e.skipRender || e.ignoreRender) return true;
+    const flags = ['culled', '_culled', 'isCulled', '__culled', 'renderCull', 'offscreen'];
+    for (const key of flags){
+      if (e[key] === true) return true;
+    }
+    if (typeof e.alpha === 'number' && e.alpha <= 0) return true;
+    return false;
+  }
+
   function drawShadow(ctx, radius, scale = 1, flatten = 0.32, alpha = 0.22){
     if (!radius) return;
     ctx.save();
@@ -577,12 +592,35 @@
       action: 'idle',
       dir: 1,
       deathCause: null,
+      heroActionClass: null,
+      heroDeathClass: null,
+      actionStart: nowMs(),
+      actionElapsed: 0,
+      culled: false,
+      idleExtraActive: false,
+      idleExtraUntil: 0,
+      idleExtraCooldown: 0,
       cleanup
     };
   }
 
   function applyHeroDomState(st, e){
     if (!st || !st.root) return;
+    const culled = isEntityCulled(e);
+    if (culled){
+      if (!st.culled){
+        st.culled = true;
+        st.root.classList.add('hero-culled');
+        st.root.style.visibility = 'hidden';
+      }
+      return;
+    }
+    if (st.culled){
+      st.culled = false;
+      st.root.classList.remove('hero-culled');
+      st.root.style.visibility = '';
+    }
+    const heroKey = (st.hero || e?.hero || e?.heroId || 'francesco').toLowerCase();
     const heroAPI = window.Entities?.Hero;
     const anim = heroAPI?.getAnimationState?.(e) || null;
     const orientation = anim?.orientation || st.orientation || 'down';
@@ -603,16 +641,33 @@
       st.dir = dir;
     }
     const action = anim?.action || 'idle';
-    if (action !== st.action){
+    const actionChanged = action !== st.action;
+    if (actionChanged){
       if (st.action) st.root.classList.remove(`hero-state-${st.action}`);
       st.root.classList.add(`hero-state-${action}`);
+      st.actionStart = nowMs();
+      st.actionElapsed = 0;
       st.action = action;
+    } else {
+      st.actionElapsed = nowMs() - (st.actionStart || nowMs());
+    }
+    const heroActionClass = pickHeroActionClass(heroKey, action);
+    if (heroActionClass !== st.heroActionClass){
+      if (st.heroActionClass) st.root.classList.remove(st.heroActionClass);
+      if (heroActionClass) st.root.classList.add(heroActionClass);
+      st.heroActionClass = heroActionClass;
     }
     const deathCause = e?.dead ? (anim?.deathCause || 'generic') : '';
     if (deathCause !== st.deathCause){
       if (st.deathCause) st.root.classList.remove(`hero-death-${st.deathCause}`);
       if (deathCause) st.root.classList.add(`hero-death-${deathCause}`);
       st.deathCause = deathCause;
+    }
+    const heroDeathClass = deathCause ? pickHeroDeathClass(heroKey, deathCause) : null;
+    if (heroDeathClass !== st.heroDeathClass){
+      if (st.heroDeathClass) st.root.classList.remove(st.heroDeathClass);
+      if (heroDeathClass) st.root.classList.add(heroDeathClass);
+      st.heroDeathClass = heroDeathClass;
     }
     st.root.classList.toggle('hero-is-talking', action === 'talk');
     st.root.classList.toggle('hero-is-pushing', action === 'push');
@@ -625,10 +680,18 @@
     st.root.classList.toggle('hero-sweating', !!anim?.sweating);
     st.root.classList.toggle('hero-smoking', !!anim?.smoke);
     st.root.classList.toggle('hero-sparking', !!anim?.sparkle);
+
+    if (heroKey === 'roberto'){
+      updateRobertoIdleExtras(st, action);
+    } else if (st.idleExtraActive){
+      st.idleExtraActive = false;
+      st.root.classList.remove('anim-roberto-idle-extra');
+    }
   }
 
   function positionHeroDom(st, cam, e){
     if (!st || !st.root || !e) return;
+    if (st.culled) return;
     const [worldX, worldY, sc] = toScreen(cam, e);
     const projected = (typeof window.worldToScreen === 'function')
       ? window.worldToScreen(worldX, worldY, cam)
@@ -793,6 +856,115 @@
       lanternGlow: 'rgba(102,179,255,0.52)'
     }
   };
+
+  const HERO_ACTION_CLASS_MAP = {
+    enrique: {
+      idle: 'anim-enrique-idle',
+      walk: 'anim-enrique-caminar',
+      push: 'anim-enrique-empujar',
+      attack: 'anim-enrique-atacar',
+      talk: 'anim-enrique-hablar',
+      eat: 'anim-enrique-comer',
+      powerup: 'anim-enrique-comer',
+      hurt: null,
+      dead: null,
+      default: 'anim-enrique-idle'
+    },
+    roberto: {
+      idle: 'anim-roberto-idle',
+      walk: 'anim-roberto-caminar',
+      push: 'anim-roberto-empujar',
+      attack: 'anim-roberto-atacar',
+      talk: 'anim-roberto-hablar',
+      eat: 'anim-roberto-comer',
+      powerup: 'anim-roberto-comer',
+      hurt: null,
+      dead: null,
+      default: 'anim-roberto-idle'
+    },
+    francesco: {
+      idle: 'anim-francesco-idle',
+      walk: 'anim-francesco-caminar',
+      push: 'anim-francesco-empujar',
+      attack: 'anim-francesco-atacar',
+      talk: 'anim-francesco-hablar',
+      eat: 'anim-francesco-comer',
+      powerup: 'anim-francesco-comer',
+      hurt: null,
+      dead: null,
+      default: 'anim-francesco-idle'
+    }
+  };
+
+  const HERO_DEATH_CLASS_MAP = {
+    enrique: {
+      crush: 'anim-enrique-morir-aplastado',
+      fire: 'anim-enrique-morir-fuego',
+      default: 'anim-enrique-morir-dano'
+    },
+    roberto: {
+      crush: 'anim-roberto-morir-aplastado',
+      fire: 'anim-roberto-morir-fuego',
+      default: 'anim-roberto-morir-dano'
+    },
+    francesco: {
+      crush: 'anim-francesco-morir-aplastado',
+      fire: 'anim-francesco-morir-fuego',
+      default: 'anim-francesco-morir-dano'
+    }
+  };
+
+  const DAMAGE_DEATH_ALIASES = {
+    explosion: 'default',
+    impact: 'default',
+    damage: 'default',
+    sting: 'default',
+    bite: 'default',
+    shock: 'default',
+    poison: 'default',
+    generic: 'default',
+    slip: 'default'
+  };
+
+  function pickHeroActionClass(hero, action){
+    const map = HERO_ACTION_CLASS_MAP[hero] || HERO_ACTION_CLASS_MAP.francesco;
+    if (Object.prototype.hasOwnProperty.call(map, action)){
+      return map[action];
+    }
+    return map.default || null;
+  }
+
+  function pickHeroDeathClass(hero, cause){
+    const map = HERO_DEATH_CLASS_MAP[hero] || HERO_DEATH_CLASS_MAP.francesco;
+    if (!cause) return null;
+    const normalized = cause.toLowerCase();
+    if (map[normalized]) return map[normalized];
+    const alias = DAMAGE_DEATH_ALIASES[normalized] ? 'default' : normalized;
+    return map[alias] || map.default || null;
+  }
+
+  function updateRobertoIdleExtras(st, action){
+    const now = nowMs();
+    if (action !== 'idle'){
+      if (st.idleExtraActive){
+        st.idleExtraActive = false;
+        st.root.classList.remove('anim-roberto-idle-extra');
+      }
+      st.idleExtraUntil = 0;
+      return;
+    }
+    const readyForNew = now > (st.idleExtraCooldown || 0);
+    if (!st.idleExtraActive && readyForNew && st.actionElapsed > 5500){
+      st.idleExtraActive = true;
+      st.idleExtraUntil = now + 1800 + Math.random() * 700;
+      st.idleExtraCooldown = st.idleExtraUntil + 4000;
+      st.root.classList.add('anim-roberto-idle-extra');
+    }
+    if (st.idleExtraActive && now > st.idleExtraUntil){
+      st.idleExtraActive = false;
+      st.root.classList.remove('anim-roberto-idle-extra');
+    }
+  }
 
   function registerHeroDomRig(hero, cfg){
     API.registerRig(`hero_${hero}`, {

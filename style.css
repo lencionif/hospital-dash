@@ -1318,6 +1318,11 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   will-change: transform;
 }
 
+.puppet-hero.hero-culled{
+  opacity: 0;
+  visibility: hidden;
+}
+
 .puppet-hero .hero-frame{
   position: absolute;
   inset: 0;
@@ -1691,6 +1696,196 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   --lantern-glow: rgba(120,190,255,0.52);
 }
 
+/* ────────────────────── Enrique animations ────────────────────── */
+.puppet-hero.hero-enrique.anim-enrique-idle .hero-torso{
+  animation: enriqueIdleChest var(--hero-idle-duration) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-idle .hero-belly{
+  animation: enriqueIdleBelly var(--hero-idle-duration) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-idle .hero-head{
+  animation: enriqueIdleHead calc(var(--hero-idle-duration) * 0.9) ease-in-out infinite;
+}
+
+.puppet-hero.hero-enrique.anim-enrique-caminar .hero-body{
+  animation: enriqueWalkTorso calc(var(--hero-walk-duration) * 1.05) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-caminar .hero-leg-left{
+  animation: heroWalkLegForward calc(var(--hero-walk-duration) * 1.05) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-caminar .hero-leg-right{
+  animation: heroWalkLegBackward calc(var(--hero-walk-duration) * 1.05) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-caminar .hero-arm-left{
+  animation: heroWalkArmForward calc(var(--hero-walk-duration) * 1.05) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-caminar .hero-arm-right{
+  animation: heroWalkArmBackward calc(var(--hero-walk-duration) * 1.05) ease-in-out infinite;
+}
+
+.puppet-hero.hero-enrique.anim-enrique-empujar .hero-body{
+  animation: enriquePushLean calc(var(--hero-push-duration) * 1.05) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-empujar .hero-arm-left,
+.puppet-hero.hero-enrique.anim-enrique-empujar .hero-arm-right{
+  animation: enriquePushArms calc(var(--hero-push-duration) * 1.05) ease-in-out infinite;
+}
+
+.puppet-hero.hero-enrique.anim-enrique-atacar .hero-body{
+  animation: enriqueAttackDrive var(--hero-attack-duration) cubic-bezier(0.18,0.01,0.18,1) 1 forwards;
+}
+.puppet-hero.hero-enrique.anim-enrique-atacar .hero-arm-right,
+.puppet-hero.hero-enrique.anim-enrique-atacar .hero-arm-left{
+  animation: enriqueAttackPunch var(--hero-attack-duration) cubic-bezier(0.2,0.01,0.18,1) 1 forwards;
+}
+
+.puppet-hero.hero-enrique.anim-enrique-hablar .hero-jaw{
+  animation: enriqueTalkJaw 0.32s steps(2,end) infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-hablar .hero-arm-left{
+  animation: enriqueTalkHand calc(var(--hero-talk-duration) * 1.1) ease-in-out infinite;
+}
+.puppet-hero.hero-enrique.anim-enrique-hablar .hero-head{
+  animation: enriqueTalkHead calc(var(--hero-talk-duration) * 1.2) ease-in-out infinite;
+}
+
+.puppet-hero.hero-enrique.anim-enrique-comer .hero-arm-right{
+  animation: enriqueEatArm calc(var(--hero-attack-duration) * 1.35) ease-in-out 1 forwards;
+}
+
+.puppet-hero.hero-enrique.anim-enrique-morir-aplastado .hero-body{
+  animation: enriqueDeathCrush 0.55s ease-out forwards;
+}
+.puppet-hero.hero-enrique.anim-enrique-morir-dano .hero-body{
+  animation: enriqueDeathImpact 0.6s ease-out forwards;
+}
+.puppet-hero.hero-enrique.anim-enrique-morir-fuego .hero-body{
+  animation: enriqueDeathFire 1.4s linear forwards;
+  filter: brightness(0.75) sepia(0.35);
+}
+
+/* ────────────────────── Roberto animations ────────────────────── */
+.puppet-hero.hero-roberto.anim-roberto-idle .hero-body{
+  animation: robertoIdleShift calc(var(--hero-idle-duration) * 0.9) ease-in-out infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-idle .hero-head{
+  animation: robertoIdleHead calc(var(--hero-idle-duration) * 0.85) ease-in-out infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-idle-extra .hero-body{
+  animation: robertoIdleExtra 1.5s ease-in-out infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-idle-extra .hero-head{
+  animation: robertoIdleExtraHead 1.5s ease-in-out infinite;
+}
+
+.puppet-hero.hero-roberto.anim-roberto-caminar .hero-body{
+  animation: robertoWalkBounce calc(var(--hero-walk-duration) * 0.85) cubic-bezier(0.35,0,0.45,1) infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-caminar .hero-leg-left{
+  animation: heroWalkLegForward calc(var(--hero-walk-duration) * 0.85) cubic-bezier(0.35,0,0.45,1) infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-caminar .hero-leg-right{
+  animation: heroWalkLegBackward calc(var(--hero-walk-duration) * 0.85) cubic-bezier(0.35,0,0.45,1) infinite;
+}
+
+.puppet-hero.hero-roberto.anim-roberto-empujar .hero-body{
+  animation: robertoPushFeet calc(var(--hero-push-duration) * 0.75) steps(2,end) infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-empujar .hero-leg-left,
+.puppet-hero.hero-roberto.anim-roberto-empujar .hero-leg-right{
+  animation: robertoPushLegs calc(var(--hero-push-duration) * 0.75) steps(2,end) infinite;
+}
+
+.puppet-hero.hero-roberto.anim-roberto-atacar .hero-body{
+  animation: robertoAttackSnap var(--hero-attack-duration) cubic-bezier(0.12,0,0.24,1) 1 forwards;
+}
+.puppet-hero.hero-roberto.anim-roberto-atacar .hero-arm-right{
+  animation: robertoAttackPunch var(--hero-attack-duration) cubic-bezier(0.12,0,0.24,1) 1 forwards;
+}
+
+.puppet-hero.hero-roberto.anim-roberto-hablar .hero-arm-left{
+  animation: robertoTalkHands calc(var(--hero-talk-duration) * 0.8) ease-in-out infinite;
+}
+.puppet-hero.hero-roberto.anim-roberto-hablar .hero-arm-right{
+  animation: robertoTalkHands calc(var(--hero-talk-duration) * 0.7) ease-in-out infinite reverse;
+}
+.puppet-hero.hero-roberto.anim-roberto-hablar .hero-jaw{
+  animation: heroTalkMouth 0.22s steps(2,end) infinite;
+}
+
+.puppet-hero.hero-roberto.anim-roberto-comer .hero-arm-right{
+  animation: robertoEatRush calc(var(--hero-attack-duration) * 0.9) cubic-bezier(0.3,0,0.6,1) infinite;
+}
+
+.puppet-hero.hero-roberto.anim-roberto-morir-aplastado .hero-body{
+  animation: robertoDeathCrush 0.32s ease-out forwards;
+}
+.puppet-hero.hero-roberto.anim-roberto-morir-dano .hero-body{
+  animation: robertoDeathDamage 0.4s ease-out forwards;
+}
+.puppet-hero.hero-roberto.anim-roberto-morir-fuego .hero-body{
+  animation: robertoDeathFire 0.8s ease-in forwards;
+  filter: brightness(0.8) hue-rotate(-12deg);
+}
+
+/* ────────────────────── Francesco animations ────────────────────── */
+.puppet-hero.hero-francesco.anim-francesco-idle .hero-body{
+  animation: francescoIdleScan var(--hero-idle-duration) ease-in-out infinite;
+}
+.puppet-hero.hero-francesco.anim-francesco-idle .hero-head{
+  animation: francescoIdleHead calc(var(--hero-idle-duration) * 1.1) ease-in-out infinite;
+}
+.puppet-hero.hero-francesco.anim-francesco-idle .hero-arm-right{
+  animation: francescoIdleVisor calc(var(--hero-idle-duration) * 1.4) ease-in-out infinite;
+}
+
+.puppet-hero.hero-francesco.anim-francesco-caminar .hero-body{
+  animation: francescoWalkTorso var(--hero-walk-duration) ease-in-out infinite;
+}
+.puppet-hero.hero-francesco.anim-francesco-caminar .hero-head{
+  animation: francescoWalkLook calc(var(--hero-walk-duration) * 1.1) ease-in-out infinite;
+}
+
+.puppet-hero.hero-francesco.anim-francesco-empujar .hero-body{
+  animation: francescoPushForm var(--hero-push-duration) ease-in-out infinite;
+}
+.puppet-hero.hero-francesco.anim-francesco-empujar .hero-arm-left,
+.puppet-hero.hero-francesco.anim-francesco-empujar .hero-arm-right{
+  animation: francescoPushArms var(--hero-push-duration) ease-in-out infinite;
+}
+
+.puppet-hero.hero-francesco.anim-francesco-atacar .hero-body{
+  animation: francescoAttackStride var(--hero-attack-duration) cubic-bezier(0.18,0,0.38,1) 1 forwards;
+}
+.puppet-hero.hero-francesco.anim-francesco-atacar .hero-arm-right{
+  animation: francescoAttackStrike var(--hero-attack-duration) cubic-bezier(0.18,0,0.38,1) 1 forwards;
+}
+
+.puppet-hero.hero-francesco.anim-francesco-hablar .hero-arm-left{
+  animation: francescoTalkCalm calc(var(--hero-talk-duration) * 1.05) ease-in-out infinite;
+}
+.puppet-hero.hero-francesco.anim-francesco-hablar .hero-head{
+  animation: francescoTalkHead calc(var(--hero-talk-duration) * 1.1) ease-in-out infinite;
+}
+.puppet-hero.hero-francesco.anim-francesco-hablar .hero-jaw{
+  animation: heroTalkMouth 0.26s steps(2,end) infinite;
+}
+
+.puppet-hero.hero-francesco.anim-francesco-comer .hero-arm-right{
+  animation: francescoEatRitual calc(var(--hero-attack-duration) * 1.1) ease-in-out infinite;
+}
+
+.puppet-hero.hero-francesco.anim-francesco-morir-aplastado .hero-body{
+  animation: francescoDeathCrush 0.4s ease-out forwards;
+}
+.puppet-hero.hero-francesco.anim-francesco-morir-dano .hero-body{
+  animation: francescoDeathDamage 0.6s ease-out forwards;
+}
+.puppet-hero.hero-francesco.anim-francesco-morir-fuego .hero-body{
+  animation: francescoDeathFire 1s ease-in forwards;
+  filter: brightness(0.85) saturate(0.9);
+}
+
 @keyframes heroIdleBreath{
   0%, 100%{ transform: translateY(0) scaleY(1); }
   50%{ transform: translateY(calc(-1 * var(--idle-bob))) scaleY(var(--idle-scale)); }
@@ -1928,4 +2123,268 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 .puppet-hero.hero-is-powered .hero-body,
 .puppet-hero.hero-is-powered .hero-head{
   filter: drop-shadow(0 0 6px rgba(150,200,255,0.45));
+}
+
+/* ────────────────────── Hero DOM keyframes ────────────────────── */
+@keyframes enriqueIdleChest{
+  0%,100%{ transform: translate(-50%, 0) scaleY(1); }
+  50%{ transform: translate(-50%, -4px) scaleY(1.08); }
+}
+
+@keyframes enriqueIdleBelly{
+  0%,100%{ transform: translate(-50%, 0) scale(1); }
+  40%{ transform: translate(-50%, -2px) scale(1.08, 1.12); }
+  70%{ transform: translate(-50%, -1px) scale(1.04, 1.08); }
+}
+
+@keyframes enriqueIdleHead{
+  0%,100%{ transform: translate(-50%, 0) rotate(0deg); }
+  50%{ transform: translate(-50%, -2px) rotate(-2deg); }
+}
+
+@keyframes enriqueWalkTorso{
+  0%{ transform: translate(-50%, 0) rotate(-2deg); }
+  25%{ transform: translate(-50%, -5px) rotate(-6deg); }
+  50%{ transform: translate(-50%, -2px) rotate(1deg); }
+  75%{ transform: translate(-50%, -6px) rotate(5deg); }
+  100%{ transform: translate(-50%, 0) rotate(-2deg); }
+}
+
+@keyframes enriquePushLean{
+  0%,100%{ transform: translate(-50%, -2px) rotate(-4deg); }
+  50%{ transform: translate(-50%, -8px) rotate(-10deg); }
+}
+
+@keyframes enriquePushArms{
+  0%,100%{ transform: rotate(-6deg); }
+  50%{ transform: rotate(-18deg); }
+}
+
+@keyframes enriqueAttackDrive{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  30%{ transform: translate(-52%, 2px) scale(0.98); }
+  65%{ transform: translate(-46%, -8px) scale(1.05); }
+  100%{ transform: translate(-48%, -4px) scale(1.02); }
+}
+
+@keyframes enriqueAttackPunch{
+  0%{ transform: rotate(-6deg); }
+  30%{ transform: rotate(8deg); }
+  65%{ transform: rotate(-32deg); }
+  100%{ transform: rotate(-10deg); }
+}
+
+@keyframes enriqueTalkJaw{
+  0%,100%{ transform: translateY(0); }
+  50%{ transform: translateY(3px); }
+}
+
+@keyframes enriqueTalkHand{
+  0%,100%{ transform: rotate(-2deg); }
+  50%{ transform: rotate(18deg); }
+}
+
+@keyframes enriqueTalkHead{
+  0%,100%{ transform: translate(-50%, 0) rotate(0deg); }
+  40%{ transform: translate(-50%, -2px) rotate(3deg); }
+  80%{ transform: translate(-50%, 1px) rotate(-2deg); }
+}
+
+@keyframes enriqueEatArm{
+  0%{ transform: rotate(-6deg); }
+  40%{ transform: rotate(-32deg); }
+  60%{ transform: rotate(-12deg); }
+  100%{ transform: rotate(-8deg); }
+}
+
+@keyframes enriqueDeathCrush{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  100%{ transform: translate(-50%, 12px) scaleX(1.2) scaleY(0.2); }
+}
+
+@keyframes enriqueDeathImpact{
+  0%{ transform: translate(-50%, 0) rotate(0deg); }
+  40%{ transform: translate(-55%, -6px) rotate(-38deg); }
+  100%{ transform: translate(-60%, -16px) rotate(-86deg) scale(0.92); }
+}
+
+@keyframes enriqueDeathFire{
+  0%{ transform: translate(-50%, 0) scale(1); opacity: 1; }
+  60%{ transform: translate(-50%, -6px) scale(0.94); opacity: 0.65; }
+  100%{ transform: translate(-50%, -14px) scale(0.84); opacity: 0.35; }
+}
+
+@keyframes robertoIdleShift{
+  0%,100%{ transform: translate(-50%, 0) rotate(-1deg); }
+  50%{ transform: translate(-50%, 2px) rotate(2deg); }
+}
+
+@keyframes robertoIdleHead{
+  0%,100%{ transform: translate(-50%, 0) rotate(0deg); }
+  50%{ transform: translate(-50%, -2px) rotate(-5deg); }
+}
+
+@keyframes robertoIdleExtra{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  25%{ transform: translate(-52%, -4px) scale(1.02); }
+  50%{ transform: translate(-48%, 2px) scale(0.98); }
+  100%{ transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes robertoIdleExtraHead{
+  0%{ transform: translate(-50%, 0) rotate(0deg); }
+  50%{ transform: translate(-50%, -4px) rotate(6deg); }
+  100%{ transform: translate(-50%, 0) rotate(-4deg); }
+}
+
+@keyframes robertoWalkBounce{
+  0%,100%{ transform: translate(-50%, 0) rotate(-3deg); }
+  25%{ transform: translate(-50%, -4px) rotate(-8deg); }
+  50%{ transform: translate(-50%, -1px) rotate(2deg); }
+  75%{ transform: translate(-50%, -5px) rotate(6deg); }
+}
+
+@keyframes robertoPushFeet{
+  0%,100%{ transform: translate(-50%, -1px) rotate(-4deg); }
+  50%{ transform: translate(-52%, -4px) rotate(-10deg); }
+}
+
+@keyframes robertoPushLegs{
+  0%{ transform: rotate(6deg); }
+  50%{ transform: rotate(-16deg); }
+  100%{ transform: rotate(6deg); }
+}
+
+@keyframes robertoAttackSnap{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  25%{ transform: translate(-53%, 1px) scale(0.97); }
+  60%{ transform: translate(-45%, -6px) scale(1.04); }
+  100%{ transform: translate(-47%, -3px) scale(1.01); }
+}
+
+@keyframes robertoAttackPunch{
+  0%{ transform: rotate(-2deg); }
+  40%{ transform: rotate(-32deg); }
+  70%{ transform: rotate(6deg); }
+  100%{ transform: rotate(-12deg); }
+}
+
+@keyframes robertoTalkHands{
+  0%{ transform: rotate(-6deg); }
+  50%{ transform: rotate(18deg); }
+  100%{ transform: rotate(-4deg); }
+}
+
+@keyframes robertoEatRush{
+  0%{ transform: rotate(-6deg); }
+  30%{ transform: rotate(-28deg); }
+  60%{ transform: rotate(-2deg); }
+  100%{ transform: rotate(-14deg); }
+}
+
+@keyframes robertoDeathCrush{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  100%{ transform: translate(-50%, 8px) scaleX(1.15) scaleY(0.25); }
+}
+
+@keyframes robertoDeathDamage{
+  0%{ transform: translate(-50%, 0) rotate(0deg); }
+  30%{ transform: translate(-48%, -6px) rotate(-24deg); }
+  100%{ transform: translate(-40%, -22px) rotate(80deg) scale(0.92); }
+}
+
+@keyframes robertoDeathFire{
+  0%{ transform: translate(-50%, 0); opacity: 1; }
+  50%{ transform: translate(-50%, -5px) scale(0.96); opacity: 0.6; }
+  100%{ transform: translate(-50%, -12px) scale(0.84); opacity: 0.35; }
+}
+
+@keyframes francescoIdleScan{
+  0%{ transform: translate(-50%, 0) rotate(-1deg); }
+  50%{ transform: translate(-50%, -3px) rotate(1.5deg); }
+  100%{ transform: translate(-50%, 0) rotate(-1deg); }
+}
+
+@keyframes francescoIdleHead{
+  0%{ transform: translate(-50%, 0) rotate(-4deg); }
+  50%{ transform: translate(-50%, -2px) rotate(4deg); }
+  100%{ transform: translate(-50%, 0) rotate(-4deg); }
+}
+
+@keyframes francescoIdleVisor{
+  0%,100%{ transform: rotate(-4deg); }
+  40%{ transform: rotate(-20deg); }
+  60%{ transform: rotate(-6deg); }
+}
+
+@keyframes francescoWalkTorso{
+  0%{ transform: translate(-50%, 0) rotate(-2deg); }
+  25%{ transform: translate(-50%, -4px) rotate(-4deg); }
+  50%{ transform: translate(-50%, -1px) rotate(2deg); }
+  75%{ transform: translate(-50%, -3px) rotate(4deg); }
+  100%{ transform: translate(-50%, 0) rotate(-2deg); }
+}
+
+@keyframes francescoWalkLook{
+  0%{ transform: translate(-50%, 0) rotate(-3deg); }
+  50%{ transform: translate(-50%, -1px) rotate(3deg); }
+  100%{ transform: translate(-50%, 0) rotate(-3deg); }
+}
+
+@keyframes francescoPushForm{
+  0%,100%{ transform: translate(-50%, -2px) rotate(-4deg); }
+  50%{ transform: translate(-50%, -6px) rotate(-9deg); }
+}
+
+@keyframes francescoPushArms{
+  0%,100%{ transform: rotate(-8deg); }
+  50%{ transform: rotate(-18deg); }
+}
+
+@keyframes francescoAttackStride{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  30%{ transform: translate(-51%, 1px) scale(0.99); }
+  70%{ transform: translate(-46%, -6px) scale(1.04); }
+  100%{ transform: translate(-48%, -3px) scale(1.01); }
+}
+
+@keyframes francescoAttackStrike{
+  0%{ transform: rotate(-6deg); }
+  40%{ transform: rotate(-24deg); }
+  80%{ transform: rotate(4deg); }
+  100%{ transform: rotate(-10deg); }
+}
+
+@keyframes francescoTalkCalm{
+  0%,100%{ transform: rotate(-4deg); }
+  50%{ transform: rotate(10deg); }
+}
+
+@keyframes francescoTalkHead{
+  0%,100%{ transform: translate(-50%, 0) rotate(-2deg); }
+  50%{ transform: translate(-50%, -2px) rotate(2deg); }
+}
+
+@keyframes francescoEatRitual{
+  0%{ transform: rotate(-6deg); }
+  35%{ transform: rotate(-20deg); }
+  60%{ transform: rotate(-8deg); }
+  100%{ transform: rotate(-10deg); }
+}
+
+@keyframes francescoDeathCrush{
+  0%{ transform: translate(-50%, 0) scale(1); }
+  100%{ transform: translate(-50%, 10px) scaleX(1.15) scaleY(0.3); }
+}
+
+@keyframes francescoDeathDamage{
+  0%{ transform: translate(-50%, 0) rotate(0deg); }
+  40%{ transform: translate(-48%, -6px) rotate(-26deg); }
+  100%{ transform: translate(-52%, -14px) rotate(-70deg) scale(0.94); }
+}
+
+@keyframes francescoDeathFire{
+  0%{ transform: translate(-50%, 0); opacity: 1; }
+  50%{ transform: translate(-50%, -4px) scale(0.95); opacity: 0.65; }
+  100%{ transform: translate(-50%, -12px) scale(0.88); opacity: 0.35; }
 }
