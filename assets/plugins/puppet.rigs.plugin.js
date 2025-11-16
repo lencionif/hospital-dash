@@ -2089,170 +2089,187 @@
     return (typeof e?.open === 'boolean' ? e.open : false) ? 1 : 0;
   }
 
-  API.registerRig('door', {
+  const doorRig = {
     create(e){
       const initial = doorProgress(e);
       return {
-        progress: initial,
+        openProgress: initial,
         target: initial,
-        fade: 1,
-        missingLogged: false,
-        missingOpenLogged: false
+        phase: Math.random() * TAU,
+        handlePulse: 0,
+        fade: 1
       };
     },
     update(st, e, dt){
       if (!st) return;
       const target = resolveDoorTarget(e);
       st.target = target;
-      const speed = Math.max(0.1, Number(e?.openSpeed) || 2.2);
-      if (!Number.isFinite(st.progress)) st.progress = doorProgress(e);
-      if (st.progress < target){
-        st.progress = Math.min(target, st.progress + speed * dt);
-      } else if (st.progress > target){
-        st.progress = Math.max(target, st.progress - speed * dt);
-      }
-      const ttl = Number(e?.ttl);
-      if (Number.isFinite(ttl) && ttl < 0.6){
-        st.fade = clamp01(ttl / 0.6);
-      } else {
-        st.fade = 1;
-      }
+      if (!Number.isFinite(st.openProgress)) st.openProgress = doorProgress(e);
+      const speed = Math.max(0.5, Number(e?.openSpeed) || 6);
+      if (st.openProgress < target) st.openProgress = Math.min(target, st.openProgress + speed * dt);
+      else if (st.openProgress > target) st.openProgress = Math.max(target, st.openProgress - speed * dt);
+      st.phase = (st.phase + dt * 6) % TAU;
+      st.handlePulse = 0.6 + 0.4 * Math.sin(st.phase);
+      st.fade = clamp01(Number(e?.alpha) ?? 1);
     },
     draw(ctx, cam, e, st){
       const [cx, cy, sc] = toScreen(cam, e);
-      const w = (e.w || 32) * sc;
-      const h = (e.h || 48) * sc;
-      const progress = clamp01(st?.progress ?? doorProgress(e));
-      const closed = load('puerta_cerrada.png');
-      const opened = load('puerta_abiertas.png');
-      ctx.save();
-      ctx.translate(cx - w * 0.5, cy - h * 0.5);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(sc)){
+        const tile = window.G?.TILE_SIZE || 32;
+        ctx.fillStyle = '#6c5a45';
+        ctx.fillRect(Number(e?.x) || 0, Number(e?.y) || 0, e?.w || tile, e?.h || tile);
+        return;
+      }
+      const w = Math.max(16, (e.w || 32) * sc);
+      const h = Math.max(24, (e.h || 48) * sc);
+      const progress = clamp01(st?.openProgress ?? doorProgress(e));
       const fade = clamp01(st?.fade ?? 1);
-      const closedAlpha = (1 - progress) * fade;
-      const openAlpha = progress * fade;
-      if (hasImage(closed)){
-        ctx.globalAlpha = closedAlpha;
-        ctx.drawImage(closed, 0, 0, w, h);
-      } else {
-        if (!st?.missingLogged){
-          logMissing('puerta_cerrada.png');
-          try { console.warn('[Rig door] Sprite puerta_cerrada.png ausente, usando fallback.'); } catch (_) {}
-          if (st) st.missingLogged = true;
-        }
-        ctx.globalAlpha = closedAlpha;
-        ctx.fillStyle = '#5b4c3a';
-        ctx.fillRect(0, 0, w, h);
-      }
-      if (hasImage(opened)){
-        ctx.globalAlpha = openAlpha;
-        ctx.drawImage(opened, 0, 0, w, h);
-      } else {
-        if (!st?.missingOpenLogged){
-          logMissing('puerta_abiertas.png');
-          try { console.warn('[Rig door] Sprite puerta_abiertas.png ausente, usando fallback.'); } catch (_) {}
-          if (st) st.missingOpenLogged = true;
-        }
-        if (openAlpha > 0){
-          ctx.globalAlpha = openAlpha;
-          ctx.fillStyle = '#c7d4dd';
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = '#9aa5af';
-          ctx.fillRect(w * 0.05, h * 0.05, w * 0.2, h * 0.9);
-          ctx.fillRect(w * 0.75, h * 0.05, w * 0.2, h * 0.9);
-        }
-      }
+      ctx.save();
+      ctx.translate(cx, cy + h * 0.12);
+      const doorShadowRadius = Math.max(8, (e.w || 32) * 0.26);
+      drawShadow(ctx, doorShadowRadius, sc, 0.26, 0.22 * fade);
+      ctx.translate(0, -h * 0.58);
+      const frameW = w * 0.94;
+      const frameH = h * 0.96;
+      ctx.fillStyle = '#201c18';
+      ctx.fillRect(-frameW * 0.55, -h * 0.08, frameW * 1.1, frameH + h * 0.18);
+      ctx.fillStyle = '#5b4b3b';
+      ctx.fillRect(-frameW * 0.5, 0, frameW, frameH);
+      ctx.fillStyle = '#3c3227';
+      ctx.fillRect(-frameW * 0.5, -frameH * 0.06, frameW, frameH * 0.12);
+      const panelH = frameH * 0.88;
+      const basePanelW = frameW * 0.42;
+      const shrink = Math.max(frameW * 0.08, basePanelW * (1 - 0.7 * progress));
+      const slide = frameW * 0.12 * progress;
+      const handlePulse = 0.35 + 0.25 * (st?.handlePulse ?? 0.8);
+      const drawPanel = (dir) => {
+        ctx.save();
+        const offsetX = dir * (slide + shrink * 0.5 + frameW * 0.02);
+        ctx.translate(offsetX, frameH * 0.05);
+        ctx.fillStyle = '#7e6a56';
+        ctx.fillRect(-shrink * 0.5, 0, shrink, panelH);
+        ctx.strokeStyle = 'rgba(40,30,20,0.35)';
+        ctx.lineWidth = Math.max(1.5, 2 * sc);
+        ctx.beginPath();
+        ctx.moveTo(-shrink * 0.5 + 2 * sc, panelH * 0.2);
+        ctx.lineTo(-shrink * 0.5 + 2 * sc, panelH * 0.8);
+        ctx.moveTo(shrink * 0.5 - 2 * sc, panelH * 0.2);
+        ctx.lineTo(shrink * 0.5 - 2 * sc, panelH * 0.8);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255,226,170,${0.12 + 0.12 * progress})`;
+        ctx.fillRect(-shrink * 0.42, panelH * 0.15, shrink * 0.84, panelH * 0.12);
+        ctx.fillStyle = '#c69d5b';
+        const handleW = Math.max(2.5 * sc, shrink * 0.08);
+        const handleH = Math.max(4 * sc, panelH * 0.08);
+        ctx.globalAlpha = fade * (0.5 + 0.5 * handlePulse);
+        ctx.fillRect(dir * shrink * 0.12 - handleW * 0.5, panelH * 0.52, handleW, handleH);
+        ctx.restore();
+      };
+      ctx.globalAlpha = fade;
+      drawPanel(-1);
+      drawPanel(1);
+      ctx.globalAlpha = Math.max(0.15, 0.4 * (1 - progress)) * fade;
+      ctx.fillStyle = 'rgba(10,8,6,0.25)';
+      ctx.fillRect(-frameW * 0.5, 0, frameW, frameH);
       if (progress > 0){
-        const glow = ctx.createLinearGradient(0, h * 0.5, w, h * 0.5);
-        safeColorStop(glow, 0, `rgba(255,230,190,${0.04 + 0.12 * progress})`);
-        safeColorStop(glow, 0.5, `rgba(255,255,255,${0.08 + 0.16 * progress})`);
-        safeColorStop(glow, 1, `rgba(255,230,190,${0.04 + 0.12 * progress})`);
-        ctx.globalAlpha = fade;
-        ctx.fillStyle = glow;
-        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = 0.25 * progress * fade;
+        const lightGrad = ctx.createLinearGradient(-frameW * 0.25, frameH * 0.5, frameW * 0.25, frameH * 0.5);
+        safeColorStop(lightGrad, 0, 'rgba(255,236,210,0)');
+        safeColorStop(lightGrad, 0.5, 'rgba(255,236,210,0.9)');
+        safeColorStop(lightGrad, 1, 'rgba(255,236,210,0)');
+        ctx.fillStyle = lightGrad;
+        ctx.fillRect(-frameW * 0.5, 0, frameW, frameH);
       }
-      ctx.globalAlpha = 1;
       ctx.restore();
     }
-  });
+  };
 
-  API.registerRig('elevator', {
+  API.registerRig('door', doorRig);
+  API.registerRig('door_urgencias', doorRig);
+
+  const elevatorRig = {
     create(e){
       const initial = doorProgress(e);
       return {
-        progress: initial,
+        openProgress: initial,
         target: initial,
-        missingLogged: false,
-        missingOpenLogged: false
+        phase: Math.random() * TAU
       };
     },
     update(st, e, dt){
       if (!st) return;
       const target = resolveDoorTarget(e);
       st.target = target;
-      const speed = Math.max(0.1, Number(e?.openSpeed) || 1.8);
-      if (!Number.isFinite(st.progress)) st.progress = doorProgress(e);
-      if (st.progress < target){
-        st.progress = Math.min(target, st.progress + speed * dt);
-      } else if (st.progress > target){
-        st.progress = Math.max(target, st.progress - speed * dt);
-      }
+      if (!Number.isFinite(st.openProgress)) st.openProgress = doorProgress(e);
+      const speed = Math.max(0.5, Number(e?.openSpeed) || 5);
+      if (st.openProgress < target) st.openProgress = Math.min(target, st.openProgress + speed * dt);
+      else if (st.openProgress > target) st.openProgress = Math.max(target, st.openProgress - speed * dt);
+      st.phase = (st.phase + dt * 2.4) % TAU;
     },
     draw(ctx, cam, e, st){
       const [cx, cy, sc] = toScreen(cam, e);
-      const w = (e.w || 48) * sc;
-      const h = (e.h || 64) * sc;
-      const progress = clamp01(st?.progress ?? doorProgress(e));
-      const closed = load('ascensor_cerrado.png');
-      const opened = load('ascensor_abierto.png');
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(sc)){
+        const tile = window.G?.TILE_SIZE || 32;
+        ctx.fillStyle = '#90969e';
+        ctx.fillRect(Number(e?.x) || 0, Number(e?.y) || 0, e?.w || tile, e?.h || tile);
+        return;
+      }
+      const w = Math.max(20, (e.w || 48) * sc);
+      const h = Math.max(30, (e.h || 64) * sc);
+      const progress = clamp01(st?.openProgress ?? doorProgress(e));
       ctx.save();
-      ctx.translate(cx - w * 0.5, cy - h * 0.5);
-      const closedAlpha = 1 - progress;
-      if (hasImage(closed)){
-        ctx.globalAlpha = closedAlpha;
-        ctx.drawImage(closed, 0, 0, w, h);
-      } else {
-        if (!st?.missingLogged){
-          logMissing('ascensor_cerrado.png');
-          try { console.warn('[Rig elevator] Sprite ascensor_cerrado.png ausente, usando fallback.'); } catch (_) {}
-          if (st) st.missingLogged = true;
-        }
-        ctx.globalAlpha = closedAlpha;
-        ctx.fillStyle = '#8d9298';
-        ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = '#6e7379';
-        ctx.fillRect(w * 0.1, 0, w * 0.8, h * 0.12);
-      }
-      if (hasImage(opened)){
-        ctx.globalAlpha = progress;
-        ctx.drawImage(opened, 0, 0, w, h);
-      } else {
-        if (!st?.missingOpenLogged){
-          logMissing('ascensor_abierto.png');
-          try { console.warn('[Rig elevator] Sprite ascensor_abierto.png ausente, usando fallback.'); } catch (_) {}
-          if (st) st.missingOpenLogged = true;
-        }
-        if (progress > 0){
-          ctx.globalAlpha = progress;
-          ctx.fillStyle = '#d5dde6';
-          ctx.fillRect(0, 0, w, h);
-          ctx.fillStyle = '#a2adb9';
-          ctx.fillRect(w * 0.08, h * 0.12, w * 0.12, h * 0.76);
-          ctx.fillRect(w * 0.8, h * 0.12, w * 0.12, h * 0.76);
-        }
-      }
-      if (progress > 0){
-        const topGlow = ctx.createLinearGradient(0, 0, 0, h);
-        safeColorStop(topGlow, 0, `rgba(255,255,255,${0.12 * progress})`);
-        safeColorStop(topGlow, 0.5, `rgba(240,255,255,${0.16 * progress})`);
-        safeColorStop(topGlow, 1, `rgba(180,220,255,${0.05 * progress})`);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = topGlow;
-        ctx.fillRect(0, 0, w, h);
-      }
+      ctx.translate(cx, cy + h * 0.08);
+      const elevatorShadowRadius = Math.max(10, (e.w || 48) * 0.28);
+      drawShadow(ctx, elevatorShadowRadius, sc, 0.24, 0.2);
+      ctx.translate(0, -h * 0.6);
+      const shaftW = w * 0.88;
+      const shaftH = h * 0.94;
+      ctx.fillStyle = '#1f232a';
+      ctx.fillRect(-shaftW * 0.58, -h * 0.08, shaftW * 1.16, shaftH + h * 0.16);
+      ctx.fillStyle = '#444a55';
+      ctx.fillRect(-shaftW * 0.5, 0, shaftW, shaftH);
+      ctx.fillStyle = '#2a3038';
+      ctx.fillRect(-shaftW * 0.5, -shaftH * 0.08, shaftW, shaftH * 0.12);
+      ctx.fillStyle = 'rgba(10,15,30,0.5)';
+      ctx.fillRect(-shaftW * 0.48, shaftH * 0.05, shaftW * 0.96, shaftH * 0.75);
+      const cabH = shaftH * 0.86;
+      const cabW = shaftW * 0.4;
+      const slide = shaftW * 0.22 * progress;
+      const glow = 0.3 + 0.2 * Math.sin((st?.phase ?? 0) * 2 + progress * 2);
+      const drawPanel = (dir) => {
+        ctx.save();
+        const offsetX = dir * (slide + cabW * 0.5 + shaftW * 0.02);
+        ctx.translate(offsetX, shaftH * 0.05);
+        ctx.fillStyle = '#aeb5c2';
+        ctx.fillRect(-cabW * 0.5, 0, cabW, cabH);
+        const inset = cabW * 0.15;
+        ctx.fillStyle = '#cfd5df';
+        ctx.fillRect(-cabW * 0.5 + inset, cabH * 0.08, cabW - inset * 2, cabH * 0.2);
+        ctx.fillStyle = '#8f96a4';
+        ctx.fillRect(-cabW * 0.5 + inset, cabH * 0.35, cabW - inset * 2, cabH * 0.56);
+        ctx.fillStyle = `rgba(255,255,255,${0.15 + 0.2 * (1 - progress)})`;
+        ctx.fillRect(-cabW * 0.5, 0, cabW, cabH);
+        ctx.restore();
+      };
       ctx.globalAlpha = 1;
+      drawPanel(-1);
+      drawPanel(1);
+      if (progress > 0){
+        const innerGlow = ctx.createLinearGradient(0, cabH * 0.4, 0, cabH);
+        safeColorStop(innerGlow, 0, `rgba(255,255,230,${0.05 + 0.25 * progress})`);
+        safeColorStop(innerGlow, 1, `rgba(255,210,140,${0.1 * progress})`);
+        ctx.fillStyle = innerGlow;
+        ctx.fillRect(-shaftW * 0.35, shaftH * 0.08, shaftW * 0.7, cabH * 0.7);
+      }
+      ctx.globalAlpha = Math.max(0.18, 0.35 * (1 - progress));
+      ctx.strokeStyle = `rgba(240,250,255,${0.4 + 0.3 * glow})`;
+      ctx.lineWidth = 2.5 * sc;
+      ctx.strokeRect(-shaftW * 0.45, -shaftH * 0.02, shaftW * 0.9, shaftH * 1.02);
       ctx.restore();
     }
-  });
+  };
+
+  API.registerRig('elevator', elevatorRig);
 
   // ───────────────────────────── CARROS ─────────────────────────────
   function registerCart(name, skin, cfg){
@@ -2339,79 +2356,148 @@
 
   // ───────────────────────────── HAZARDS ────────────────────────────
   API.registerRig('hazard_fire', {
-    create(){ return { phase: Math.random() * TAU, time: 0, pulse: 1, fade: 1 }; },
+    create(){
+      return {
+        phase: Math.random() * TAU,
+        pulse: 1,
+        intensity: 1,
+        scale: 1
+      };
+    },
     update(st, e, dt){
-      st.time += dt;
+      if (!st) return;
       st.phase = (st.phase + dt * 10) % TAU;
-      st.pulse = 0.7 + 0.3 * Math.sin(st.phase + (e?.id?.length || 0));
-      const ttl = Number(e?.ttl);
-      if (Number.isFinite(ttl) && ttl < 1){
-        st.fade = clamp01(ttl);
-      } else if (e?.dead){
-        st.fade = Math.max(0, (st.fade ?? 1) - dt * 4);
+      st.pulse = 0.7 + 0.3 * Math.sin(st.phase);
+      const alive = !e?.dead;
+      if (alive){
+        st.intensity = Math.min(1, (st.intensity ?? 1) + dt * 3);
       } else {
-        st.fade = Math.min(1, (st.fade ?? 1) + dt * 2);
+        st.intensity = Math.max(0, (st.intensity ?? 0) - dt * 2.5);
       }
+      st.scale = 0.9 + 0.15 * Math.sin(st.phase * 0.5);
     },
     draw(ctx, cam, e, st){
-      const [cx, cy, sc] = toScreen(cam, e);
-      const w = (e.w || 24) * sc;
-      const h = (e.h || 32) * sc;
-      ctx.save();
-      ctx.translate(cx, cy + h * 0.2);
-      drawShadow(ctx, 8, sc, 0.28, 0.2);
-      ctx.translate(0, -h * 0.6);
-      const fade = clamp01(st?.fade ?? 1);
-      ctx.fillStyle = `rgba(255,180,60,${(0.6 + 0.3 * st.pulse) * fade})`;
-      ctx.beginPath();
-      ctx.moveTo(0, -h * (0.6 + 0.1 * st.pulse));
-      ctx.bezierCurveTo(w * 0.3, -h * 0.1, w * 0.25, h * 0.4, 0, h * 0.5);
-      ctx.bezierCurveTo(-w * 0.25, h * 0.4, -w * 0.3, -h * 0.1, 0, -h * (0.6 + 0.1 * st.pulse));
-      ctx.fill();
-      if (fade > 0.2){
-        ctx.fillStyle = `rgba(255,235,200,${0.25 * fade})`;
-        ctx.beginPath();
-        ctx.moveTo(0, -h * (0.3 + 0.05 * st.pulse));
-        ctx.bezierCurveTo(w * 0.2, -h * 0.05, w * 0.16, h * 0.18, 0, h * 0.28);
-        ctx.bezierCurveTo(-w * 0.16, h * 0.18, -w * 0.2, -h * 0.05, 0, -h * (0.3 + 0.05 * st.pulse));
-        ctx.fill();
+      if (!st || (st.intensity ?? 0) <= 0){
+        return;
       }
+      const [cx, cy, sc] = toScreen(cam, e);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(sc)){
+        const tile = window.G?.TILE_SIZE || 32;
+        ctx.fillStyle = 'rgba(255,140,40,0.8)';
+        ctx.fillRect(Number(e?.x) || 0, Number(e?.y) || 0, e?.w || tile, e?.h || tile);
+        return;
+      }
+      const size = Math.max(e?.w || 20, e?.h || 30) * sc * 0.8 * (st.scale ?? 1);
+      ctx.save();
+      ctx.translate(cx, cy + size * 0.3);
+      drawShadow(ctx, size * 0.35, 1, 0.26, 0.22 * (st.intensity ?? 1));
+      ctx.translate(0, -size * 0.7);
+      const intensity = clamp01(st.intensity ?? 1);
+      const pulse = st.pulse ?? 1;
+      ctx.globalAlpha = intensity;
+      ctx.fillStyle = `rgba(255,160,60,${0.7 * intensity})`;
+      ctx.beginPath();
+      ctx.moveTo(0, -size * (0.6 + 0.15 * pulse));
+      ctx.bezierCurveTo(size * 0.3, -size * 0.1, size * 0.25, size * 0.4, 0, size * 0.55);
+      ctx.bezierCurveTo(-size * 0.25, size * 0.4, -size * 0.3, -size * 0.1, 0, -size * (0.6 + 0.15 * pulse));
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,230,180,${0.45 * intensity})`;
+      ctx.beginPath();
+      ctx.moveTo(0, -size * (0.3 + 0.08 * pulse));
+      ctx.bezierCurveTo(size * 0.18, -size * 0.04, size * 0.14, size * 0.2, 0, size * 0.32);
+      ctx.bezierCurveTo(-size * 0.14, size * 0.2, -size * 0.18, -size * 0.04, 0, -size * (0.3 + 0.08 * pulse));
+      ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.restore();
     }
   });
 
   API.registerRig('hazard_water', {
-    create(){ return { phase: Math.random() * TAU, time: 0, ripple: 1, fade: 1 }; },
+    create(){
+      return {
+        phase: Math.random() * TAU,
+        ripple: 1,
+        alpha: 1,
+        size: 1
+      };
+    },
     update(st, e, dt){
-      st.time += dt;
+      if (!st) return;
       st.phase = (st.phase + dt * 4) % TAU;
-      st.ripple = 1 + 0.08 * Math.sin(st.phase + (e?.id?.length || 0));
-      const ttl = Number(e?.ttl);
-      if (Number.isFinite(ttl) && ttl < 0.6){
-        st.fade = clamp01(ttl / 0.6);
-      } else if (e?.dead){
-        st.fade = Math.max(0, (st.fade ?? 1) - dt * 3);
+      st.ripple = 1 + 0.08 * Math.sin(st.phase);
+      if (e?.dead){
+        st.alpha = Math.max(0, (st.alpha ?? 1) - dt * 1.5);
+        st.size = Math.max(0, (st.size ?? 1) - dt * 0.8);
       } else {
-        st.fade = Math.min(1, (st.fade ?? 1) + dt * 2);
+        st.alpha = Math.min(1, (st.alpha ?? 1) + dt * 0.5);
+        st.size = Math.min(1, (st.size ?? 1) + dt * 0.5);
       }
     },
     draw(ctx, cam, e, st){
+      const alpha = clamp01(st?.alpha ?? 1);
+      if (alpha <= 0) return;
       const [cx, cy, sc] = toScreen(cam, e);
-      const w = (e.w || 24) * sc;
-      const h = (e.h || 24) * sc;
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(sc)){
+        const tile = window.G?.TILE_SIZE || 32;
+        ctx.fillStyle = 'rgba(110,160,230,0.45)';
+        ctx.fillRect(Number(e?.x) || 0, Number(e?.y) || 0, e?.w || tile, e?.h || tile);
+        return;
+      }
+      const baseW = Math.max(18, (e.w || 24) * sc) * (st?.size ?? 1);
+      const baseH = Math.max(12, (e.h || 24) * sc) * (st?.size ?? 1);
+      const ripple = st?.ripple ?? 1;
       ctx.save();
       ctx.translate(cx, cy);
-      drawShadow(ctx, 7, sc, 0.22, 0.18);
-      const fade = clamp01(st?.fade ?? 1);
-      ctx.fillStyle = `rgba(110,160,230,${0.45 * fade})`;
+      drawShadow(ctx, baseW * 0.32, 1, 0.2, 0.14 * alpha);
+      ctx.fillStyle = `rgba(110,160,230,${0.45 * alpha})`;
       ctx.beginPath();
-      const ripple = st?.ripple ?? 1;
-      if (safeEllipse(ctx, 0, 0, w * 0.5 * ripple * fade, h * 0.35 * ripple * fade, 0, 0, TAU)) ctx.fill();
-      if (fade > 0){
-        ctx.fillStyle = `rgba(200,230,255,${0.25 * fade})`;
-        ctx.beginPath();
-        if (safeEllipse(ctx, -w * 0.12, -h * 0.08, w * 0.22 * fade, h * 0.12 * fade, 0, 0, TAU)) ctx.fill();
+      const rx = baseW * 0.5 * ripple;
+      const ry = baseH * 0.35 * ripple;
+      if (safeEllipse(ctx, 0, 0, rx, ry, 0, 0, TAU)) ctx.fill();
+      ctx.fillStyle = `rgba(200,230,255,${0.3 * alpha})`;
+      ctx.beginPath();
+      if (safeEllipse(ctx, -baseW * 0.15, -baseH * 0.1, rx * 0.5, ry * 0.5, 0, 0, TAU)) ctx.fill();
+      ctx.restore();
+    }
+  });
+
+  API.registerRig('explosion', {
+    create(){
+      return { time: 0, scale: 1, alpha: 1 };
+    },
+    update(st, e, dt){
+      if (!st) return;
+      st.time += dt;
+      if (st.time <= 0.2){
+        st.scale = 1 + 4 * st.time;
+        st.alpha = Math.max(0, 1 - st.time / 0.2);
+      } else {
+        st.alpha = 0;
+        if (e) e.dead = true;
       }
+    },
+    draw(ctx, cam, e, st){
+      if (!st || (st.alpha ?? 0) <= 0) return;
+      const [cx, cy, sc] = toScreen(cam, e);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(sc)){
+        const tile = window.G?.TILE_SIZE || 32;
+        ctx.fillStyle = 'rgba(255,200,80,0.6)';
+        ctx.fillRect(Number(e?.x) || 0, Number(e?.y) || 0, e?.w || tile, e?.h || tile);
+        return;
+      }
+      const radius = Math.max(12, (Math.max(e?.w || 16, e?.h || 16) * 0.6 + 6) * sc * (st.scale ?? 1));
+      ctx.save();
+      ctx.translate(cx, cy);
+      const grad = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius);
+      safeColorStop(grad, 0, `rgba(255,255,210,${0.8 * st.alpha})`);
+      safeColorStop(grad, 0.4, `rgba(255,200,90,${0.6 * st.alpha})`);
+      safeColorStop(grad, 1, `rgba(255,120,40,0)`);
+      ctx.globalAlpha = st.alpha;
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.restore();
     }
   });
