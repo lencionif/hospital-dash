@@ -721,7 +721,9 @@
     });
   }
 
+
   function createEl(tag, className, parent){
+    if (typeof document === 'undefined') return null;
     const el = document.createElement(tag);
     if (className) el.className = className;
     if (parent) parent.appendChild(el);
@@ -729,282 +731,751 @@
   }
 
   function ensureGameContainer(){
+    if (typeof document === 'undefined') return null;
     return document.getElementById('game-container') || document.body || document.documentElement;
   }
 
   function insertHeroNode(node){
+    if (!node) return;
     const container = ensureGameContainer();
     if (!container) return;
     const firstOverlay = container.querySelector('.overlay');
-    if (firstOverlay) {
-      container.insertBefore(node, firstOverlay);
-    } else {
-      container.appendChild(node);
-    }
+    if (firstOverlay) container.insertBefore(node, firstOverlay);
+    else container.appendChild(node);
   }
 
-  function buildHeroDom(hero, cfg, entity){
+  function buildHeroOverlay(hero, entity){
+    if (typeof document === 'undefined'){
+      return { hero, root: null, overlay: null, parts: null, miniCanvas: null, miniCtx: null, cleanup: null };
+    }
     const root = createEl('div', `puppet-hero hero-${hero}`);
     root.dataset.hero = hero;
-    root.style.setProperty('--hero-scale-base', String(cfg.scale ?? 1));
-    root.style.setProperty('--hero-height', `${cfg.height ?? 92}px`);
-    root.style.setProperty('--hero-width', `${cfg.width ?? 60}px`);
-    if (cfg.walkDuration) root.style.setProperty('--hero-walk-duration', `${cfg.walkDuration}s`);
-    if (cfg.idleDuration) root.style.setProperty('--hero-idle-duration', `${cfg.idleDuration}s`);
-    if (cfg.attackDuration) root.style.setProperty('--hero-attack-duration', `${cfg.attackDuration}s`);
-    if (cfg.pushDuration) root.style.setProperty('--hero-push-duration', `${cfg.pushDuration}s`);
-    if (cfg.talkDuration) root.style.setProperty('--hero-talk-duration', `${cfg.talkDuration}s`);
-    root.style.setProperty('--hero-offset-y', `${cfg.offsetY ?? -10}px`);
-    if (cfg.lanternColor) root.style.setProperty('--lantern-color', cfg.lanternColor);
-    if (cfg.lanternGlow) root.style.setProperty('--lantern-glow', cfg.lanternGlow);
-
-    const frame = createEl('div', 'hero-frame', root);
-    createEl('div', 'hero-shadow', frame);
-    const sprite = createEl('div', 'hero-sprite', frame);
-    const body = createEl('div', 'hero-body', sprite);
-
-    const legL = createEl('div', 'hero-leg hero-leg-left', body);
-    const legLUpper = createEl('div', 'hero-leg-upper', legL);
-    const legLLower = createEl('div', 'hero-leg-lower', legLUpper);
-    createEl('div', 'hero-foot', legLLower);
-
-    const legR = createEl('div', 'hero-leg hero-leg-right', body);
-    const legRUpper = createEl('div', 'hero-leg-upper', legR);
-    const legRLower = createEl('div', 'hero-leg-lower', legRUpper);
-    createEl('div', 'hero-foot', legRLower);
-
-    const torso = createEl('div', 'hero-torso', body);
-    createEl('div', 'hero-chest', torso);
-    createEl('div', 'hero-belly', torso);
-    createEl('div', 'hero-belt', torso);
-
-    const armL = createEl('div', 'hero-arm hero-arm-left', body);
-    const armLUpper = createEl('div', 'hero-arm-upper', armL);
-    const armLLower = createEl('div', 'hero-arm-lower', armLUpper);
-    createEl('div', 'hero-hand', armLLower);
-
-    const armR = createEl('div', 'hero-arm hero-arm-right', body);
-    const armRUpper = createEl('div', 'hero-arm-upper', armR);
-    const armRLower = createEl('div', 'hero-arm-lower', armRUpper);
-    const handR = createEl('div', 'hero-hand', armRLower);
-
-    const lantern = createEl('div', 'hero-lantern', handR);
-    createEl('div', 'hero-lantern-glow', lantern);
-
-    const head = createEl('div', 'hero-head', body);
-    createEl('div', 'hero-scalp', head);
-    const face = createEl('div', 'hero-face', head);
-    createEl('div', 'hero-brow', face);
-    createEl('div', 'hero-eyes', face);
-    createEl('div', 'hero-mouth', face);
-    createEl('div', 'hero-jaw', face);
-
-    const effects = createEl('div', 'hero-effects', sprite);
-    createEl('div', 'hero-effect hero-effect-sweat', effects);
-    createEl('div', 'hero-effect hero-effect-smoke', effects);
-    createEl('div', 'hero-effect hero-effect-spark', effects);
-
+    const overlay = createEl('div', 'hero-overlay', root);
+    const parts = {
+      head: createEl('div', `hero-part hero-head ${hero}-cabeza`, overlay),
+      torso: createEl('div', `hero-part hero-torso ${hero}-torso`, overlay),
+      arms: {
+        left: createEl('div', `hero-part hero-arm hero-arm-left ${hero}-brazo`, overlay),
+        right: createEl('div', `hero-part hero-arm hero-arm-right ${hero}-brazo`, overlay)
+      },
+      legs: {
+        left: createEl('div', `hero-part hero-leg hero-leg-left ${hero}-pierna`, overlay),
+        right: createEl('div', `hero-part hero-leg hero-leg-right ${hero}-pierna`, overlay)
+      },
+      accessory: createEl('div', `hero-part hero-accessory ${hero}-accesorio`, overlay)
+    };
+    const miniHolder = createEl('div', 'hero-overlay-icon', overlay);
+    const miniCanvas = createEl('canvas', `hero-mini-canvas ${hero}-mini-canvas`, miniHolder);
+    if (miniCanvas){
+      miniCanvas.width = 64;
+      miniCanvas.height = 64;
+    }
     insertHeroNode(root);
     let cleanup = null;
     if (entity){
       entity._destroyCbs = entity._destroyCbs || [];
-      cleanup = () => { if (root.parentNode) root.parentNode.removeChild(root); };
+      cleanup = () => { if (root && root.parentNode) root.parentNode.removeChild(root); };
       entity._destroyCbs.push(cleanup);
     }
-
     return {
       hero,
       root,
-      frame,
-      sprite,
-      body,
-      legs: { left: legL, right: legR },
-      arms: { left: armL, right: armR },
-      head,
-      effects,
-      lantern,
-      offsetY: cfg.offsetY ?? -10,
-      scale: cfg.scale ?? 1,
-      depthBias: cfg.depthBias ?? 0,
-      orientation: 'down',
-      action: 'idle',
-      dir: 1,
-      deathCause: null,
-      heroActionClass: null,
-      heroDeathClass: null,
-      actionStart: nowMs(),
-      actionElapsed: 0,
-      culled: false,
-      idleExtraActive: false,
-      idleExtraUntil: 0,
-      idleExtraCooldown: 0,
+      overlay,
+      parts,
+      miniCanvas,
+      miniCtx: miniCanvas ? miniCanvas.getContext('2d') : null,
       cleanup
     };
   }
 
-  function applyHeroDomState(st, e){
-    if (!st || !st.root) return;
-    const culled = isEntityCulled(e);
-    if (culled){
-      if (!st.culled){
-        st.culled = true;
-        st.root.classList.add('hero-culled');
-        st.root.style.visibility = 'hidden';
+  function paintHeroOverlayIcon(st, cfg){
+    if (!st?.miniCtx) return;
+    const ctx = st.miniCtx;
+    const palette = cfg?.palette || {};
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.save();
+    ctx.translate(32, 34);
+    ctx.fillStyle = palette.lantern || palette.accent || '#ffffff';
+    ctx.globalAlpha = 0.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 26, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.torso || '#556';
+    drawRoundedRectPath(ctx, -10, -24, 20, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = palette.belly || '#778';
+    drawRoundedRectPath(ctx, -7, -15, 14, 12, 6);
+    ctx.fill();
+    ctx.fillStyle = palette.skin || '#f7d6b3';
+    if (safeEllipse(ctx, 0, -30, 8 + st.jaw * 0.2, 9, 0, 0, TAU)) ctx.fill();
+    ctx.restore();
+  }
+
+  const HERO_ACTION_CLASS_MAP = {
+    enrique: {
+      idle: 'anim-enrique-idle',
+      walk: 'anim-enrique-caminar',
+      push: 'anim-enrique-empujar',
+      attack: 'anim-enrique-atacar',
+      talk: 'anim-enrique-hablar',
+      eat: 'anim-enrique-comer',
+      powerup: 'anim-enrique-comer',
+      hurt: null,
+      dead: null,
+      default: 'anim-enrique-idle'
+    },
+    roberto: {
+      idle: 'anim-roberto-idle',
+      walk: 'anim-roberto-caminar',
+      push: 'anim-roberto-empujar',
+      attack: 'anim-roberto-atacar',
+      talk: 'anim-roberto-hablar',
+      eat: 'anim-roberto-comer',
+      powerup: 'anim-roberto-comer',
+      hurt: null,
+      dead: null,
+      default: 'anim-roberto-idle'
+    },
+    francesco: {
+      idle: 'anim-francesco-idle',
+      walk: 'anim-francesco-caminar',
+      push: 'anim-francesco-empujar',
+      attack: 'anim-francesco-atacar',
+      talk: 'anim-francesco-hablar',
+      eat: 'anim-francesco-comer',
+      powerup: 'anim-francesco-comer',
+      hurt: null,
+      dead: null,
+      default: 'anim-francesco-idle'
+    }
+  };
+
+  const HERO_DEATH_CLASS_MAP = {
+    enrique: {
+      crush: 'anim-enrique-morir-aplastado',
+      fire: 'anim-enrique-morir-fuego',
+      default: 'anim-enrique-morir-dano'
+    },
+    roberto: {
+      crush: 'anim-roberto-morir-aplastado',
+      fire: 'anim-roberto-morir-fuego',
+      default: 'anim-roberto-morir-dano'
+    },
+    francesco: {
+      crush: 'anim-francesco-morir-aplastado',
+      fire: 'anim-francesco-morir-fuego',
+      default: 'anim-francesco-morir-dano'
+    }
+  };
+
+  const DAMAGE_DEATH_ALIASES = {
+    explosion: 'default',
+    impact: 'default',
+    damage: 'default',
+    sting: 'default',
+    bite: 'default',
+    shock: 'default',
+    poison: 'default',
+    generic: 'default',
+    slip: 'default'
+  };
+
+  function pickHeroActionClass(hero, action){
+    const map = HERO_ACTION_CLASS_MAP[hero] || HERO_ACTION_CLASS_MAP.francesco;
+    if (Object.prototype.hasOwnProperty.call(map, action)){
+      return map[action];
+    }
+    return map.default || null;
+  }
+
+  function pickHeroDeathClass(hero, cause){
+    const map = HERO_DEATH_CLASS_MAP[hero] || HERO_DEATH_CLASS_MAP.francesco;
+    if (!cause) return null;
+    const normalized = cause.toLowerCase();
+    if (map[normalized]) return map[normalized];
+    const alias = DAMAGE_DEATH_ALIASES[normalized] ? 'default' : normalized;
+    return map[alias] || map.default || null;
+  }
+
+  const HERO_DRAW_PROFILE = {
+    enrique: {
+      scale: 0.96,
+      depthBias: 20,
+      shadowRadius: 14,
+      deathDrop: 11,
+      palette: {
+        torso: '#1f2c44',
+        belly: '#2f3a58',
+        accent: '#ffb347',
+        belt: '#c37a1d',
+        skin: '#f5c79a',
+        hair: '#3b2517',
+        moustache: '#2d1a0e',
+        arm: '#d6a271',
+        armBack: '#c08d5f',
+        glove: '#f4d873',
+        leg: '#2c3350',
+        legBack: '#1f2538',
+        boot: '#121728',
+        bootBack: '#0d101c',
+        lantern: '#ffd34d',
+        smoke: '#4a3622'
+      },
+      torso: { width: 20, height: 20 },
+      belly: { width: 24, height: 16 },
+      head: { radius: 7.4, offset: -18 },
+      arm: { length: 17, width: 5.2, offset: 13 },
+      leg: { length: 15, width: 5.2, spread: 6.5, foot: 3.4 },
+      anim: {
+        walkCycle: 1.0,
+        idleCycle: 0.48,
+        walkSwing: 0.55,
+        idleSwing: 0.12,
+        armSwing: 0.48,
+        idleArmSwing: 0.16,
+        walkBob: 2.4,
+        idleBob: 1.2,
+        breathSpeed: 0.35,
+        breathAmp: 1.3,
+        pushLean: 0.32,
+        attackLean: -0.18,
+        talkLift: 3.6,
+        pushReach: 6,
+        attackReach: 10,
+        eatLift: 8
       }
-      return;
+    },
+    roberto: {
+      scale: 0.9,
+      depthBias: 18,
+      shadowRadius: 12,
+      deathDrop: 8,
+      palette: {
+        torso: '#2d4b5e',
+        belly: '#3d6780',
+        accent: '#ff9f40',
+        belt: '#e37222',
+        skin: '#ffd9b0',
+        hair: '#2b1b14',
+        arm: '#f7cba4',
+        armBack: '#e0b38b',
+        glove: '#ffcc73',
+        leg: '#2b3345',
+        legBack: '#202734',
+        boot: '#141823',
+        bootBack: '#0c0f18',
+        lantern: '#ff9f40',
+        smoke: '#3d2d1f'
+      },
+      torso: { width: 17, height: 18 },
+      belly: { width: 19, height: 14 },
+      head: { radius: 6.4, offset: -16 },
+      arm: { length: 15, width: 4.2, offset: 11 },
+      leg: { length: 13, width: 4.2, spread: 5.2, foot: 3.0 },
+      anim: {
+        walkCycle: 1.25,
+        idleCycle: 0.64,
+        walkSwing: 0.75,
+        idleSwing: 0.22,
+        armSwing: 0.72,
+        idleArmSwing: 0.26,
+        walkBob: 3.1,
+        idleBob: 1.5,
+        breathSpeed: 0.55,
+        breathAmp: 0.8,
+        pushLean: 0.22,
+        attackLean: -0.1,
+        talkLift: 4.4,
+        pushReach: 7,
+        attackReach: 9,
+        eatLift: 10
+      }
+    },
+    francesco: {
+      scale: 0.94,
+      depthBias: 19,
+      shadowRadius: 13,
+      deathDrop: 9,
+      palette: {
+        torso: '#274357',
+        belly: '#31526a',
+        accent: '#66b3ff',
+        belt: '#2f6fb0',
+        skin: '#f0c6a0',
+        hair: '#3a2b1d',
+        arm: '#dcb28b',
+        armBack: '#c69f7a',
+        glove: '#b7d8ff',
+        leg: '#243145',
+        legBack: '#1b2535',
+        boot: '#121926',
+        bootBack: '#0c121a',
+        lantern: '#66b3ff',
+        smoke: '#2b3b4d'
+      },
+      torso: { width: 18, height: 18 },
+      belly: { width: 20, height: 15 },
+      head: { radius: 6.8, offset: -17 },
+      arm: { length: 16, width: 4.6, offset: 12 },
+      leg: { length: 14, width: 4.6, spread: 5.8, foot: 3.2 },
+      anim: {
+        walkCycle: 1.1,
+        idleCycle: 0.55,
+        walkSwing: 0.62,
+        idleSwing: 0.18,
+        armSwing: 0.58,
+        idleArmSwing: 0.2,
+        walkBob: 2.4,
+        idleBob: 1.0,
+        breathSpeed: 0.42,
+        breathAmp: 0.9,
+        pushLean: 0.26,
+        attackLean: -0.15,
+        talkLift: 3.2,
+        pushReach: 6.5,
+        attackReach: 9.5,
+        eatLift: 8.5
+      }
     }
-    if (st.culled){
-      st.culled = false;
-      st.root.classList.remove('hero-culled');
-      st.root.style.visibility = '';
-    }
-    const heroKey = (st.hero || e?.hero || e?.heroId || 'francesco').toLowerCase();
+  };
+
+  function resolveHeroAnim(e){
     const heroAPI = window.Entities?.Hero;
-    const anim = heroAPI?.getAnimationState?.(e) || null;
-    const orientation = anim?.orientation || st.orientation || 'down';
-    if (orientation !== st.orientation){
-      if (st.orientation) st.root.classList.remove(`hero-orientation-${st.orientation}`);
-      st.root.classList.add(`hero-orientation-${orientation}`);
-      st.orientation = orientation;
+    const anim = heroAPI?.getAnimationState?.(e);
+    if (anim) return anim;
+    const facing = (e?.facing || '').toUpperCase();
+    const orientation = facing === 'N' ? 'up' : (facing === 'S' ? 'down' : 'side');
+    const dir = facing === 'W' ? -1 : 1;
+    const moving = !!(e && (Math.abs(e.vx || 0) + Math.abs(e.vy || 0) > 1));
+    let action = 'idle';
+    if (e?.dead) action = 'dead';
+    else if (e?.isAttacking) action = 'attack';
+    else if (e?.isPushing) action = 'push';
+    else if (e?.isTalking) action = 'talk';
+    else if (moving) action = 'walk';
+    return { action, orientation, dir, moving, deathCause: e?.deathCause || null };
+  }
+
+  function updateHeroOverlayClasses(st, heroKey, action, deathCause, anim){
+    if (!st?.root) return;
+    if (st.orientationClass !== st.orientation){
+      if (st.orientationClass) st.root.classList.remove(`hero-orientation-${st.orientationClass}`);
+      st.root.classList.add(`hero-orientation-${st.orientation}`);
+      st.orientationClass = st.orientation;
     }
-    const dir = anim?.dir != null ? anim.dir : st.dir;
-    if (dir !== st.dir){
-      if (dir < 0){
-        st.root.classList.add('hero-dir-left');
-        st.root.classList.remove('hero-dir-right');
-      } else {
-        st.root.classList.add('hero-dir-right');
-        st.root.classList.remove('hero-dir-left');
-      }
-      st.dir = dir;
-    }
-    const action = anim?.action || 'idle';
-    const actionChanged = action !== st.action;
-    if (actionChanged){
-      if (st.action) st.root.classList.remove(`hero-state-${st.action}`);
-      st.root.classList.add(`hero-state-${action}`);
-      st.actionStart = nowMs();
-      st.actionElapsed = 0;
-      st.action = action;
-    } else {
-      st.actionElapsed = nowMs() - (st.actionStart || nowMs());
-    }
-    const heroActionClass = pickHeroActionClass(heroKey, action);
-    if (heroActionClass !== st.heroActionClass){
+    const actionClass = pickHeroActionClass(heroKey, action);
+    if (actionClass !== st.heroActionClass){
       if (st.heroActionClass) st.root.classList.remove(st.heroActionClass);
-      if (heroActionClass) st.root.classList.add(heroActionClass);
-      st.heroActionClass = heroActionClass;
+      if (actionClass) st.root.classList.add(actionClass);
+      st.heroActionClass = actionClass;
     }
-    const deathCause = e?.dead ? (anim?.deathCause || 'generic') : '';
-    if (deathCause !== st.deathCause){
-      if (st.deathCause) st.root.classList.remove(`hero-death-${st.deathCause}`);
-      if (deathCause) st.root.classList.add(`hero-death-${deathCause}`);
-      st.deathCause = deathCause;
-    }
-    const heroDeathClass = deathCause ? pickHeroDeathClass(heroKey, deathCause) : null;
-    if (heroDeathClass !== st.heroDeathClass){
+    const deathClass = deathCause ? pickHeroDeathClass(heroKey, deathCause) : null;
+    if (deathClass !== st.heroDeathClass){
       if (st.heroDeathClass) st.root.classList.remove(st.heroDeathClass);
-      if (heroDeathClass) st.root.classList.add(heroDeathClass);
-      st.heroDeathClass = heroDeathClass;
+      if (deathClass) st.root.classList.add(deathClass);
+      st.heroDeathClass = deathClass;
     }
     st.root.classList.toggle('hero-is-talking', action === 'talk');
     st.root.classList.toggle('hero-is-pushing', action === 'push');
     st.root.classList.toggle('hero-is-attacking', action === 'attack');
     st.root.classList.toggle('hero-is-hurt', action === 'hurt');
     st.root.classList.toggle('hero-is-dead', action === 'dead');
-    st.root.classList.toggle('hero-is-eating', action === 'eat');
-    st.root.classList.toggle('hero-is-powered', action === 'powerup');
-    st.root.classList.toggle('hero-heavy', !!anim?.pushHeavy);
-    st.root.classList.toggle('hero-sweating', !!anim?.sweating);
-    st.root.classList.toggle('hero-smoking', !!anim?.smoke);
+    st.root.classList.toggle('hero-is-eating', action === 'eat' || action === 'powerup');
     st.root.classList.toggle('hero-sparking', !!anim?.sparkle);
-
-    if (heroKey === 'roberto'){
-      updateRobertoIdleExtras(st, action);
-    } else if (st.idleExtraActive){
+    st.root.classList.toggle('hero-smoking', deathCause === 'fire');
+    st.root.classList.toggle('hero-sweating', !!anim?.sweating);
+    if (heroKey === 'roberto') updateRobertoIdleExtras(st, action);
+    else if (st.idleExtraActive){
       st.idleExtraActive = false;
       st.root.classList.remove('anim-roberto-idle-extra');
     }
   }
 
-  function positionHeroDom(st, cam, e){
-    if (!st || !st.root || !e) return;
-    if (st.culled) return;
-    const [worldX, worldY, sc] = toScreen(cam, e);
+  function positionHeroOverlay(st, cam, e, worldX, worldY, scale){
+    if (!st?.root) return;
     const projected = (typeof window.worldToScreen === 'function')
       ? window.worldToScreen(worldX, worldY, cam)
       : { sx: worldX, sy: worldY };
-    const screenX = (projected && (projected.sx ?? projected.x)) ?? worldX;
-    const screenY = (projected && (projected.sy ?? projected.y)) ?? worldY;
-    const totalScale = (st.scale ?? 1) * sc;
-    const offsetY = (st.offsetY ?? -10) * totalScale;
-    st.root.style.transform = `translate(${screenX}px, ${screenY + offsetY}px) scale(${totalScale})`;
-    const depth = Math.floor((e.y || 0) + (st.depthBias || 0));
-    st.root.style.zIndex = String(50 + depth);
+    const x = (projected && (projected.sx ?? projected.x)) ?? worldX;
+    const y = (projected && (projected.sy ?? projected.y)) ?? worldY;
+    const offsetY = -((window.G?.TILE_SIZE || window.TILE_SIZE || 32) * 0.4);
+    st.root.style.transform = `translate(${x}px, ${y + offsetY}px) scale(${scale})`;
+    const depth = Math.floor((e?.y || 0) + (st.depthBias || 0));
+    st.root.style.zIndex = String(40 + depth);
   }
 
-
-  function resolveHeroState(st, e){
-    let orientation = st.orientation || 'down';
-    const pushing = e?.pushing === true || (typeof e?.pushAnimT === 'number' && e.pushAnimT > 0.05) || e?.state === 'pushing';
-    const attacking = (e?.attackTimer || 0) > 0 || e?.isAttacking === true;
-    const hurt = (e?.invuln || 0) > 0 && (Date.now() - (e?._lastHitAt || 0) < 1200);
-    if (hurt) return { state: 'hurt', orientation, bobMul: 0.35 };
-    if (e?.isTalking) return { state: 'talk', orientation };
-    if (attacking) return { state: 'attack', orientation, bobMul: 0.5 };
-    if (pushing && (st.moving || (e?.pushAnimT || 0) > 0.01)){
-      if (orientation === 'up') orientation = 'down';
-      return { state: 'push', orientation, bobMul: 0.45 };
+  function updateHeroRigState(st, e, dt, cfg){
+    if (!st || !e) return;
+    const culled = isEntityCulled(e);
+    if (culled){
+      if (!st.culled && st.root){
+        st.root.classList.add('hero-culled');
+        st.root.style.visibility = 'hidden';
+      }
+      st.culled = true;
+      st.offscreen = true;
+      return;
     }
-    if (st.moving){
-      if (orientation === 'up') return 'walk_up';
-      if (orientation === 'side') return { state: 'walk_side', dir: st.dir, orientation };
-      return 'walk_down';
+    if (st.culled && st.root){
+      st.root.classList.remove('hero-culled');
+      st.root.style.visibility = '';
     }
-    return { state: 'idle', orientation, bobMul: 0.7 };
+    st.culled = false;
+    st.offscreen = false;
+    st.time += dt;
+    const anim = resolveHeroAnim(e);
+    const heroKey = st.hero;
+    let action = anim?.action || 'idle';
+    st.orientation = anim?.orientation || st.orientation || 'down';
+    const dir = anim?.dir ?? st.dir ?? 1;
+    if (dir < 0){
+      st.dir = -1;
+      st.root?.classList.add('hero-dir-left');
+      st.root?.classList.remove('hero-dir-right');
+    } else {
+      st.dir = 1;
+      st.root?.classList.add('hero-dir-right');
+      st.root?.classList.remove('hero-dir-left');
+    }
+    if (st.action !== action){
+      if (st.action && st.root) st.root.classList.remove(`hero-state-${st.action}`);
+      if (st.root) st.root.classList.add(`hero-state-${action}`);
+      st.action = action;
+      st.actionStart = nowMs();
+      st.actionElapsed = 0;
+    } else {
+      st.actionElapsed = nowMs() - (st.actionStart || nowMs());
+    }
+    st.moving = !!(anim?.moving);
+    const animCfg = cfg.anim || {};
+    const walkCycle = action === 'walk' ? (animCfg.walkCycle || 1) : (animCfg.idleCycle || 0.5);
+    st.walkPhase = (st.walkPhase + dt * walkCycle * TAU) % TAU;
+    const swingAmp = action === 'walk' ? (animCfg.walkSwing ?? 0.5) : (animCfg.idleSwing ?? 0.12);
+    const armAmp = action === 'walk' ? (animCfg.armSwing ?? 0.48) : (animCfg.idleArmSwing ?? 0.18);
+    const bobAmp = action === 'walk' ? (animCfg.walkBob ?? 2.2) : (animCfg.idleBob ?? 0.8);
+    const legSwing = Math.sin(st.walkPhase) * swingAmp;
+    const armSwing = Math.sin(st.walkPhase + Math.PI) * armAmp;
+    const bob = Math.sin(st.walkPhase * (action === 'walk' ? 2 : 1)) * bobAmp;
+    st.legSwing += (legSwing - st.legSwing) * Math.min(1, dt * 9);
+    st.armSwing += (armSwing - st.armSwing) * Math.min(1, dt * 9);
+    st.bob += (bob - st.bob) * Math.min(1, dt * 6);
+    st.breathPhase = (st.breathPhase + dt * (animCfg.breathSpeed ?? 0.5) * TAU) % TAU;
+    const breath = Math.sin(st.breathPhase) * (animCfg.breathAmp ?? 0.9);
+    st.breath += (breath - st.breath) * Math.min(1, dt * 4);
+    const targetAttack = action === 'attack' ? 1 : 0;
+    st.attack += (targetAttack - st.attack) * Math.min(1, dt * (action === 'attack' ? 6 : 4));
+    const targetPush = action === 'push' ? 1 : 0;
+    st.push += (targetPush - st.push) * Math.min(1, dt * 5);
+    const targetTalk = action === 'talk' ? 1 : 0;
+    st.talk += (targetTalk - st.talk) * Math.min(1, dt * 6);
+    const targetEat = (action === 'eat' || action === 'powerup') ? 1 : 0;
+    st.eat += (targetEat - st.eat) * Math.min(1, dt * 5);
+    const targetHurt = action === 'hurt' ? 1 : 0;
+    st.hurt += (targetHurt - st.hurt) * Math.min(1, dt * 6);
+    const leanTarget = (animCfg.pushLean ?? 0.2) * st.push + (animCfg.attackLean ?? -0.12) * st.attack;
+    st.lean += (leanTarget - st.lean) * Math.min(1, dt * 6);
+    const jawTarget = st.talk > 0 ? (0.4 + 0.4 * Math.sin(st.time * 8)) * st.talk : 0;
+    const chew = st.eat * 0.6;
+    st.jaw += ((jawTarget + chew) - st.jaw) * Math.min(1, dt * 7);
+    if (action === 'dead'){
+      st.deathProgress = Math.min(1, st.deathProgress + dt * 0.9);
+    } else {
+      st.deathProgress = Math.max(0, st.deathProgress - dt * 1.2);
+    }
+    st.deathCause = action === 'dead' ? (anim?.deathCause || e.deathCause || 'damage') : '';
+    const dropTarget = st.deathProgress * (cfg.deathDrop ?? 9);
+    st.deathDrop += (dropTarget - st.deathDrop) * Math.min(1, dt * 5);
+    const tiltTarget = action === 'dead' ? (st.deathCause === 'crush' ? 0 : (st.deathCause === 'fire' ? 0.1 : 0.6)) : 0;
+    st.deathTilt += (tiltTarget - st.deathTilt) * Math.min(1, dt * 3);
+    const smokeTarget = st.deathCause === 'fire' ? 1 : 0;
+    st.smoke += (smokeTarget - st.smoke) * Math.min(1, dt * 1.8);
+    updateHeroOverlayClasses(st, heroKey, action, st.deathCause, anim);
+    paintHeroOverlayIcon(st, cfg);
   }
 
-  function makeHeroStates(front, back){
-    const frontSkin = normalizeSkinAsset(front) || normalizeSkinAsset(back);
-    const backSkin = normalizeSkinAsset(back) || frontSkin;
-    return {
-      idle: {
-        skin: { down: frontSkin, up: backSkin, side: frontSkin },
-        bobMul: 0.7
+  function drawRoundedRectPath(ctx, x, y, w, h, r){
+    const radius = Math.max(0, Math.min(r || 0, Math.min(Math.abs(w), Math.abs(h)) * 0.5));
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+
+  function drawHeroLeg(ctx, offsetX, swing, cfg, palette, front){
+    const leg = cfg.leg || {};
+    const length = leg.length ?? 14;
+    const width = leg.width ?? 4.4;
+    const foot = leg.foot ?? 3.2;
+    ctx.save();
+    ctx.translate(offsetX, 0);
+    ctx.rotate(swing * 0.2);
+    ctx.fillStyle = front ? (palette.leg || '#2c3450') : (palette.legBack || palette.leg || '#1c2235');
+    drawRoundedRectPath(ctx, -width * 0.5, -2, width, length + 2, width * 0.45);
+    ctx.fill();
+    ctx.fillStyle = front ? (palette.boot || '#111822') : (palette.bootBack || palette.boot || '#0c1119');
+    drawRoundedRectPath(ctx, -width * 0.8, length - 1, width * 1.6, foot, foot * 0.5);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHeroArm(ctx, st, cfg, palette, front){
+    const arm = cfg.arm || {};
+    const length = arm.length ?? 16;
+    const width = arm.width ?? 4.5;
+    const offset = arm.offset ?? 12;
+    const baseY = -((cfg.torso?.height ?? 16) * 0.5) + 4;
+    const talkLift = front ? 0 : st.talk * (cfg.anim?.talkLift ?? 4);
+    const pushReach = st.push * (cfg.anim?.pushReach ?? 6);
+    const attackReach = front ? st.attack * (cfg.anim?.attackReach ?? 9) : 0;
+    const eatLift = front ? st.eat * (cfg.anim?.eatLift ?? 8) : 0;
+    const swing = front ? st.armSwing : -st.armSwing;
+    const offsetX = front ? offset : -offset;
+    ctx.save();
+    ctx.translate(offsetX, baseY + st.breath * 0.3);
+    ctx.rotate(swing * 0.4 + (-pushReach * 0.02) + (-attackReach * 0.03) - eatLift * 0.02 + talkLift * 0.05);
+    ctx.fillStyle = front ? (palette.arm || palette.skin || '#f7d6b3') : (palette.armBack || palette.arm || palette.skin || '#f7d6b3');
+    drawRoundedRectPath(ctx, -width * 0.5, -1, width, length + 2, width * 0.5);
+    ctx.fill();
+    ctx.fillStyle = palette.glove || '#f4d873';
+    drawRoundedRectPath(ctx, -width * 0.7, length - 2, width * 1.4, 4.2, 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHeroHead(ctx, st, cfg, palette){
+    const head = cfg.head || {};
+    const radius = head.radius ?? 6.5;
+    const offset = head.offset ?? -17;
+    ctx.save();
+    ctx.translate(0, offset + st.breath * 0.4);
+    ctx.rotate(st.deathTilt * 0.08);
+    ctx.fillStyle = palette.skin || '#f7d6b3';
+    if (safeEllipse(ctx, 0, 0, radius, radius * 1.1, 0, 0, TAU)) ctx.fill();
+    if (palette.hair){
+      ctx.fillStyle = palette.hair;
+      if (safeEllipse(ctx, 0, -radius * 0.4, radius * 1.15, radius * 0.75, 0, 0, TAU)) ctx.fill();
+    }
+    ctx.fillStyle = '#1b1b1b';
+    ctx.fillRect(-radius * 0.5, -radius * 0.1, radius * 0.25, 1.2);
+    ctx.fillRect(radius * 0.25, -radius * 0.1, radius * 0.25, 1.2);
+    ctx.fillStyle = '#2a2a2a';
+    drawRoundedRectPath(ctx, -radius * 0.4, radius * 0.2, radius * 0.8, 1.6 + st.jaw * 1.2, 0.8);
+    ctx.fill();
+    if (st.hero === 'enrique'){
+      ctx.fillStyle = palette.moustache || palette.hair || '#2d1a0e';
+      drawRoundedRectPath(ctx, -radius * 0.55, 0, radius * 1.1, 1.6, 0.8);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHeroFigure(ctx, st, cfg){
+    const palette = cfg.palette || {};
+    const leg = cfg.leg || {};
+    const spread = leg.spread ?? 6;
+    drawHeroLeg(ctx, -spread, st.legSwing * -0.7 - st.push * 0.1, cfg, palette, false);
+    drawHeroLeg(ctx, spread, st.legSwing + st.push * 0.2, cfg, palette, true);
+    ctx.save();
+    ctx.translate(0, -4 + st.breath * 0.4);
+    ctx.rotate(st.lean * 0.25);
+    ctx.fillStyle = palette.torso || '#2f3b5a';
+    const torso = cfg.torso || {};
+    drawRoundedRectPath(ctx, -torso.width * 0.5, -torso.height, torso.width, torso.height + 4, 6);
+    ctx.fill();
+    ctx.fillStyle = palette.belly || '#3d4a68';
+    const belly = cfg.belly || {};
+    drawRoundedRectPath(ctx, -belly.width * 0.5, -belly.height * 0.4, belly.width, belly.height, 8);
+    ctx.fill();
+    ctx.fillStyle = palette.accent || '#f5b85a';
+    ctx.fillRect(-torso.width * 0.45, -torso.height * 0.35, torso.width * 0.9, 3);
+    ctx.restore();
+    drawHeroArm(ctx, st, cfg, palette, false);
+    drawHeroArm(ctx, st, cfg, palette, true);
+    drawHeroHead(ctx, st, cfg, palette);
+    if (st.hero === 'francesco' && st.talk > 0.3){
+      ctx.save();
+      ctx.translate(0, (cfg.head?.offset ?? -17) - 10);
+      ctx.strokeStyle = palette.accent || '#66b3ff';
+      ctx.globalAlpha = 0.5 * st.talk;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(-4, -8);
+      ctx.lineTo(4, -12);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (st.hero === 'roberto' && st.idleExtraActive){
+      ctx.save();
+      ctx.translate(0, (cfg.head?.offset ?? -16) - 8);
+      ctx.strokeStyle = palette.accent || '#ff9f40';
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(0, -10, 4 + 2 * Math.sin(st.time * 6), -0.6, 0.6);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawHeroCorpse(ctx, st, cfg){
+    const palette = cfg.palette || {};
+    const cause = st.deathCause || 'damage';
+    ctx.save();
+    if (cause === 'crush'){
+      ctx.scale(1.2, 0.35 + 0.25 * (1 - Math.min(1, st.deathProgress)));
+    } else if (cause === 'fire'){
+      ctx.scale(1, 1 - 0.3 * st.deathProgress);
+    } else {
+      ctx.rotate(-0.6 * st.deathProgress);
+    }
+    ctx.fillStyle = palette.torso || '#343b4f';
+    drawRoundedRectPath(ctx, -12, -6, 24, 14, 6);
+    ctx.fill();
+    ctx.fillStyle = palette.skin || '#f7d6b3';
+    if (safeEllipse(ctx, 0, -13, 7, 8, 0, 0, TAU)) ctx.fill();
+    ctx.fillStyle = palette.leg || '#1e2436';
+    drawRoundedRectPath(ctx, -10, 6, 8, 4, 2);
+    drawRoundedRectPath(ctx, 2, 6, 8, 4, 2);
+    ctx.fill();
+    if (cause === 'fire'){
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = palette.smoke || 'rgba(60,60,60,0.5)';
+      for (let i = 0; i < 3; i++){
+        const r = 6 + i * 4;
+        if (safeEllipse(ctx, -4 + i * 4, -18 - i * 4 - st.time * 2 % 4, r, r * 0.8, 0, 0, TAU)) ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawHeroRig(ctx, cam, e, st, cfg){
+    if (!ctx || !e || !st || st.offscreen) return;
+    const [cx, cy, sc] = toScreen(cam, e);
+    const tile = window.G?.TILE_SIZE || window.TILE_SIZE || 32;
+    const scale = sc * (cfg.scale ?? 1);
+    ctx.save();
+    ctx.translate(cx, cy + st.deathDrop * 0.2);
+    const shadowAlpha = 0.24 * (1 - Math.min(1, st.deathProgress * 0.9));
+    drawShadow(ctx, cfg.shadowRadius ?? (tile * 0.35), scale, st.deathCause === 'crush' ? 0.18 : 0.28, shadowAlpha);
+    ctx.translate(0, -tile * 0.35 + st.bob * 0.4);
+    ctx.scale(scale, scale);
+    if (st.deathCause){
+      drawHeroCorpse(ctx, st, cfg);
+    } else {
+      drawHeroFigure(ctx, st, cfg);
+    }
+    ctx.restore();
+    positionHeroOverlay(st, cam, e, cx, cy, scale);
+  }
+
+  function registerHeroRig(hero, cfg){
+    API.registerRig(`hero_${hero}`, {
+      create(entity){
+        const overlay = buildHeroOverlay(hero, entity);
+        const state = {
+          hero,
+          root: overlay.root,
+          overlay: overlay.overlay,
+          parts: overlay.parts,
+          miniCanvas: overlay.miniCanvas,
+          miniCtx: overlay.miniCtx,
+          cleanup: overlay.cleanup,
+          action: 'idle',
+          orientation: 'down',
+          orientationClass: null,
+          dir: 1,
+          time: 0,
+          walkPhase: Math.random() * TAU,
+          breathPhase: Math.random() * TAU,
+          breath: 0,
+          bob: 0,
+          lean: 0,
+          legSwing: 0,
+          armSwing: 0,
+          talk: 0,
+          eat: 0,
+          push: 0,
+          attack: 0,
+          hurt: 0,
+          jaw: 0,
+          deathProgress: 0,
+          deathCause: '',
+          deathTilt: 0,
+          deathDrop: 0,
+          smoke: 0,
+          heroActionClass: null,
+          heroDeathClass: null,
+          actionStart: nowMs(),
+          actionElapsed: 0,
+          culled: false,
+          offscreen: false,
+          depthBias: cfg.depthBias ?? 18,
+          idleExtraActive: false,
+          idleExtraUntil: 0,
+          idleExtraCooldown: 0
+        };
+        paintHeroOverlayIcon(state, cfg);
+        return state;
       },
-      walk_down: {
-        skin: frontSkin,
-        bobMul: 1.0
+      update(st, e, dt){
+        updateHeroRigState(st, e, dt, cfg);
       },
-      walk_up: {
-        skin: backSkin,
-        bobMul: 0.9
+      draw(ctx2, cam, e, st){
+        drawHeroRig(ctx2, cam, e, st, cfg);
       },
-      walk_side: {
-        skin: frontSkin,
-        bobMul: 1.05
-      },
-      push: {
-        skin: { down: frontSkin, up: backSkin, side: frontSkin },
-        bobMul: 0.4,
-        offsetY: -2
-      },
-      attack: {
-        skin: frontSkin,
-        tint: { color: 'rgba(255,214,120,1)', alpha: 0.24 },
-        bobMul: 0.55
-      },
-        talk: {
-          skin: { down: frontSkin, up: backSkin, side: frontSkin },
-          bobMul: 0.5,
-          tint: { color: 'rgba(230,240,255,1)', alpha: 0.18 }
-        },
-        hurt: {
-          skin: { down: frontSkin, up: backSkin, side: frontSkin },
-          bobMul: 0.35,
-          tint: { color: 'rgba(255,120,120,1)', alpha: 0.35 }
+      dispose(st, entity){
+        if (!st) return;
+        if (typeof st.cleanup === 'function'){
+          try { st.cleanup(); } catch (_) {}
         }
-      };
+        if (entity && Array.isArray(entity._destroyCbs) && st.cleanup){
+          entity._destroyCbs = entity._destroyCbs.filter((fn) => fn !== st.cleanup);
+        }
+        st.cleanup = null;
+      }
+    });
+  }
+
+  for (const [hero, cfg] of Object.entries(HERO_DRAW_PROFILE)){
+    registerHeroRig(hero, cfg);
+  }
+
+  let heroRigDiagnosticsDone = false;
+  function logHeroRigDiagnostics(){
+    if (heroRigDiagnosticsDone) return;
+    heroRigDiagnosticsDone = true;
+    if (typeof window === 'undefined') return;
+    const registry = window.Puppet?.RIGS || {};
+    for (const hero of Object.keys(HERO_DRAW_PROFILE)){
+      const id = `hero_${hero}`;
+      if (registry && registry[id]){
+        try {
+          console.log(`[HeroRig] rig "${id}" listo para usarse.`);
+        } catch (_) {}
+      } else {
+        try {
+          console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
+        } catch (_) {}
+      }
+    }
+  }
+
+  if (typeof document !== 'undefined'){
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', logHeroRigDiagnostics, { once: true });
+    } else {
+      logHeroRigDiagnostics();
+    }
+  } else {
+    logHeroRigDiagnostics();
   }
 
   function makeNPCStates(front, back){
