@@ -8,6 +8,7 @@
   const missingRigWarnings = new Set();
   let activityLog = new WeakMap();
   const fallbackErrorLabels = new Set();
+  const rigCheckTargets = new Set(['door', 'door_urgencias', 'elevator', 'hazard_fire', 'hazard_water']);
   let lastActivitySummary = '';
   const debugStatus = { rigs: false, lights: false, activity: false, successAnnounced: false };
   const rigAuditState = { lastTime: 0, lastCount: 0 };
@@ -233,6 +234,12 @@
   function bind(entity, rigName, opts={}){
     if (!entity) return null;
     const name = resolveRigName(rigName);
+    if (name === 'default' && rigName && rigName !== 'default'){
+      const label = describeEntity(entity);
+      try {
+        console.warn(`[Puppet.bind] Advertencia: '${label || 'Entidad'}' solicitó rig '${rigName}' pero se está usando 'default'.`);
+      } catch (_) {}
+    }
     const puppet = attach(entity, { ...opts, rig: name });
     const rig = registry[name];
     try {
@@ -271,6 +278,13 @@
       }
       try {
         console.warn(`[Puppet.bind] Fallback aplicado a ${label || 'entidad'} (${entity.rigName}).`);
+      } catch (_) {}
+    }
+    if (rigCheckTargets.has(name)){
+      const label = describeEntity(entity) || entity?.kind || entity?.tag || 'Entidad';
+      const status = name === 'default' ? '⚠️' : '✔';
+      try {
+        console.info(`[RigCheck] ${label} -> rigName=${name} ${status}`);
       } catch (_) {}
     }
     return puppet;
