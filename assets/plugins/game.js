@@ -45,17 +45,32 @@
   const VIEW_H = 540;
   const FORCE_PLAYER = 100.0;
 
-  const ENT = {
-    PLAYER: 1,
-    PATIENT: 2,
-    PILL: 3,
-    BED: 4,
-    CART: 5,
-    RAT: 6,
-    MOSQUITO: 7,
-    DOOR: 8,
-    BOSS: 9,
-  };
+  const ENT = (() => {
+    const root = (typeof window !== 'undefined') ? window : globalThis;
+    const existing = (root && typeof root.ENT === 'object')
+      ? root.ENT
+      : (root && typeof root.G === 'object' && typeof root.G.ENT === 'object')
+        ? root.G.ENT
+        : {};
+    const defaults = {
+      PLAYER: 1,
+      PATIENT: 2,
+      PILL: 3,
+      BED: 4,
+      CART: 5,
+      RAT: 6,
+      MOSQUITO: 7,
+      DOOR: 8,
+      BOSS: 9,
+    };
+    for (const [key, value] of Object.entries(defaults)) {
+      existing[key] = value;
+    }
+    if (root && typeof root === 'object') {
+      root.ENT = existing;
+    }
+    return existing;
+  })();
 
   function matchesKind(entity, key){
     if (!entity) return false;
@@ -151,6 +166,10 @@
     isDebugMap: DEBUG_MAP_MODE
   };
   window.G = G; // (expuesto)
+  G.ENT = ENT;
+  if (typeof window === 'object') {
+    window.ENT = ENT;
+  }
 
   let currentVisualInfo = null;
 
@@ -1999,7 +2018,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       const hy = p.y + (p.h || 0) * 0.5;
       const source = Array.isArray(G.pills) && G.pills.length ? G.pills : G.entities;
       for (const pill of source || []) {
-        if (!pill || pill.dead || pill.kind !== ENT.PILL) continue;
+        if (!pill || pill.dead || !matchesKind(pill, 'PILL')) continue;
         const px = pill.x + (pill.w || 0) * 0.5;
         const py = pill.y + (pill.h || 0) * 0.5;
         const dist = Math.hypot(px - hx, py - hy);
@@ -2277,7 +2296,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const hero = G.player || null;
     if (!hero?.carry && !G.carry) {
       for (const e of [...G.entities]) {
-        if (!e || e.dead || e.kind !== ENT.PILL) continue;
+        if (!e || e.dead || !matchesKind(e, 'PILL')) continue;
         if (!AABB(G.player, e)) continue;
         if (assignCarryFromPill(hero, e)) {
           break;
