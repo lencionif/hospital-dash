@@ -483,6 +483,244 @@
     });
   }
 
+  // ────────────────────── Procedural human rigs ─────────────────────
+  const DEFAULT_HUMAN_COLORS = {
+    body: '#f7f7f7',
+    head: '#f5d2bd',
+    limbs: '#1f2a3a',
+    accent: '#5bc0ff',
+    detail: '#111217'
+  };
+
+  function createHumanState(cfg){
+    return {
+      phase: Math.random() * TAU,
+      idlePhase: Math.random() * TAU,
+      time: 0,
+      bob: 0,
+      sway: 0,
+      dir: 1,
+      moving: false,
+      speed: 0,
+      armSwing: 0,
+      legSwing: 0,
+      lateral: 0,
+      headTilt: 0,
+      headTurn: 0,
+      headTiltTarget: null,
+      bodyLean: 0,
+      walkCycleOverride: null,
+      bobOverride: null,
+      colorPulse: 0,
+      zigzag: 0,
+      shakeX: 0,
+      shakeY: 0,
+      hip: 0,
+      bucketSwing: 0,
+      anger: 0,
+      blinkTimer: 1.2 + Math.random() * 2.4,
+      blinkDur: 0,
+      extra: {}
+    };
+  }
+
+  function updateHumanState(st, e, dt, cfg){
+    const vx = Number(e?.vx) || 0;
+    const vy = Number(e?.vy) || 0;
+    const speed = Math.hypot(vx, vy);
+    const moving = speed > (cfg.walkThreshold ?? 6);
+    st.time += dt;
+    st.speed = speed;
+    st.moving = moving;
+    const cycleBase = moving ? (cfg.walkCycle ?? 6) : (cfg.idleCycle ?? 2.4);
+    const cycle = st.walkCycleOverride ?? cycleBase;
+    st.phase = (st.phase + dt * cycle) % TAU;
+    const bobBase = moving ? (cfg.walkBob ?? 3) : (cfg.idleBob ?? 1);
+    const bobAmp = st.bobOverride ?? bobBase;
+    st.bob = Math.sin(st.phase) * bobAmp;
+    const swayAmp = moving ? (cfg.swayAmp ?? 0.8) : (cfg.idleSwayAmp ?? 0.25);
+    const swayFreq = cfg.swayFreq ?? 1.2;
+    st.sway = Math.sin(st.phase * swayFreq) * swayAmp;
+    st.armSwing = Math.sin(st.phase) * (moving ? 1 : 0.35);
+    st.legSwing = Math.sin(st.phase + Math.PI * 0.5) * (moving ? 1 : 0.28);
+    st.lateral = Math.sin(st.phase) * (moving ? (cfg.lateralAmp ?? 0.12) : (cfg.idleLateralAmp ?? 0.05));
+    st.idlePhase = (st.idlePhase + dt * (cfg.idleCycle ?? 2)) % TAU;
+    if (Math.abs(vx) > 2) st.dir = vx < 0 ? -1 : 1;
+    else if (Math.abs(e?.dirX || 0) > 0.1) st.dir = e.dirX < 0 ? -1 : 1;
+    const baseLean = moving ? (cfg.lean ?? 0) : (cfg.idleLean ?? 0);
+    st.bodyLean += (baseLean - st.bodyLean) * Math.min(1, dt * 4.2);
+    const baseTilt = moving ? (cfg.headTiltWalk ?? 0) : (cfg.headTiltIdle ?? 0);
+    const desiredTilt = (st.headTiltTarget != null) ? st.headTiltTarget : baseTilt;
+    st.headTilt += (desiredTilt - st.headTilt) * Math.min(1, dt * 5);
+    st.headTiltTarget = null;
+    st.headTurn += (0 - st.headTurn) * Math.min(1, dt * 4.5);
+    st.walkCycleOverride = null;
+    st.bobOverride = null;
+    st.colorPulse = Math.max(0, st.colorPulse - dt * 0.4);
+    st.shakeX *= Math.pow(0.4, dt * 6);
+    st.shakeY *= Math.pow(0.4, dt * 6);
+    st.hip *= Math.pow(0.4, dt * 6);
+    st.bucketSwing *= Math.pow(0.5, dt * 4);
+    st.zigzag *= Math.pow(0.4, dt * 5);
+    st.blinkTimer -= dt;
+    if (st.blinkTimer <= 0){
+      st.blinkDur = 0.12 + Math.random() * 0.12;
+      st.blinkTimer = 1.8 + Math.random() * 3.2;
+    }
+    if (st.blinkDur > 0) st.blinkDur = Math.max(0, st.blinkDur - dt);
+    if (cfg.extraUpdate) cfg.extraUpdate(st, e, dt);
+  }
+
+  function drawHumanLimb(ctx, x, y, angle, length, width, color, alpha = 1){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.globalAlpha *= alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, length);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHumanHead(ctx, st, helper, cfg){
+    const { colors, dims, flip } = helper;
+    ctx.save();
+    ctx.translate(0, dims.headCenterY);
+    ctx.rotate((cfg.headLean ?? 0) + st.headTilt + (st.lookTilt || 0));
+    ctx.fillStyle = colors.head;
+    ctx.beginPath();
+    ctx.arc(0, 0, dims.headR, 0, TAU);
+    ctx.fill();
+    const lookDir = (flip < 0 ? -1 : 1);
+    const look = (st.headTurn || 0) * dims.headR * 0.3 * lookDir;
+    const eyeHeight = st.blinkDur > 0 ? Math.max(1, dims.eyeH * 0.3) : dims.eyeH;
+    const eyeY = -dims.headR * 0.2;
+    ctx.fillStyle = colors.detail;
+    ctx.fillRect(-dims.eyeSpacing + look - dims.eyeW * 0.5, eyeY, dims.eyeW, eyeHeight);
+    ctx.fillRect(dims.eyeSpacing + look - dims.eyeW * 0.5, eyeY, dims.eyeW, eyeHeight);
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(-dims.eyeSpacing + look - dims.eyeW * 0.5, eyeY + eyeHeight + 1 * (st.blinkDur > 0 ? -0.8 : 1), dims.eyeW, 1.5 * (st.blinkDur > 0 ? 0.4 : 1));
+    ctx.globalAlpha = 1;
+    const mouthY = dims.headR * 0.4;
+    ctx.strokeStyle = colors.detail;
+    ctx.lineWidth = dims.headR * 0.12;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-dims.headR * 0.3 + look * 0.15, mouthY);
+    ctx.lineTo(dims.headR * 0.3 + look * 0.15, mouthY + (st.moving ? 0 : Math.sin(st.idlePhase) * dims.headR * 0.05));
+    ctx.stroke();
+    if (cfg.onHeadDraw) cfg.onHeadDraw(ctx, st, helper, { look, eyeY, eyeHeight });
+    ctx.restore();
+  }
+
+  function drawHumanRig(ctx, cam, e, st, cfg){
+    if (!ctx || isEntityCulled(e)) return;
+    const [cx, cy, sc] = toScreen(cam, e);
+    const baseScale = sc * (cfg.scale ?? 1);
+    const entityHeight = (cfg.entityHeight ?? cfg.totalHeight ?? e?.h ?? 48);
+    const offsetY = (cfg.offsetY ?? -6) * baseScale;
+    const colors = Object.assign({}, DEFAULT_HUMAN_COLORS, cfg.colors || {});
+    const headR = (cfg.headRadius ?? 9) * baseScale;
+    const torsoH = (cfg.torsoHeight ?? 30) * baseScale;
+    const torsoW = (cfg.torsoWidth ?? 18) * baseScale;
+    const legLength = (cfg.legLength ?? 22) * baseScale;
+    const armLength = (cfg.armLength ?? 20) * baseScale;
+    const armWidth = Math.max(1.5, (cfg.armWidth ?? 3) * baseScale);
+    const legWidth = Math.max(2, (cfg.legWidth ?? 4) * baseScale);
+    const neck = Math.max(1, (cfg.neckLength ?? 4) * baseScale);
+    const dims = {
+      headR,
+      headCenterY: headR,
+      torsoTop: headR + neck,
+      torsoH,
+      torsoW,
+      torsoBottom: headR + neck + torsoH,
+      legLength,
+      armLength,
+      armWidth,
+      legWidth,
+      eyeW: Math.max(1.5, headR * 0.35),
+      eyeH: Math.max(1, headR * 0.24),
+      eyeSpacing: Math.max(headR * 0.35, headR * 0.55),
+      bucketOffsetY: headR + neck + torsoH * 0.2
+    };
+    dims.legOriginY = dims.torsoBottom - (cfg.legOriginOffset ?? 0);
+    ctx.save();
+    ctx.translate(cx, cy);
+    drawShadow(ctx, cfg.shadowRadius ?? 12, baseScale, cfg.shadowFlatten ?? 0.3, cfg.shadowAlpha ?? 0.24);
+    ctx.translate(0, -entityHeight * 0.5 * baseScale + offsetY + st.bob * baseScale * (cfg.bobMul ?? 0.35));
+    ctx.translate(((st.lateral || 0) + (st.hip || 0) + (st.zigzag || 0) + (st.shakeX || 0)) * baseScale, (st.shakeY || 0) * baseScale);
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, { stage: 'beforeFigure', scale: baseScale, colors, dims, entity: e, flip: 1 });
+    ctx.save();
+    const flipX = (cfg.flipWithDirection === false) ? 1 : (st.dir || 1);
+    ctx.scale(flipX, 1);
+    if (cfg.stepSquash){
+      const squash = Math.max(0.55, 1 - Math.abs(st.legSwing) * cfg.stepSquash);
+      ctx.scale(1, squash);
+    }
+    const helper = { scale: baseScale, colors, dims, flip: flipX, entity: e, config: cfg };
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'preBody');
+    const legSpread = cfg.legSpread ?? (torsoW * 0.32);
+    const armSpread = cfg.armSpread ?? (torsoW * 0.6);
+    const legBase = cfg.legBaseAngle ?? 0.18;
+    const armBase = cfg.armBaseAngle ?? -0.1;
+    const legSwing = st.legSwing * (cfg.legSwing ?? 0.5);
+    const armSwing = st.armSwing * (cfg.armSwing ?? 0.6);
+    drawHumanLimb(ctx, -legSpread, dims.legOriginY, legBase - legSwing, legLength, legWidth, colors.limbs, 0.65);
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'afterBackLeg');
+    drawHumanLimb(ctx, -armSpread, dims.torsoTop + torsoH * 0.15, armBase - armSwing, armLength, armWidth, colors.limbs, 0.7);
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'afterBackArm');
+    ctx.save();
+    ctx.translate(0, st.sway * (cfg.swayYOffset ?? 0.4));
+    ctx.rotate((cfg.baseLean ?? 0) + st.bodyLean + (cfg.swayLeanMul ?? 0) * st.sway);
+    ctx.fillStyle = colors.body;
+    const torsoLeft = -torsoW * 0.5;
+    ctx.fillRect(torsoLeft, dims.torsoTop, torsoW, torsoH);
+    if (colors.accent){
+      ctx.fillStyle = colors.accent;
+      const stripeY = dims.torsoTop + torsoH * (cfg.accentStripePos ?? 0.45);
+      ctx.fillRect(torsoLeft, stripeY, torsoW, Math.max(2, torsoH * 0.12));
+    }
+    ctx.lineWidth = Math.max(1, baseScale * 0.6);
+    ctx.strokeStyle = colors.detail;
+    ctx.globalAlpha = 0.2;
+    ctx.strokeRect(torsoLeft, dims.torsoTop, torsoW, torsoH);
+    ctx.globalAlpha = 1;
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'afterTorso');
+    drawHumanHead(ctx, st, helper, cfg);
+    ctx.restore();
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'afterHead');
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'beforeFrontArm');
+    drawHumanLimb(ctx, armSpread, dims.torsoTop + torsoH * 0.15, armBase + armSwing, armLength, armWidth, colors.limbs, 1);
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'afterFrontArm');
+    drawHumanLimb(ctx, legSpread, dims.legOriginY, legBase + legSwing, legLength, legWidth, colors.limbs, 1);
+    if (cfg.extraDraw) cfg.extraDraw(ctx, st, helper, 'afterFrontLeg');
+    ctx.restore();
+    ctx.restore();
+    if (cfg.showNameTag || (cfg.showNameTag !== false && e?.showNameTag)){
+      const tagScale = Math.max(0.7, Math.min(1.25, baseScale));
+      drawEntityNameTag(ctx, cam, e, { scale: tagScale, offsetY: cfg.nameTagOffset ?? e?.nameTagYOffset ?? 18 });
+    }
+  }
+
+  function registerHumanRig(id, cfg){
+    API.registerRig(id, {
+      create(){
+        return createHumanState(cfg);
+      },
+      update(st, e, dt){
+        updateHumanState(st, e, dt, cfg);
+      },
+      draw(ctx, cam, e, st){
+        drawHumanRig(ctx, cam, e, st, cfg);
+      }
+    });
+  }
+
   function createEl(tag, className, parent){
     const el = document.createElement(tag);
     if (className) el.className = className;
@@ -1027,40 +1265,113 @@
   }
 
   // ───────────────────────────── NPCs ──────────────────────────────
-  registerWalkerRig('npc_celador', {
-    skin: 'celador.png',
+  registerHumanRig('npc_celador', {
+    totalHeight: 66,
+    entityHeight: 64,
+    torsoWidth: 22,
+    torsoHeight: 34,
+    legLength: 20,
+    armLength: 22,
+    armWidth: 4,
+    legWidth: 5.5,
     walkCycle: 5.4,
     walkBob: 2.6,
     idleBob: 1.0,
     swayAmp: 0.4,
     lean: 0.05,
-    shadowRadius: 12,
+    stepSquash: 0.12,
+    shadowRadius: 13,
     offsetY: -5,
-    states: Object.assign(makeNPCStates('celador.png'), {
-      push: { skin: { down: 'celador.png', side: 'celador.png' }, bobMul: 0.45, tint: { color: 'rgba(120,255,210,1)', alpha: 0.16 } }
-    }),
-    resolveState(st, e){
-      if (e?.mode === 'PUSH') return { state: 'push', orientation: st.orientation === 'up' ? 'down' : st.orientation };
-      return resolveNPCState(st, e);
+    colors: {
+      body: '#7c8596',
+      accent: '#515b6d',
+      head: '#f1cfb6',
+      limbs: '#232933',
+      detail: '#171c23'
+    },
+    extraUpdate(st){
+      st.headTiltTarget = -0.02;
+      const lean = st.moving ? 0.08 : 0.03;
+      st.bodyLean += (lean - st.bodyLean) * 0.12;
+      st.hip = Math.sin(st.phase) * 0.05;
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims } = helper;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        const pocketH = dims.torsoH * 0.25;
+        const pocketW = dims.torsoW * 0.32;
+        ctx.fillRect(-dims.torsoW * 0.45, dims.torsoTop + dims.torsoH * 0.2, pocketW, pocketH);
+        ctx.fillRect(dims.torsoW * 0.13, dims.torsoTop + dims.torsoH * 0.2, pocketW, pocketH);
+        ctx.restore();
+      }
     }
   });
 
-  registerWalkerRig('npc_chica_limpieza', {
-    skin: 'chica_limpieza.png',
+  registerHumanRig('npc_chica_limpieza', {
+    totalHeight: 64,
+    entityHeight: 62,
+    torsoWidth: 18,
+    torsoHeight: 32,
+    legLength: 22,
+    armLength: 21,
     walkCycle: 7.4,
     walkBob: 3.2,
     idleBob: 1.2,
-    swayFreq: 2.0,
-    swayAmp: 1.2,
+    swayAmp: 1.0,
     lean: 0.08,
     shadowRadius: 11,
     offsetY: -4,
-    states: makeNPCStates('chica_limpieza.png'),
-    resolveState: resolveNPCState
+    colors: {
+      body: '#a8d8cf',
+      accent: '#4f8a7b',
+      head: '#f5d4c3',
+      limbs: '#274c4a',
+      detail: '#123033'
+    },
+    extraUpdate(st){
+      st.bucketSwing = Math.sin(st.phase) * 0.25;
+      const tilt = st.moving ? -0.04 : -0.08;
+      st.headTiltTarget = tilt;
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims } = helper;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillRect(-dims.torsoW * 0.3, dims.torsoTop + dims.torsoH * 0.15, dims.torsoW * 0.25, dims.torsoH * 0.2);
+        ctx.restore();
+      }
+      if (stage === 'beforeFrontArm'){
+        const { scale, dims, flip } = helper;
+        ctx.save();
+        const offsetX = (dims.torsoW * 0.75 + 4 * scale) * (flip < 0 ? -1 : 1);
+        ctx.translate(offsetX, dims.bucketOffsetY + dims.armLength * 0.4);
+        ctx.rotate(-0.25 + st.bucketSwing * 0.2);
+        const bucketW = 12 * scale;
+        const bucketH = 14 * scale;
+        ctx.fillStyle = '#2e4e89';
+        ctx.fillRect(-bucketW * 0.5, -bucketH * 0.3, bucketW, bucketH);
+        ctx.strokeStyle = '#cbe6ff';
+        ctx.lineWidth = 1.4 * scale;
+        ctx.strokeRect(-bucketW * 0.5, -bucketH * 0.3, bucketW, bucketH);
+        ctx.beginPath();
+        ctx.moveTo(-bucketW * 0.35, -bucketH * 0.3);
+        ctx.lineTo(bucketW * 0.35, -bucketH * 0.3);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   });
 
-  registerWalkerRig('npc_guardia', {
-    skin: 'guardia.png',
+  registerHumanRig('npc_guardia', {
+    totalHeight: 66,
+    entityHeight: 64,
+    torsoWidth: 20,
+    torsoHeight: 34,
+    legLength: 22,
+    armLength: 22,
     walkCycle: 6.0,
     walkBob: 2.2,
     idleBob: 0.9,
@@ -1068,66 +1379,276 @@
     lean: 0.06,
     shadowRadius: 13,
     offsetY: -5,
-    states: makeNPCStates('guardia.png'),
-    resolveState: resolveNPCState
-  });
-
-  registerWalkerRig('npc_medico', {
-    skin: 'medico.png',
-    walkCycle: 6.4,
-    walkBob: 2.8,
-    idleBob: 1.0,
-    swayFreq: 1.6,
-    swayAmp: 0.5,
-    headTilt: { freq: 1.3, amp: 0.04 },
-    shadowRadius: 12,
-    offsetY: -4,
-    states: makeNPCStates('medico.png'),
-    resolveState: resolveNPCState,
-    extraUpdate(st, e, dt){
-      st._glanceTimer = (st._glanceTimer || 0) - dt;
-      if (!st.moving){
-        if (st._glanceTimer <= 0){
-          st._glanceTimer = 2.6 + Math.random() * 2.8;
-          st._glanceDir = (Math.random() < 0.5 ? -1 : 1) * 0.18;
-        }
-        const target = st._glanceDir || 0;
-        st.micro += (target - (st.micro || 0)) * Math.min(1, dt * 3);
-      } else {
-        st._glanceDir = 0;
-        st.micro += (0 - (st.micro || 0)) * Math.min(1, dt * 5);
+    colors: {
+      body: '#2a3442',
+      accent: '#445d73',
+      head: '#f2cfb4',
+      limbs: '#111a26',
+      detail: '#05080d'
+    },
+    extraUpdate(st){
+      const tilt = st.moving ? 0.01 : 0.03 * Math.sin(st.time * 0.8);
+      st.headTiltTarget = tilt;
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims } = helper;
+        ctx.save();
+        ctx.fillStyle = '#5d7cad';
+        ctx.fillRect(-dims.torsoW * 0.15, dims.torsoTop + dims.torsoH * 0.35, dims.torsoW * 0.3, dims.torsoH * 0.2);
+        ctx.restore();
       }
-      if (st.micro > 0.28) st.micro = 0.28;
-      if (st.micro < -0.28) st.micro = -0.28;
+      if (stage === 'afterHead'){
+        const { dims, scale } = helper;
+        ctx.save();
+        const brimY = dims.headCenterY - dims.headR - scale * 2.3;
+        ctx.fillStyle = '#121a25';
+        ctx.fillRect(-dims.headR * 0.95, brimY, dims.headR * 1.9, scale * 2);
+        ctx.fillStyle = '#3b4c63';
+        ctx.fillRect(-dims.headR * 0.6, brimY - scale * 1.8, dims.headR * 1.2, scale * 1.4);
+        ctx.restore();
+      }
     }
   });
 
-  registerWalkerRig('npc_supervisora', {
-    skin: 'supervisora.png',
-    scale: 0.98,
-    walkCycle: 6.1,
-    walkBob: 2.0,
-    idleBob: 0.9,
-    swayAmp: 0.7,
-    hipSway: { freq: 1.8, amp: 1.1 },
+  registerHumanRig('npc_medico', {
+    totalHeight: 62,
+    entityHeight: 60,
+    torsoWidth: 18,
+    torsoHeight: 30,
+    legLength: 22,
+    armLength: 21,
+    walkCycle: 6.4,
+    walkBob: 2.8,
+    idleBob: 1.0,
+    swayAmp: 0.5,
     lean: 0.05,
     shadowRadius: 12,
     offsetY: -4,
-    states: makeNPCStates('supervisora.png'),
-    resolveState: resolveNPCState
+    colors: {
+      body: '#f8feff',
+      accent: '#8adffc',
+      head: '#f4cfba',
+      limbs: '#1d3342',
+      detail: '#0a1117'
+    },
+    extraUpdate(st){
+      const tilt = st.moving ? 0.02 * Math.sin(st.phase * 0.6) : 0.14 * Math.sin(st.time * 0.45);
+      st.headTiltTarget = tilt;
+      if (!st.moving){
+        const look = Math.sin(st.time * 0.6) * 0.15;
+        st.headTurn += (look - st.headTurn) * 0.18;
+      }
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims, scale } = helper;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillRect(-dims.torsoW * 0.15, dims.torsoTop + dims.torsoH * 0.1, dims.torsoW * 0.3, dims.torsoH * 0.25);
+        ctx.strokeStyle = '#6bb0c8';
+        ctx.lineWidth = 1.2 * scale;
+        ctx.beginPath();
+        ctx.arc(-dims.torsoW * 0.3, dims.torsoTop + dims.torsoH * 0.2, 3.5 * scale, 0, TAU);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(-dims.torsoW * 0.05, dims.torsoTop + dims.torsoH * 0.4, 4 * scale, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   });
 
-  registerWalkerRig('npc_tcae', {
-    skin: 'TCAE.png',
+  registerHumanRig('npc_supervisora', {
+    totalHeight: 60,
+    entityHeight: 58,
+    torsoWidth: 18,
+    torsoHeight: 30,
+    legLength: 20,
+    armLength: 20,
+    walkCycle: 6.1,
+    walkBob: 2.0,
+    idleBob: 0.5,
+    swayAmp: 0.7,
+    scale: 0.98,
+    shadowRadius: 11,
+    offsetY: -3,
+    colors: {
+      body: '#c7b9ff',
+      accent: '#8a78d7',
+      head: '#f5d2c4',
+      limbs: '#2a2135',
+      detail: '#120c19'
+    },
+    extraUpdate(st, e, dt){
+      const target = e?.dialogTarget || e?.talkTarget || e?.target;
+      let desired = 0;
+      if (target && typeof target.x === 'number'){
+        const targetX = (target.x || 0) + (target.w || 0) * 0.5;
+        const selfX = (e?.x || 0) + (e?.w || 0) * 0.5;
+        desired = Math.max(-0.35, Math.min(0.35, (targetX - selfX) * 0.0015));
+      }
+      st.headTurn += (desired - st.headTurn) * Math.min(1, dt * 6);
+      st.headTiltTarget = st.moving ? 0.02 : 0.05 * Math.sin(st.time * 0.8);
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims } = helper;
+        ctx.save();
+        ctx.fillStyle = '#fefefe';
+        ctx.beginPath();
+        ctx.moveTo(-dims.torsoW * 0.45, dims.torsoTop + 3);
+        ctx.lineTo(0, dims.torsoTop + dims.torsoH * 0.3);
+        ctx.lineTo(dims.torsoW * 0.45, dims.torsoTop + 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  });
+
+  registerHumanRig('npc_tcae', {
+    totalHeight: 60,
+    entityHeight: 58,
+    torsoWidth: 18,
+    torsoHeight: 28,
+    legLength: 22,
+    armLength: 20,
     walkCycle: 6.3,
     walkBob: 2.7,
     idleBob: 1.1,
     swayAmp: 0.6,
-    lean: 0.06,
+    lean: 0.04,
     shadowRadius: 12,
     offsetY: -4,
-    states: makeNPCStates('TCAE.png'),
-    resolveState: resolveNPCState
+    colors: {
+      body: '#cfe6ff',
+      accent: '#5aa4ff',
+      head: '#f4cfb8',
+      limbs: '#25354a',
+      detail: '#101b24'
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims, scale } = helper;
+        ctx.save();
+        ctx.strokeStyle = '#7fc0ff';
+        ctx.lineWidth = 1.2 * scale;
+        ctx.strokeRect(-dims.torsoW * 0.4, dims.torsoTop + dims.torsoH * 0.35, dims.torsoW * 0.25, dims.torsoH * 0.2);
+        ctx.restore();
+      }
+    }
+  });
+
+  registerHumanRig('npc_enfermera_sexy', {
+    totalHeight: 66,
+    entityHeight: 64,
+    torsoWidth: 14,
+    torsoHeight: 34,
+    legLength: 28,
+    armLength: 24,
+    walkCycle: 7.6,
+    walkBob: 3.4,
+    idleBob: 1.2,
+    swayAmp: 1.3,
+    lateralAmp: 0.35,
+    lean: 0.09,
+    shadowRadius: 12,
+    offsetY: -4,
+    colors: {
+      body: '#ff5fa2',
+      accent: '#ffbbdd',
+      head: '#f4c4c0',
+      limbs: '#2a1424',
+      detail: '#210714'
+    },
+    extraUpdate(st){
+      st.hip = Math.sin(st.phase * 1.4) * 0.3;
+      st.headTiltTarget = 0.1 * Math.sin(st.phase * 0.6);
+      st.headTurn += (Math.sin(st.phase * 0.8) * 0.2 - st.headTurn) * 0.12;
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims } = helper;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(-dims.torsoW * 0.3, dims.torsoTop + dims.torsoH * 0.2, dims.torsoW * 0.6, dims.torsoH * 0.3);
+        ctx.restore();
+      }
+    }
+  });
+
+  registerHumanRig('npc_familiar_molesto', {
+    totalHeight: 60,
+    entityHeight: 58,
+    torsoWidth: 18,
+    torsoHeight: 30,
+    legLength: 20,
+    armLength: 20,
+    walkCycle: 6.8,
+    walkBob: 2.9,
+    idleBob: 1.3,
+    swayAmp: 0.9,
+    shadowRadius: 11,
+    offsetY: -5,
+    colors: {
+      body: '#9b9b85',
+      accent: '#c7c091',
+      head: '#f0d6b9',
+      limbs: '#3b3a2c',
+      detail: '#19160f'
+    },
+    extraUpdate(st, e, dt){
+      st._errTimer = (st._errTimer || 0) - dt;
+      if (st._errTimer <= 0){
+        st._errTimer = 1.4 + Math.random() * 1.8;
+        st._errCycle = 6.8 + (Math.random() - 0.5) * 1.0;
+      }
+      if (st.moving){
+        st.walkCycleOverride = st._errCycle || 6.8;
+        st.bobOverride = 2.9 * (1 + Math.sin(st.time * 4.2) * 0.1);
+        st.zigzag = Math.sin(st.time * 6.3 + st.phase) * 0.5;
+      } else {
+        st.walkCycleOverride = null;
+        st.bobOverride = null;
+        st.shakeX = Math.sin(st.time * 9.5) * 0.25;
+        st.shakeY = Math.sin(st.time * 11.2) * 0.18;
+        st.headTurn += (Math.sin(st.time * 3.4) * 0.35 - st.headTurn) * 0.22;
+      }
+    },
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso'){
+        const { dims } = helper;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(90,80,60,0.8)';
+        ctx.setLineDash([3, 2]);
+        ctx.strokeRect(-dims.torsoW * 0.35, dims.torsoTop + dims.torsoH * 0.45, dims.torsoW * 0.3, dims.torsoH * 0.18);
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+  });
+
+  registerHumanRig('npc_generic_human', {
+    totalHeight: 60,
+    entityHeight: 58,
+    torsoWidth: 18,
+    torsoHeight: 30,
+    legLength: 20,
+    armLength: 20,
+    walkCycle: 6.2,
+    walkBob: 2.6,
+    idleBob: 1.0,
+    swayAmp: 0.5,
+    shadowRadius: 11,
+    offsetY: -4,
+    colors: {
+      body: '#6d7a8e',
+      accent: '#8895a9',
+      head: '#f5d1bb',
+      limbs: '#2a3543',
+      detail: '#11161c'
+    }
   });
 
   registerWalkerRig('npc_jefe_servicio', {
@@ -1156,72 +1677,7 @@
     resolveState: resolveNPCState
   });
 
-  registerWalkerRig('npc_enfermera_sexy', {
-    skin: 'enfermera_sexy.png',
-    walkCycle: 7.6,
-    walkBob: 3.4,
-    idleBob: 1.2,
-    swayAmp: 1.3,
-    hipSway: { freq: 1.6, amp: 1.5 },
-    lean: 0.09,
-    shadowRadius: 12,
-    offsetY: -4,
-    states: makeNPCStates('enfermera_sexy.png'),
-    resolveState: resolveNPCState
-  });
-
-  registerWalkerRig('npc_familiar_molesto', {
-    skin: 'familiar_molesto.png',
-    walkCycle: 6.8,
-    walkBob: 2.9,
-    idleBob: 1.0,
-    swayAmp: 0.9,
-    erratic: { speed: 3.2, amp: 0.08 },
-    microTurn: { speed: 2.3, amp: 0.1 },
-    shadowRadius: 11,
-    offsetY: -5,
-    states: makeNPCStates('familiar_molesto.png'),
-    resolveState: resolveNPCState,
-    extraUpdate(st, e, dt, speed, moving){
-      st._erraticTimer = (st._erraticTimer || 0) - dt;
-      if (st._erraticTimer <= 0){
-        st._erraticTimer = 1.2 + Math.random() * 1.6;
-        const base = st.walkCycleBase ?? 6.8;
-        st._erraticCycle = base + (Math.random() - 0.5) * 1.1;
-        st._idleShakeDir = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.35);
-      }
-      if (moving){
-        const targetCycle = st._erraticCycle ?? (st.walkCycleBase ?? 6.8);
-        st.walkCycleOverride = targetCycle;
-        const baseBob = st.walkBobBase ?? 2.9;
-        st.walkBobOverride = baseBob * (1 + Math.sin(st.time * 4.4 + st.swayPhase) * 0.12);
-        const erraticTarget = Math.sin(st.time * 9.5 + st.swayPhase) * 0.16;
-        st.erratic += (erraticTarget - st.erratic) * Math.min(1, dt * 4.2);
-        st.hip = Math.sin(st.time * 11.5 + st.swayPhase) * 0.45;
-      } else {
-        st.walkCycleOverride = null;
-        st.walkBobOverride = null;
-        const jitter = (st._idleShakeDir || 0) * Math.sin(st.time * 13.5);
-        st.hip = jitter;
-        const erraticTarget = Math.sin(st.time * 18) * 0.12;
-        st.erratic += (erraticTarget - st.erratic) * Math.min(1, dt * 3.6);
-      }
-    }
-  });
-
-  registerWalkerRig('npc_generic_human', {
-    skin: null,
-    fallbackColor: '#6d7a8e',
-    walkCycle: 6.2,
-    walkBob: 2.6,
-    idleBob: 1.0,
-    swayAmp: 0.5,
-    lean: 0.05,
-    shadowRadius: 11,
-    offsetY: -4,
-    states: makeNPCStates(null),
-    resolveState: resolveNPCState
-  });
+  // legacy rigs pending refactor below
 
   // ───────────────────────────── PACIENTES ──────────────────────────
   function registerBedRig(id, cfg){
@@ -1334,9 +1790,13 @@
     showNameTag: true
   });
 
-  registerWalkerRig('patient_furiosa', {
-    skin: 'paciente_furiosa.png',
-    tint: { color: 'rgba(255,64,64,1)', alpha: 0.18 },
+  registerHumanRig('patient_furiosa', {
+    totalHeight: 62,
+    entityHeight: 60,
+    torsoWidth: 18,
+    torsoHeight: 30,
+    legLength: 22,
+    armLength: 21,
     walkCycle: 8.0,
     walkBob: 3.5,
     idleBob: 1.4,
@@ -1345,52 +1805,54 @@
     shadowRadius: 12,
     offsetY: -5,
     showNameTag: true,
-    states: {
-      idle: { skin: { down: 'paciente_furiosa.png', up: 'paciente_furiosa.png', side: 'paciente_furiosa.png' }, bobMul: 0.9 },
-      walk_down: { skin: 'paciente_furiosa.png', bobMul: 1.1 },
-      walk_up: { skin: 'paciente_furiosa.png', bobMul: 1.05 },
-      walk_side: { skin: 'paciente_furiosa.png', bobMul: 1.2 },
-      attack: { skin: 'paciente_furiosa.png', tint: { color: 'rgba(255,80,80,1)', alpha: 0.32 }, bobMul: 1.3 },
-      hurt: { skin: 'paciente_furiosa.png', tint: { color: 'rgba(255,200,200,1)', alpha: 0.28 }, bobMul: 0.4 },
-      down: { skin: 'paciente_furiosa.png', tint: { color: 'rgba(40,20,20,1)', alpha: 0.55 }, scale: 0.9, shadowAlpha: 0.12, bobMul: 0 }
+    colors: {
+      body: '#e0372f',
+      accent: '#ff7c68',
+      head: '#f0b4a6',
+      limbs: '#4a0f12',
+      detail: '#1a0406'
     },
-    resolveState(st, e){
-      if (e?.dead) return { state: 'down', orientation: 'down', bobMul: 0 };
-      const cd = e?.touchCD || 0;
-      if (cd > 0.45) return { state: 'attack', orientation: st.orientation };
-      if (cd > 0.05) return { state: 'hurt', orientation: st.orientation };
-      if (st.moving){
-        if (st.orientation === 'up') return 'walk_up';
-        if (st.orientation === 'side') return { state: 'walk_side', dir: st.dir };
-        return 'walk_down';
+    extraUpdate(st){
+      const enraged = st.speed > 45;
+      if (enraged){
+        st.colorPulse = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(st.time * 6));
       }
-      return { state: 'idle', orientation: st.orientation };
+      if (!st.moving){
+        st.shakeX = Math.sin(st.time * 13) * 0.22;
+        st.shakeY = Math.sin(st.time * 17) * 0.18;
+      }
+      st.headTiltTarget = st.moving ? 0.05 * Math.sin(st.phase * 0.8) : 0.02 * Math.sin(st.time * 5);
     },
-    extraUpdate(st, e, dt){
-      st._angerPhase = (st._angerPhase || 0) + dt * 6.4;
-      const pulse = 0.18 + 0.12 * (0.5 + 0.5 * Math.sin(st._angerPhase * 2.2));
-      st.tint = { color: 'rgba(255,64,64,1)', alpha: pulse };
-      if (e?.dead){
-        st.walkCycleOverride = null;
-        st.walkBobOverride = 0;
-        st.idleBobOverride = 0;
-        st.hip = 0;
-        return;
+    extraDraw(ctx, st, helper, stage){
+      if (stage === 'afterTorso' && st.colorPulse > 0){
+        const { dims } = helper;
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.75, st.colorPulse);
+        ctx.fillStyle = 'rgba(255,64,64,1)';
+        ctx.fillRect(-dims.torsoW * 0.5, dims.torsoTop, dims.torsoW, dims.torsoH);
+        ctx.restore();
       }
-      if (st.moving){
-        const baseCycle = st.walkCycleBase ?? 8;
-        const baseBob = st.walkBobBase ?? 3.5;
-        st.walkCycleOverride = baseCycle * 1.05;
-        st.walkBobOverride = baseBob * 1.05;
-        st.idleBobOverride = null;
-        st.hip = Math.sin(st.time * 10.5 + st.swayPhase) * 0.35;
-      } else {
-        st.walkCycleOverride = null;
-        st.walkBobOverride = null;
-        const baseIdle = st.idleBobBase ?? 1.4;
-        st.idleBobOverride = baseIdle * 1.25;
-        st.hip = Math.sin(st.time * 18) * 0.55;
-      }
+    },
+    onHeadDraw(ctx, st, helper){
+      const { dims, colors } = helper;
+      ctx.save();
+      ctx.strokeStyle = colors.detail;
+      ctx.lineWidth = dims.headR * 0.18;
+      const browY = -dims.headR * 0.25;
+      ctx.beginPath();
+      ctx.moveTo(-dims.eyeSpacing, browY + dims.headR * 0.05);
+      ctx.lineTo(-dims.eyeSpacing * 0.2, browY - dims.headR * 0.1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(dims.eyeSpacing, browY + dims.headR * 0.05);
+      ctx.lineTo(dims.eyeSpacing * 0.2, browY - dims.headR * 0.1);
+      ctx.stroke();
+      const mouthY = dims.headR * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(-dims.headR * 0.35, mouthY + dims.headR * 0.15);
+      ctx.lineTo(dims.headR * 0.35, mouthY - dims.headR * 0.05);
+      ctx.stroke();
+      ctx.restore();
     }
   });
 
