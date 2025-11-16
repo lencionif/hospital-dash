@@ -91,6 +91,24 @@
     ctx.restore();
   }
 
+  const BASE_TILE_UNITS = 32;
+
+  function getTileSizePx(){
+    return window.G?.TILE_SIZE || window.TILE_SIZE || window.TILE || BASE_TILE_UNITS;
+  }
+
+  function oneTileScale(opts = {}){
+    const design = Math.max(4, Number(opts.designSize || opts.design || BASE_TILE_UNITS));
+    const inner = clamp01(typeof opts.inner === 'number' ? opts.inner : 0.92);
+    const tile = getTileSizePx();
+    return (tile * inner) / design;
+  }
+
+  function applyOneTileScale(sc, opts = {}){
+    const base = Number.isFinite(sc) ? sc : 1;
+    return base * oneTileScale(opts);
+  }
+
   function toScreen(_cam, e){
     const tile = window.G?.TILE_SIZE || window.TILE_SIZE || window.TILE || 32;
     const w = Number(e?.w);
@@ -2354,32 +2372,33 @@
       },
       draw(ctx, cam, e, st){
         const [cx, cy, sc] = toScreen(cam, e);
-        const s = sc * 0.9;
+        const s = applyOneTileScale(sc, { designSize: 48, inner: 0.94 });
         ctx.save();
-        ctx.translate(cx, cy + st.bob * 0.4 * s);
+        ctx.translate(cx, cy + st.bob * 0.35 * s);
         drawShadow(ctx, 10, s, 0.28, 0.22);
-        ctx.translate(0, -6 * s);
-        ctx.fillStyle = '#9c9182';
+        ctx.translate(0, -4 * s);
+        // Paleta inspirada en assets/images/raton.png: pelaje gris y orejas rosadas.
+        ctx.fillStyle = '#7f7869';
         ctx.beginPath();
         if (safeEllipse(ctx, -4 * s, 4 * s, 12 * s, 7 * s, 0, 0, TAU)) ctx.fill();
-        ctx.fillStyle = '#b8aea0';
+        ctx.fillStyle = '#9f9484';
         ctx.beginPath();
         if (safeEllipse(ctx, 4 * s, 5 * s, 9 * s, 6 * s, 0, 0, TAU)) ctx.fill();
         ctx.save();
-        ctx.strokeStyle = '#8a6151';
+        ctx.strokeStyle = '#c37c6b';
         ctx.lineWidth = 2.2 * s;
         ctx.beginPath();
         ctx.moveTo(-14 * s, 4 * s);
         ctx.quadraticCurveTo(-22 * s, 4 * s + st.tail * 8 * s, -28 * s, 10 * s);
         ctx.stroke();
         ctx.restore();
-        ctx.fillStyle = '#cfc4b6';
+        ctx.fillStyle = '#c3b9aa';
         ctx.beginPath();
         if (safeEllipse(ctx, 12 * s + st.lunge * 2 * s, 2 * s, 6.8 * s, 5.4 * s, 0, 0, TAU)) ctx.fill();
-        ctx.fillStyle = '#f3b1bb';
+        ctx.fillStyle = '#f7a6b5';
         ctx.beginPath();
         if (safeEllipse(ctx, 15 * s, -1.6 * s, 2.6 * s, 2.6 * s, 0, 0, TAU)) ctx.fill();
-        ctx.fillStyle = '#2a2a2a';
+        ctx.fillStyle = '#27272b';
         ctx.beginPath();
         if (safeEllipse(ctx, 9.8 * s, -0.5 * s, 1.2 * s, 1.6 * s, 0, 0, TAU)) ctx.fill();
         ctx.restore();
@@ -2435,14 +2454,15 @@
     },
     draw(ctx, cam, e, st){
       const [cx, cy, sc] = toScreen(cam, e);
-      const s = sc * 0.8;
+      const s = applyOneTileScale(sc, { designSize: 44, inner: 0.9 });
       ctx.save();
       ctx.translate(cx, cy + st.drop);
       const shadowAlpha = 0.2 * Math.max(0.1, 1 - Math.min(st.drop / 48, 1));
       drawShadow(ctx, 8, s, 0.28, shadowAlpha);
-      ctx.translate(0, -10 * s + st.bob * 0.25 * s);
+      ctx.translate(0, -8 * s + st.bob * 0.25 * s);
       ctx.rotate((st.drop > 0.5 ? st.rotation : st.sting * 0.1));
       ctx.globalAlpha = 0.3 + Math.abs(st.wing) * 0.4;
+      // Tonos extraídos de assets/images/mosquito.png: alas azuladas y cuerpo oscuro.
       ctx.fillStyle = '#d2f3ff';
       ctx.beginPath();
       if (safeEllipse(ctx, -4.5 * s, -6 * s, 5 * s * (1 + st.wing * 0.3), 11 * s, -0.45, 0, TAU)) ctx.fill();
@@ -2560,6 +2580,17 @@
     return (typeof e?.open === 'boolean' ? e.open : false) ? 1 : 0;
   }
 
+  // Paleta derivada de assets/images/puerta_cerrada.png y puerta_abiertas.png
+  const DOOR_PALETTE = {
+    frame: '#dbe7f4',
+    crown: '#5ad1cf',
+    panel: '#4ea7b9',
+    glass: '#9fe6dc',
+    stripe: '#f6fbff',
+    handle: '#ffe9c7',
+    shadow: '#0b1b1c'
+  };
+
   const doorRig = {
     create(e){
       const initial = doorProgress(e);
@@ -2591,23 +2622,23 @@
         ctx.fillRect(Number(e?.x) || 0, Number(e?.y) || 0, e?.w || tile, e?.h || tile);
         return;
       }
-      const w = Math.max(16, (e.w || 32) * sc);
-      const h = Math.max(24, (e.h || 48) * sc);
+      const unit = applyOneTileScale(sc, { designSize: BASE_TILE_UNITS, inner: 0.96 });
+      const w = BASE_TILE_UNITS * unit;
+      const h = BASE_TILE_UNITS * unit;
       const progress = clamp01(st?.openProgress ?? doorProgress(e));
       const fade = clamp01(st?.fade ?? 1);
       ctx.save();
-      ctx.translate(cx, cy + h * 0.12);
-      const doorShadowRadius = Math.max(8, (e.w || 32) * 0.26);
-      drawShadow(ctx, doorShadowRadius, sc, 0.26, 0.22 * fade);
-      ctx.translate(0, -h * 0.58);
+      ctx.translate(cx, cy + h * 0.08);
+      drawShadow(ctx, BASE_TILE_UNITS * 0.3, unit, 0.24, 0.2 * fade);
+      ctx.translate(0, -h * 0.52);
       const frameW = w * 0.94;
-      const frameH = h * 0.96;
-      ctx.fillStyle = '#201c18';
+      const frameH = h * 0.94;
+      ctx.fillStyle = DOOR_PALETTE.shadow;
       ctx.fillRect(-frameW * 0.55, -h * 0.08, frameW * 1.1, frameH + h * 0.18);
-      ctx.fillStyle = '#5b4b3b';
+      ctx.fillStyle = DOOR_PALETTE.frame;
       ctx.fillRect(-frameW * 0.5, 0, frameW, frameH);
-      ctx.fillStyle = '#3c3227';
-      ctx.fillRect(-frameW * 0.5, -frameH * 0.06, frameW, frameH * 0.12);
+      ctx.fillStyle = DOOR_PALETTE.crown;
+      ctx.fillRect(-frameW * 0.5, -frameH * 0.08, frameW, frameH * 0.16);
       const panelH = frameH * 0.88;
       const basePanelW = frameW * 0.42;
       const shrink = Math.max(frameW * 0.08, basePanelW * (1 - 0.7 * progress));
@@ -2617,9 +2648,9 @@
         ctx.save();
         const offsetX = dir * (slide + shrink * 0.5 + frameW * 0.02);
         ctx.translate(offsetX, frameH * 0.05);
-        ctx.fillStyle = '#7e6a56';
+        ctx.fillStyle = DOOR_PALETTE.panel;
         ctx.fillRect(-shrink * 0.5, 0, shrink, panelH);
-        ctx.strokeStyle = 'rgba(40,30,20,0.35)';
+        ctx.strokeStyle = 'rgba(5,24,29,0.28)';
         ctx.lineWidth = Math.max(1.5, 2 * sc);
         ctx.beginPath();
         ctx.moveTo(-shrink * 0.5 + 2 * sc, panelH * 0.2);
@@ -2627,9 +2658,11 @@
         ctx.moveTo(shrink * 0.5 - 2 * sc, panelH * 0.2);
         ctx.lineTo(shrink * 0.5 - 2 * sc, panelH * 0.8);
         ctx.stroke();
-        ctx.fillStyle = `rgba(255,226,170,${0.12 + 0.12 * progress})`;
-        ctx.fillRect(-shrink * 0.42, panelH * 0.15, shrink * 0.84, panelH * 0.12);
-        ctx.fillStyle = '#c69d5b';
+        ctx.fillStyle = DOOR_PALETTE.stripe;
+        ctx.globalAlpha = 0.6 - progress * 0.2;
+        ctx.fillRect(-shrink * 0.42, panelH * 0.15, shrink * 0.84, panelH * 0.1);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = DOOR_PALETTE.handle;
         const handleW = Math.max(2.5 * sc, shrink * 0.08);
         const handleH = Math.max(4 * sc, panelH * 0.08);
         ctx.globalAlpha = fade * (0.5 + 0.5 * handlePulse);
@@ -2640,14 +2673,14 @@
       drawPanel(-1);
       drawPanel(1);
       ctx.globalAlpha = Math.max(0.15, 0.4 * (1 - progress)) * fade;
-      ctx.fillStyle = 'rgba(10,8,6,0.25)';
+      ctx.fillStyle = 'rgba(11,17,22,0.25)';
       ctx.fillRect(-frameW * 0.5, 0, frameW, frameH);
       if (progress > 0){
-        ctx.globalAlpha = 0.25 * progress * fade;
-        const lightGrad = ctx.createLinearGradient(-frameW * 0.25, frameH * 0.5, frameW * 0.25, frameH * 0.5);
-        safeColorStop(lightGrad, 0, 'rgba(255,236,210,0)');
-        safeColorStop(lightGrad, 0.5, 'rgba(255,236,210,0.9)');
-        safeColorStop(lightGrad, 1, 'rgba(255,236,210,0)');
+        ctx.globalAlpha = 0.3 * progress * fade;
+        const lightGrad = ctx.createLinearGradient(-frameW * 0.3, frameH * 0.5, frameW * 0.3, frameH * 0.5);
+        safeColorStop(lightGrad, 0, `${DOOR_PALETTE.glass}00`);
+        safeColorStop(lightGrad, 0.5, `${DOOR_PALETTE.glass}cc`);
+        safeColorStop(lightGrad, 1, `${DOOR_PALETTE.glass}00`);
         ctx.fillStyle = lightGrad;
         ctx.fillRect(-frameW * 0.5, 0, frameW, frameH);
       }

@@ -17,8 +17,8 @@
     custom: '#f8e825'
   };
   const LERP_SPEED = 0.2;
-  const MIN_LEN_RATIO = 0.45;
-  const MAX_LEN_RATIO = 1.2;
+  const MIN_LEN_RATIO = 0.58;
+  const MAX_LEN_RATIO = 0.95;
 
   const ArrowGuide = {
     enabled: true,
@@ -211,8 +211,8 @@
       const scale = resolveHeroScale(hero, camera);
       const lengthPx = worldLength * scale;
       const thickness = Math.max(4, heroRadius * 0.35 * scale);
-      const headSize = Math.max(thickness * 1.25, 10 * scale);
-      const headWidth = headSize * 0.9;
+      const headSize = Math.max(thickness * 1.45, 12 * scale);
+      const headWidth = headSize * 0.75;
       if (!Number.isFinite(lengthPx) || lengthPx <= 0) return;
 
       const color = target.color || colorForType(target.type);
@@ -228,7 +228,7 @@
       ctxRef.shadowColor = color;
       ctxRef.shadowBlur = glow;
 
-      const bodyLength = Math.max(2, lengthPx - headSize);
+      const bodyLength = Math.max(2, lengthPx - headSize * 0.85);
       ctxRef.fillRect(0, -thickness * 0.5, bodyLength, thickness);
       ctxRef.beginPath();
       ctxRef.moveTo(bodyLength, -headWidth * 0.5);

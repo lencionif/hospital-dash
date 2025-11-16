@@ -28,6 +28,15 @@
   window.DEBUG_MAP_FILE_PARAM = DEBUG_MAP_FILE_PARAM;
   window.DEBUG_MAP_FILE = DEBUG_MAP_FILE;
   const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
+  const LEVEL_PARAM_RAW = SEARCH_PARAMS.get('level');
+  const DEFAULT_LEVEL_ID = 'level1';
+  const NORMALIZED_LEVEL_ID = normalizeLevelParam(LEVEL_PARAM_RAW);
+  const DEBUG_LEVEL_ID = DEBUG_MAP_MODE ? (NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID) : null;
+  const DEBUG_LEVEL_NUMBER = DEBUG_LEVEL_ID ? extractLevelNumber(DEBUG_LEVEL_ID) : null;
+  window.DEBUG_MAP_MODE = DEBUG_MAP_MODE;
+  window.DEBUG_LEVEL_PARAM = LEVEL_PARAM_RAW || null;
+  window.DEBUG_LEVEL_ID = DEBUG_LEVEL_ID;
+  window.DEBUG_LEVEL_NUMBER = DEBUG_LEVEL_NUMBER;
 
   function logThrough(level, ...args){
     const logger = window.LOG;
@@ -38,6 +47,23 @@
     const fallback = (level === 'error') ? console.error
       : (level === 'warn') ? console.warn : console.log;
     fallback(...args);
+  }
+
+  function normalizeLevelParam(value){
+    if (value == null) return null;
+    const raw = value.toString().trim().toLowerCase();
+    if (!raw) return null;
+    if (/^level\d+$/.test(raw)) return raw;
+    if (/^\d+$/.test(raw)) return `level${raw}`;
+    return null;
+  }
+
+  function extractLevelNumber(id){
+    if (!id) return null;
+    const match = /level(\d+)/.exec(String(id).toLowerCase());
+    if (!match) return null;
+    const num = parseInt(match[1], 10);
+    return Number.isFinite(num) ? num : null;
   }
 
   const TILE = 32;
@@ -132,6 +158,8 @@
     health: 6, // medias vidas (0..6)
     levelState: 'READY_TO_START', // READY_TO_START | LOADING | READY | PLAYING | PAUSED | IDLE
     pendingLevel: null,
+    debugLevelId: DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID,
+    debugLevelNumber: DEBUG_LEVEL_NUMBER || 1,
     entities: [],
     movers: [],
     hostiles: [],
@@ -507,12 +535,14 @@
   };
 
   // Canvas principal + fog + HUD (capas independientes)
-  const canvas    = document.getElementById('gameCanvas');
-  const ctx       = canvas.getContext('2d');
-  const fogCanvas = document.getElementById('fogCanvas');
-  const fogCtx    = fogCanvas ? fogCanvas.getContext('2d') : null;
-  const hudCanvas = document.getElementById('hudCanvas');
-  const hudCtx    = hudCanvas.getContext('2d');
+  const canvas      = document.getElementById('gameCanvas');
+  const ctx         = canvas.getContext('2d');
+  const fogCanvas   = document.getElementById('fogCanvas');
+  const fogCtx      = fogCanvas ? fogCanvas.getContext('2d') : null;
+  const guideCanvas = document.getElementById('guideCanvas');
+  const guideCtx    = guideCanvas ? guideCanvas.getContext('2d') : null;
+  const hudCanvas   = document.getElementById('hudCanvas');
+  const hudCtx      = hudCanvas.getContext('2d');
 
   window.DEBUG_POPULATE = window.DEBUG_POPULATE || { LOG:false, VERBOSE:false };
   // SkyFX listo desde el menú (antes de startGame)
@@ -526,6 +556,7 @@
     })
   });
   if (fogCanvas){ fogCanvas.width = VIEW_W; fogCanvas.height = VIEW_H; }
+  if (guideCanvas){ guideCanvas.width = VIEW_W; guideCanvas.height = VIEW_H; }
   if (hudCanvas){ hudCanvas.width = VIEW_W; hudCanvas.height = VIEW_H; }
 
   // === Sprites (plugin unificado) ===
@@ -591,6 +622,20 @@
     }
   }
 
+  function syncGuideCanvasResolution(){
+    if (!guideCanvas) return;
+    const cssW = guideCanvas.clientWidth || VIEW_W;
+    const cssH = guideCanvas.clientHeight || VIEW_H;
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const targetW = Math.max(1, Math.round(cssW * dpr));
+    const targetH = Math.max(1, Math.round(cssH * dpr));
+    if (guideCanvas.__hudDpr !== dpr || guideCanvas.width !== targetW || guideCanvas.height !== targetH){
+      guideCanvas.__hudDpr = dpr;
+      guideCanvas.width = targetW;
+      guideCanvas.height = targetH;
+    }
+  }
+
   function resetGameWorld(opts = {}){
     const options = opts || {};
     const levelState = options.levelState || 'READY_TO_START';
@@ -598,6 +643,7 @@
 
     clearCanvasContext(ctx, canvas?.width, canvas?.height);
     clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
+    clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
     clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
 
     try { window.FogAPI?.reset?.(); } catch (_) {}
@@ -2671,6 +2717,7 @@ function drawEntities(c2){
     if (!canRenderWorld) {
       clearCanvasContext(ctx, canvas?.width, canvas?.height);
       clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
+      clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
       clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
       return;
     }
@@ -2698,12 +2745,20 @@ function drawEntities(c2){
 
     try { window.HUD?.drawWorldOverlays?.(ctx, camera, G); } catch(e){ console.warn('HUD.drawWorldOverlays', e); }
 
+    if (guideCtx){
+      syncGuideCanvasResolution();
+      clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
+      try { window.ArrowGuide?.draw(guideCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
+    }
+
     // 1) Dibuja el HUD (esta función hace clearRect del HUD canvas)
     try { window.HUD && HUD.render(hudCtx, camera, G); } catch(e){ console.warn('HUD.render', e); }
     if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
 
-    // 2) Dibuja AHORA la flecha y overlays, para que el clear del HUD no las borre
-    try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
+    // 2) Flecha (si no hay canvas dedicado) + overlays finales
+    if (!guideCtx){
+      try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
+    }
     if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
   }
 

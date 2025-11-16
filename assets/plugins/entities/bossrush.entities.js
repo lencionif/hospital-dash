@@ -347,6 +347,29 @@
   }
 
   // =================== API pública ===================
+  function getDebugLevelOverride(){
+    if (!W.DEBUG_MAP_MODE) return null;
+    if (Number.isFinite(W.DEBUG_LEVEL_NUMBER)) return W.DEBUG_LEVEL_NUMBER;
+    const id = typeof W.DEBUG_LEVEL_ID === 'string' ? W.DEBUG_LEVEL_ID : null;
+    if (!id) return null;
+    const match = /level(\d+)/i.exec(id);
+    if (!match) return null;
+    const num = Number(match[1]);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function pickLevelForBoss(){
+    const override = getDebugLevelOverride();
+    if (Number.isFinite(override)) return override;
+    if (W.GameFlowAPI?.getLevel){
+      try {
+        const lvl = W.GameFlowAPI.getLevel();
+        if (Number.isFinite(lvl)) return lvl;
+      } catch (_) {}
+    }
+    return G.level || 1;
+  }
+
   const BossAPI = {
     /**
      * spawn(x, y, p)
@@ -354,7 +377,7 @@
      * Si no llega, se decide por nivel (1: hema, 2: psiq, 3+: jefa).
      */
     spawn(x, y, p = {}) {
-      const level = (W.GameFlowAPI && W.GameFlowAPI.getLevel && W.GameFlowAPI.getLevel()) || G.level || 1;
+      const level = pickLevelForBoss();
       const sub = (p.sub || p.kind || p.type || '').toLowerCase() ||
                   (level === 1 ? 'hematologico' : level === 2 ? 'psiquiatrica' : 'jefa_limpieza');
 
