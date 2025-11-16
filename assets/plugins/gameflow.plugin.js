@@ -356,6 +356,10 @@
       };
     },
 
+    getLevel(){
+      return S.level || 1;
+    },
+
     playReadyOverlay(opts){
       return triggerReadyOverlay(opts);
     },

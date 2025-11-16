@@ -167,9 +167,10 @@ canvas {
 
 /* Las capas de luces/niebla SIEMPRE transparentes */
 #lightingCanvas,
-#fogCanvas {
+#fogCanvas,
+#guideCanvas {
   background-color: transparent !important;
-  position: absolute; inset: 0; z-index: 3; pointer-events: none; 
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
 }
 
 #gameCanvas { 
@@ -191,7 +192,8 @@ canvas {
 
 /* Fog of war (por encima de las luces, debajo de la UI) */
 #gameCanvas,
-#fogCanvas{
+#fogCanvas,
+#guideCanvas{
   position: absolute;
   inset: 0;
   width: 100%;
@@ -736,7 +738,7 @@ button:active { transform: translateY(1px); }
 #game-container .overlay         { z-index: 50 !important; }
 
 /* Capas de rendering */
-#gameCanvas, #fogCanvas, #hudCanvas {
+#gameCanvas, #fogCanvas, #guideCanvas, #hudCanvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -753,6 +755,7 @@ button:active { transform: translateY(1px); }
 /* Los 3 canvas ocupan exactamente el contenedor */
 #gameCanvas,
 #fogCanvas,
+#guideCanvas,
 #hudCanvas{
   position: absolute;
   inset: 0;              /* top:0; right:0; bottom:0; left:0 */
@@ -767,6 +770,11 @@ button:active { transform: translateY(1px); }
 #fogCanvas {
   z-index: 30;
   pointer-events: none;  /* que no intercepte clics */
+}
+
+#guideCanvas {
+  z-index: 40;
+  pointer-events: none;
 }
 
 /* HUD SIEMPRE por encima de todo */
