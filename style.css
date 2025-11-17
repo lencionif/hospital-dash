@@ -1297,10 +1297,11 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   height:1px;
   pointer-events:none;
   transform-origin:center center;
-  z-index:140;
+  z-index:25;
   color:#66b3ff;
   filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
   transition: opacity 0.25s ease;
+  will-change: transform, opacity;
 }
 
 .puppet-hero.hero-enrique{ color:#ffd34d; }
@@ -1351,21 +1352,114 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   border-radius:50%;
   opacity:0.7;
   mix-blend-mode:screen;
+  will-change: transform, opacity;
 }
 
-.puppet-hero .hero-head{ width:12px; height:12px; top:4px; left:50%; transform:translate(-50%, -50%); }
+.puppet-hero .hero-head{
+  width:12px;
+  height:12px;
+  top:4px;
+  left:50%;
+  --hero-head-offset-x: 0px;
+  --hero-head-offset-y: 0px;
+  --hero-head-tilt: 0deg;
+  transform:translate(calc(-50% + var(--hero-head-offset-x, 0px)), calc(-50% + var(--hero-head-offset-y, 0px))) rotate(var(--hero-head-tilt, 0deg));
+  transition: transform 0.12s ease;
+}
 .puppet-hero .hero-head-has-face{ overflow:hidden; border-radius:50%; border:1px solid rgba(255,255,255,0.12); background:rgba(6,10,18,0.45); }
-.puppet-hero .hero-face{ width:100%; height:100%; display:block; object-fit:cover; image-rendering:auto; pointer-events:none; user-select:none; filter:drop-shadow(0 0 2px rgba(0,0,0,0.35)); transition:opacity 0.2s ease; }
+.puppet-hero .hero-face{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  image-rendering:auto;
+  pointer-events:none;
+  user-select:none;
+  filter:drop-shadow(0 0 2px rgba(0,0,0,0.35));
+  transition:opacity 0.2s ease, transform 0.08s ease;
+  transform: translateY(var(--hero-face-offset-y, 0px));
+}
 .puppet-hero .hero-face-back{ opacity:0.92; }
 .puppet-hero .hero-face-front{ opacity:1; }
-.puppet-hero .hero-torso{ width:18px; height:20px; top:50%; left:50%; border-radius:12px; transform-origin:50% 85%; --hero-breath-scale:1; transform:translate(-50%, -65%) scaleY(var(--hero-breath-scale, 1)); transition:transform 0.2s ease; }
-.puppet-hero .hero-arm{ width:8px; height:16px; top:8px; border-radius:6px; }
+.puppet-hero .hero-torso{
+  width:18px;
+  height:20px;
+  top:50%;
+  left:50%;
+  border-radius:12px;
+  transform-origin:50% 85%;
+  --hero-breath-scale:1;
+  --hero-torso-offset-y: 0px;
+  --hero-torso-lean: 0deg;
+  transform:translate(-50%, calc(-65% + var(--hero-torso-offset-y, 0px))) scaleY(var(--hero-breath-scale, 1)) rotate(var(--hero-torso-lean, 0deg));
+  transition:transform 0.1s ease;
+}
+.puppet-hero .hero-arm{
+  width:8px;
+  height:16px;
+  top:8px;
+  border-radius:6px;
+  transform-origin:50% 10%;
+  --hero-arm-angle: 0deg;
+  --hero-arm-offset-x: 0px;
+  --hero-arm-offset-y: 0px;
+  transform:translate(var(--hero-arm-offset-x, 0px), calc(var(--hero-arm-offset-y, 0px) + var(--hero-arm-bob, 0px))) rotate(var(--hero-arm-angle, 0deg));
+  transition:transform 0.08s ease;
+}
 .puppet-hero .hero-arm-left{ left:4px; }
 .puppet-hero .hero-arm-right{ right:4px; }
-.puppet-hero .hero-leg{ width:8px; height:14px; bottom:4px; border-radius:5px; }
+.puppet-hero .hero-leg{
+  width:8px;
+  height:14px;
+  bottom:4px;
+  border-radius:5px;
+  transform-origin:50% 15%;
+  --hero-leg-angle: 0deg;
+  --hero-leg-offset-y: 0px;
+  transform:translateY(var(--hero-leg-offset-y, 0px)) rotate(var(--hero-leg-angle, 0deg));
+  transition:transform 0.08s ease;
+}
 .puppet-hero .hero-leg-left{ left:6px; }
 .puppet-hero .hero-leg-right{ right:6px; }
-.puppet-hero .hero-accessory{ width:10px; height:10px; bottom:0; left:50%; transform:translate(-50%, 40%); }
+.puppet-hero .hero-accessory{
+  width:10px;
+  height:10px;
+  bottom:0;
+  left:50%;
+  --hero-accessory-offset-y: 0px;
+  transform:translate(-50%, calc(40% + var(--hero-accessory-offset-y, 0px)));
+  transition:transform 0.08s ease, opacity 0.15s ease;
+}
+
+.puppet-hero.hero-orientation-up .hero-face{ filter: saturate(0.85); }
+.puppet-hero.hero-orientation-up .hero-leg-right,
+.puppet-hero.hero-orientation-up .hero-leg-left{ opacity:0.8; }
+.puppet-hero.hero-orientation-side .hero-leg-left{ opacity:0.75; }
+.puppet-hero.hero-orientation-side .hero-leg-right{ opacity:0.95; }
+.puppet-hero.hero-orientation-down .hero-face{ filter: saturate(1.05); }
+
+.puppet-hero.hero-sweating .hero-head::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  right:-3px;
+  width:4px;
+  height:6px;
+  border-radius:50%;
+  background:rgba(102,179,255,0.65);
+  filter:blur(0.3px);
+  animation: heroSweat 1.2s infinite;
+}
+
+.puppet-hero.hero-smoking .hero-accessory::after{
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,150,80,0.45), rgba(255,120,60,0));
+  filter: blur(3px);
+  animation: heroSmoke 1.4s ease-in-out infinite;
+}
 
 .puppet-hero.hero-enrique .enrique-cabeza{ background:#f5c79a; }
 .puppet-hero.hero-enrique .enrique-torso{ background:#1f2c44; box-shadow:0 0 8px rgba(255,179,71,0.3); }
@@ -1418,6 +1512,23 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 .puppet-hero.hero-is-dead .hero-overlay{ opacity:0.18; filter:grayscale(0.8); }
 .puppet-hero.hero-death-crush .hero-overlay{ transform:translate(-50%, -50%) scaleY(0.35); box-shadow:0 0 8px rgba(0,0,0,0.35); }
 .puppet-hero.hero-death-fire .hero-overlay{ animation: heroOverlayFire 1.4s ease-in-out infinite; }
+
+.puppet-hero.hero-sparking .hero-accessory{
+  opacity:0.9;
+  box-shadow:0 0 14px currentColor;
+}
+
+@keyframes heroSweat{
+  0%,100%{ transform:translate(0, -1px) scale(0.9); opacity:0; }
+  40%{ transform:translate(0, 2px) scale(1); opacity:0.9; }
+  80%{ transform:translate(0, 6px) scale(0.7); opacity:0; }
+}
+
+@keyframes heroSmoke{
+  0%{ transform:scale(0.7); opacity:0.4; }
+  50%{ transform:scale(1.2); opacity:0.2; }
+  100%{ transform:scale(1.4); opacity:0; }
+}
 
 @keyframes heroOverlayBreath{
   0%,100%{ opacity:0.58; box-shadow:0 0 14px currentColor; }

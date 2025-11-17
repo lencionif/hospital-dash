@@ -534,18 +534,16 @@
         }
       }
       if (!puppet) {
-        console.warn(`[HeroRig] Rig default para héroe ${key}; verifica registro de ${rigName}.`);
-        try {
-          puppet = window.PuppetAPI?.attach?.(e, { rig: 'default', z: 0, scale: 1, data: { hero: key } }) || null;
-        } catch (err) {
-          console.error('[HeroRig] Falló el fallback "default".', err);
-        }
+        console.error(`[HeroRig] No se pudo vincular ${rigName}; verifica registro en PuppetAPI.`);
       }
       e.rig = puppet || null;
       e.rigName = puppet?.rigName || rigName;
       e.rigOk = !!(puppet && puppet.rigName === rigName);
       if (!e.rigOk) {
-        console.warn(`[HeroRig] ${key} no tiene rig ${rigName}, usando ${puppet?.rigName || 'default'}.`);
+        console.warn(`[HeroRig] ${key} no tiene rig ${rigName}; PuppetAPI devolvió ${puppet?.rigName || 'ninguno'}.`);
+        if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+          console.debug('[HeroRig] fallback detectado', { requested: rigName, resolved: puppet?.rigName || null });
+        }
       } else {
         try { console.log(`[HeroRig] ${key} vinculado a ${rigName}.`); } catch (_) {}
       }
@@ -595,18 +593,16 @@
         }
       }
       if (!puppet) {
-        console.warn(`[HeroRig] Seguidor ${key} usando rig fallback.`);
-        try {
-          puppet = window.PuppetAPI?.attach?.(e, { rig: 'default', z: 0, scale: 1, data: { hero: key, follower: true } }) || null;
-        } catch (err) {
-          console.error('[HeroRig] Follower fallback "default" también falló.', err);
-        }
+        console.error(`[HeroRig] Seguidor ${key} no pudo vincular rig ${rigName}; revisa PuppetAPI.`);
       }
       e.rig = puppet || null;
       e.rigName = puppet?.rigName || rigName;
       e.rigOk = !!(puppet && puppet.rigName === rigName);
       if (!e.rigOk) {
-        console.warn(`[HeroRig] follower ${key} está en fallback (${puppet?.rigName || 'none'}).`);
+        console.warn(`[HeroRig] follower ${key} no recibió ${rigName}; PuppetAPI devolvió ${puppet?.rigName || 'ninguno'}.`);
+        if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+          console.debug('[HeroRig] follower fallback detectado', { requested: rigName, resolved: puppet?.rigName || null });
+        }
       } else {
         try { console.log(`[HeroRig] follower ${key} → ${rigName}.`); } catch (_) {}
       }
