@@ -323,6 +323,7 @@
     const btx = Math.floor(b.x / TILE), bty = Math.floor(b.y / TILE);
     for (const ent of A){
       const pos = placeAroundTile(ent, btx, bty);
+      try { W.MovementSystem?.allowTeleport?.(ent, { reason: 'elevator' }); } catch (_) {}
       ent.x = pos.x; ent.y = pos.y;
       shove(ent, 16);
       moved++;
@@ -332,6 +333,7 @@
     const atx = Math.floor(a.x / TILE), aty = Math.floor(a.y / TILE);
     for (const ent of B){
       const pos = placeAroundTile(ent, atx, aty);
+      try { W.MovementSystem?.allowTeleport?.(ent, { reason: 'elevator' }); } catch (_) {}
       ent.x = pos.x; ent.y = pos.y;
       shove(ent, 16);
       moved++;

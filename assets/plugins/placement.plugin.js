@@ -79,9 +79,8 @@
         add(pill);
         if (!G.pills.includes(pill)) G.pills.push(pill);
       }
-      const bell = spawnBell(spot.tx, spot.ty - 1, { patientId: patient.id }, cfg, G);
+      const bell = spawnBellForPatient(patient, null, null, cfg, G);
       if (bell) {
-        bell.patientId = bell.patientId || patient.id;
         add(bell);
       }
       const counters = (typeof root.patientsSnapshot === 'function') ? root.patientsSnapshot() : null;
@@ -127,6 +126,13 @@
     G.visualRadiusPx = vrTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     if (typeof globals.defaultHero === 'string' && !G.selectedHero) {
       G.selectedHero = globals.defaultHero;
+    }
+    if (globals.firstBellDelayMinutes != null) {
+      const minutes = Number(globals.firstBellDelayMinutes);
+      const safe = Number.isFinite(minutes) ? Math.max(0, minutes) : 5;
+      G.firstBellDelayMinutes = safe;
+    } else if (typeof G.firstBellDelayMinutes !== 'number') {
+      G.firstBellDelayMinutes = 5;
     }
   }
 
@@ -317,12 +323,9 @@
         }
       }
       const bellEntry = bellMap.get(patient.id) || bellMap.get(entry.id || patient.id);
-      if (bellEntry) {
-        const bell = spawnBell(bellEntry.tx, bellEntry.ty, { patientId: patient.id }, cfg, G);
-        if (bell) {
-          bell.patientId = patient.id;
-          registerEntityForPlacement(G, bell);
-        }
+      const bell = spawnBellForPatient(patient, bellEntry?.tx, bellEntry?.ty, cfg, G);
+      if (bell) {
+        registerEntityForPlacement(G, bell);
       }
     }
   }
@@ -819,6 +822,7 @@
     const kindKey = resolveKind(entity);
     Placement._counts = Placement._counts || {};
     Placement._counts[kindKey] = (Placement._counts[kindKey] || 0) + 1;
+    try { root.MovementSystem?.register?.(entity); } catch (_) {}
     try { root.AI?.register?.(entity); } catch (_) {}
   }
 
@@ -1222,8 +1226,9 @@
   function spawnPatient(tx, ty, opts, cfg, G){
     const tile = TILE_SIZE();
     const world = toWorld(tx, ty);
-    const patient = root.Entities?.Patient?.spawn?.(world.x, world.y, opts || {})
-      || root.PatientsAPI?.createPatient?.(world.x, world.y, opts || {})
+    const spawnOpts = { ...(opts || {}), autoBell: false };
+    const patient = root.Entities?.Patient?.spawn?.(world.x, world.y, spawnOpts)
+      || root.PatientsAPI?.createPatient?.(world.x, world.y, spawnOpts)
       || {
         kind: 'PATIENT',
         x: world.x,
@@ -1284,6 +1289,53 @@
       bell.rigOk = bell.rigOk === true || true;
       bell.on = bell.on || false;
     }
+    return bell;
+  }
+
+  function spawnBellForPatient(patient, txHint, tyHint, cfg, G){
+    if (!patient) return null;
+    if (root.BellsAPI?.spawnPatientBell) {
+      const bell = (Number.isInteger(txHint) && Number.isInteger(tyHint))
+        ? root.BellsAPI.spawnPatientBell(patient, txHint, tyHint)
+        : root.BellsAPI.spawnPatientBell(patient);
+      if (bell) return bell;
+    }
+    const tile = TILE_SIZE();
+    const rect = {
+      x: patient.x || 0,
+      y: patient.y || 0,
+      w: patient.w || tile,
+      h: patient.h || tile
+    };
+    const baseTx = Math.floor((rect.x + rect.w * 0.5) / tile);
+    const baseTy = Math.floor((rect.y + rect.h * 0.5) / tile);
+    const map = (G && Array.isArray(G.map)) ? G.map : (cfg?.G?.map || []);
+    const isFree = (tx, ty) => Array.isArray(map[ty]) && map[ty][tx] === 0;
+    let resolved = null;
+    if (Number.isInteger(txHint) && Number.isInteger(tyHint)) {
+      const adj = Math.max(Math.abs(txHint - baseTx), Math.abs(tyHint - baseTy)) === 1;
+      if (adj && isFree(txHint, tyHint)) {
+        resolved = { tx: txHint, ty: tyHint };
+      }
+    }
+    if (!resolved) {
+      const offsets = [
+        { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+        { dx: 1, dy: 1 }, { dx: -1, dy: 1 },
+        { dx: 1, dy: -1 }, { dx: -1, dy: -1 }
+      ];
+      for (const off of offsets) {
+        const tx = baseTx + off.dx;
+        const ty = baseTy + off.dy;
+        if (!isFree(tx, ty)) continue;
+        resolved = { tx, ty };
+        break;
+      }
+    }
+    if (!resolved) return null;
+    const bell = spawnBell(resolved.tx, resolved.ty, { patientId: patient.id }, cfg, G);
+    if (bell) bell.patientId = patient.id;
     return bell;
   }
 

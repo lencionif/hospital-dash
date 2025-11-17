@@ -56,6 +56,39 @@
     if (!ent.state) ent.state = { open: false, openProgress: 0 };
   }
 
+  function hasBlockingPatientsOrFuriosas(state){
+    const G = state?.G || window.G || {};
+    const sources = [];
+    if (Array.isArray(state?.entities)) sources.push(state.entities);
+    if (Array.isArray(G.entities)) sources.push(G.entities);
+    const seen = new Set();
+    const blocks = (ent) => {
+      if (!ent || ent.dead) return false;
+      if (ent.group === 'human' && ent.isFuriousPatient) return true;
+      if (isKind(ent, 'PATIENT') && !ent.attended && !ent.satisfied) return true;
+      if (ent.furious && ent.group === 'human') return true;
+      return false;
+    };
+    for (const list of sources) {
+      for (const ent of list) {
+        if (!ent || seen.has(ent)) continue;
+        seen.add(ent);
+        if (blocks(ent)) return true;
+      }
+    }
+    if (Array.isArray(G.patients)) {
+      for (const p of G.patients) {
+        if (blocks(p)) return true;
+      }
+    }
+    if (Array.isArray(G.hostiles)) {
+      for (const h of G.hostiles) {
+        if (blocks(h)) return true;
+      }
+    }
+    return false;
+  }
+
   function spawn(state, x, y, opts = {}){
     if (typeof state === 'number' || !state || !state.entities){
       opts = y || {};
@@ -133,12 +166,16 @@
 
   function gameflow(state){
     state = resolveState(state);
-    const urgenciasOpen = !!(state.urgenciasOpen || (window.G && window.G.urgenciasOpen));
-    const patientsAlive = (state.entities || []).some((ent) => isKind(ent, 'PATIENT') && !ent.dead);
+    const blocking = hasBlockingPatientsOrFuriosas(state);
+    if (blocking) {
+      state.urgenciasOpen = false;
+      if (window.G) window.G.urgenciasOpen = false;
+    }
+    const urgenciasOpen = !blocking && !!(state.urgenciasOpen || (window.G && window.G.urgenciasOpen));
     for (const ent of state.entities){
       if (!isKind(ent, 'DOOR')) continue;
       if (ent.bossDoor || ent.isBossDoor || ent.tag === 'bossDoor'){
-        ent.locked = !urgenciasOpen && patientsAlive;
+        ent.locked = !urgenciasOpen;
         ent.state = ent.state || { open: false, openProgress: 0 };
         if (urgenciasOpen && !ent.state.open){
           ent.state.open = true;
@@ -278,6 +315,12 @@
 
   function openUrgencias(state){
     state = resolveState(state);
+    if (hasBlockingPatientsOrFuriosas(state)) {
+      console.debug('[URGENT] Door locked, patients remain');
+      state.urgenciasOpen = false;
+      if (window.G) window.G.urgenciasOpen = false;
+      return false;
+    }
     let opened = false;
     let bossDoorRef = null;
     const maybeOpen = (door) => {
@@ -324,7 +367,8 @@
     return opened;
   }
 
-  window.Doors = { spawn, update, gameflow, open: openDoor, close: closeDoor, toggle: toggleDoor, openUrgencias };
+  window.Doors = { spawn, update, gameflow, open: openDoor, close: closeDoor, toggle: toggleDoor, openUrgencias, hasBlockingPatientsOrFuriosas };
+  window.hasBlockingPatientsOrFuriosas = hasBlockingPatientsOrFuriosas;
   window.DoorsAPI = {
     toggleNearest: (entity, radius)=> toggleNearestDoor(entity, { radius }),
     autoOpenNear: (entity, radius, opts)=> autoOpenNear(entity, radius, opts || {}),
