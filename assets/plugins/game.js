@@ -1409,15 +1409,24 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // Guarda referencia global para Placement.applyFromAsciiMap
     G.__asciiPlacements = asciiPlacements;
 
+    const reportUnknownChar = (char, lineIndex, colIndex) => {
+      if (!char || char === '.' || char === ' ' || char === '\u0000') return;
+      try {
+        console.warn(`[MAP_PARSE] Carácter desconocido '${char}' en línea ${lineIndex + 1}, columna ${colIndex + 1}`);
+      } catch (_) {}
+    };
+
     for (let y = 0; y < G.mapH; y++){
       const row = [];
       const line = lines[y] || '';
       for (let x = 0; x < G.mapW; x++){
         const ch = line[x] || ' ';
         const wx = x * TILE, wy = y * TILE;
+        let recognized = false;
 
         // pared/espacio (igual que la antigua)
-        if (ch === '#') { row.push(1); } else { row.push(0); }
+        if (ch === '#') { row.push(1); recognized = true; }
+        else { row.push(0); if (ch === '.' || ch === ' ') recognized = true; }
 
         // === MARCAS ASCII ===
         if (ch === 'S' || ch === 's') {
@@ -1426,107 +1435,153 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
           // luz blanca suave en sala de control
           G.roomLights.push({ x: wx + TILE/2, y: wy + TILE/2, r: 5.5*TILE, baseA: 0.28 });
+          recognized = true;
         }
         else if (ch === 'p' || ch === 'P') {
           // Paciente: placement (NO instanciamos aquí)
           asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
           // luz clara de sala (igual que antigua)
           G.roomLights.push({ x: wx+TILE/2, y: wy+TILE/2, r: 5.0*TILE, baseA: 0.25 });
+          recognized = true;
         }
         else if (ch === 'f') {
           asciiPlacements.push({ type:'enemy', sub:'furious', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'i' || ch === 'I') {
           asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'b') {
           asciiPlacements.push({ type:'bell', x: wx+TILE*0.1, y: wy+TILE*0.1, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'U') {
           asciiPlacements.push({ type:'cart', sub:'er', x: wx+6, y: wy+8, _units:'px' });
+          recognized = true;
         }
         else if (ch === '+') {
           asciiPlacements.push({ type:'cart', sub:'med', x: wx+6, y: wy+8, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'F') {
           asciiPlacements.push({ type:'cart', sub:'food', x: wx+6, y: wy+8, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'C') {
           asciiPlacements.push({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'V') { // legacy cart spawner
           asciiPlacements.push({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'V' });
+          recognized = true;
         }
         else if (ch === 'N') {
           asciiPlacements.push({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'B') { // legacy humano spawner
           asciiPlacements.push({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'B' });
+          recognized = true;
         }
         else if (ch === 'A') {
           asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'M') { // legacy mosquito spawner
           asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'mosquito', legacy:'M' });
+          recognized = true;
         }
         else if (ch === 'R') { // legacy rat spawner
           asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'rat', legacy:'R' });
+          recognized = true;
         }
         else if (ch === 'D' || ch === 'd') {
           asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'u') {
           asciiPlacements.push({ type:'boss_door', x: wx, y: wy, locked:true, bossDoor:true, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'X') {
           asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
+          recognized = true;
         }
         else if (ch === 'L') {
           asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'l') {
           asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, broken:true, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'm') { // enemigo directo: mosquito
           asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'r') { // enemigo directo: rata
           asciiPlacements.push({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'E') { // ascensor activo
           asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'k' || ch === 'K') { // NPC: médico
           asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'H') { // NPC: jefa enfermería
           asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 't' || ch === 'T') { // NPC: tcae
           asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'c') { // NPC: celador
           asciiPlacements.push({ type:'npc', sub:'celador', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'h') { // NPC: limpieza
           asciiPlacements.push({ type:'npc', sub:'limpieza', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
         else if (ch === 'n') { // NPC: enfermera cameo
           asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
-        else if (ch === 'g' || ch === 'G') { // NPC: guardia
+        else if (ch === 'G') { // NPC: guardia
           asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          recognized = true;
         }
-        else if (ch === 'v') { // NPC: familiar visitante
-          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'g') { // charco de agua
+          const spawnedWet = window.HazardsAPI?.spawnWet?.(x, y);
+          if (!spawnedWet) {
+            asciiPlacements.push({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          }
+          recognized = true;
+        }
+        else if (ch === 'v') { // fuego
+          const spawnedFire = window.HazardsAPI?.spawnFire?.(x, y);
+          if (!spawnedFire) {
+            asciiPlacements.push({ type:'hazard_fire', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          }
+          recognized = true;
         }
         else if (ch === '~') {
           const spawned = window.HazardsAPI?.spawnWet?.(x, y);
           if (!spawned) {
             asciiPlacements.push({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
           }
+          recognized = true;
         }
         // Si añades más letras ASCII, convierte aquí a placements (en píxeles).
+
+        if (!recognized) {
+          reportUnknownChar(ch, y, x);
+        }
       }
       G.map.push(row);
     }
@@ -1926,6 +1981,50 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     return true;
   }
 
+  function afterManualDelivery(patient){
+    if (patient) {
+      try { patient.onCure?.(); } catch (_) {}
+    }
+    G.delivered = (G.delivered || 0) + 1;
+    const stats = G.stats || {};
+    const snapshot = typeof window.patientsSnapshot === 'function' ? window.patientsSnapshot() : null;
+    const pending = snapshot ? snapshot.pending : (stats.remainingPatients || 0);
+    const furious = snapshot ? snapshot.furious : (stats.activeFuriosas || 0);
+    if (pending === 0 && furious === 0) {
+      try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
+    }
+  }
+
+  function tryDeliverPillFromAction(hero) {
+    const carrying = hero?.carry || G.carry;
+    if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
+    const patients = Array.isArray(G.patients) ? G.patients : [];
+    const hx = hero.x + hero.w * 0.5;
+    const hy = hero.y + hero.h * 0.5;
+    const maxRange = (window.TILE_SIZE || window.TILE || 32) * 1.2;
+    let target = null;
+    let bestDist = Infinity;
+    for (const pac of patients) {
+      if (!pac || pac.dead || pac.attended) continue;
+      if (!nearAABB(hero, pac, 12)) continue;
+      const px = pac.x + (pac.w || 0) * 0.5;
+      const py = pac.y + (pac.h || 0) * 0.5;
+      const dist = Math.hypot(px - hx, py - hy);
+      if (dist <= maxRange && dist < bestDist) {
+        bestDist = dist;
+        target = pac;
+      }
+    }
+    if (!target) return false;
+    if (window.PatientsAPI?.canDeliver?.(hero, target)) {
+      const delivered = window.PatientsAPI?.deliverPill?.(hero, target);
+      if (delivered) afterManualDelivery(target);
+      return true;
+    }
+    window.PatientsAPI?.wrongDelivery?.(target);
+    return true;
+  }
+
   function isCartEntity(ent){
     if (!ent) return false;
     const ENT = window.ENT || {};
@@ -1979,12 +2078,25 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           ent.rest = profile.restitution;
           ent.restitution = profile.restitution;
         }
-        if (Number.isFinite(profile.friction)) {
-          const friction = Math.max(0, Math.min(profile.friction, 1));
-          const slip = Math.max(0, Math.min((1 - friction) * 0.5, 0.25));
-          const slide = Math.max(0.002, Math.min(0.22, (1 - friction) * 0.2 + 0.002));
-          ent.mu = slip;
+        const frictionValue = Number.isFinite(profile.friction) ? Math.max(0, Math.min(profile.friction, 1)) : null;
+        if (Number.isFinite(profile.mu)) {
+          ent.mu = Math.max(0, Math.min(profile.mu, 0.25));
+        } else if (frictionValue != null) {
+          ent.mu = Math.max(0, Math.min((1 - frictionValue) * 0.5, 0.25));
+        }
+        if (Number.isFinite(profile.slideFriction)) {
+          const slide = Math.max(0.002, Math.min(profile.slideFriction, 0.3));
           ent._slideFrictionOverride = slide;
+          ent.slideFriction = slide;
+        } else if (frictionValue != null) {
+          const slide = Math.max(0.002, Math.min(0.22, (1 - frictionValue) * 0.2 + 0.002));
+          ent._slideFrictionOverride = slide;
+          ent.slideFriction = slide;
+        }
+        if (Number.isFinite(profile.drag)) {
+          const drag = Math.max(0.005, Math.min(profile.drag, 0.25));
+          ent._frictionOverride = drag;
+          ent.friction = drag;
         }
         if (Number.isFinite(profile.vmax)) ent.maxSpeed = profile.vmax;
         const maxSpeedPx = Number.isFinite(profile.vmax) ? profile.vmax * tile : null;
@@ -1993,7 +2105,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           key,
           vmax: profile.vmax,
           maxSpeedPx,
-          restitution: profile.restitution
+          restitution: profile.restitution,
+          mu: ent.mu,
+          slide: ent._slideFrictionOverride,
+          drag: ent._frictionOverride
         };
         ent.slide = true;
         return ent._physProfile;
@@ -2177,6 +2292,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (best && assignCarryFromPill(p, best)) {
         return;
       }
+    }
+
+    if (tryDeliverPillFromAction(p)) {
+      return;
     }
 
     // 1 segundo de anim de empuje
@@ -2477,39 +2596,14 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
 
-    // 2) Entregar al paciente correcto tocándolo (ENT.PATIENT)
-    const carrying = hero?.carry || G.carry;
-    const carryingPill = carrying && (carrying.kind === 'PILL' || carrying.type === 'PILL');
-    if (carryingPill) {
-      for (const pac of [...G.patients]) {
-        if (!pac || pac.dead || pac.attended) continue;
-        if (!nearAABB(G.player, pac, 12)) continue;
-        const targetId = pac.id;
-        const pillMatchesId = (carrying.patientId != null && targetId != null)
-          ? carrying.patientId === targetId || carrying.forPatientId === targetId
-          : false;
-        if (!pillMatchesId) {
-          window.PatientsAPI?.wrongDelivery?.(pac);
-          break;
-        }
-        const delivered = window.PatientsAPI?.deliverPill?.(hero, pac);
-        if (delivered) {
-          if (hero) hero.carry = null;
-          G.carry = null;
-          if (hero?.inventory) hero.inventory.medicine = null;
-          try { pac.onCure?.(); } catch (_) {}
-          G.delivered = (G.delivered || 0) + 1;
-          const stats = G.stats || {};
-          const snapshot = typeof window.patientsSnapshot === 'function' ? window.patientsSnapshot() : null;
-          const pending = snapshot ? snapshot.pending : (stats.remainingPatients || 0);
-          const furious = snapshot ? snapshot.furious : (stats.activeFuriosas || 0);
-          if (pending === 0 && furious === 0) {
-            try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
-          }
-        }
-        break;
+    // 2) Mantener la puerta cerrada hasta atender a todos
+    if ((G.stats?.remainingPatients || 0) > 0) {
+      if (G.door && !G.door.locked) {
+        G.door.locked = true;
+        G.door.solid = true;
       }
     }
+
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
@@ -3030,6 +3124,50 @@ function drawEntities(c2){
     return rows.map((row) => row.replace(/\t/g, ' '));
   }
 
+  function padAsciiRow(row, width){
+    const base = String(row ?? '');
+    if (!Number.isFinite(width) || width <= 0) return base;
+    if (base.length === width) return base;
+    if (base.length > width) return base.slice(0, width);
+    return base + '.'.repeat(width - base.length);
+  }
+
+  function enforceAsciiDimensions(lines, desiredWidth, desiredHeight){
+    if (!Array.isArray(lines) || !lines.length) return lines;
+    const targetWidth = Number.isFinite(desiredWidth) && desiredWidth > 0
+      ? desiredWidth
+      : null;
+    const targetHeight = Number.isFinite(desiredHeight) && desiredHeight > 0
+      ? desiredHeight
+      : null;
+    if (!targetWidth && !targetHeight) return lines.slice();
+    const adjusted = lines.map((row) => targetWidth ? padAsciiRow(row, targetWidth) : String(row ?? ''));
+    const finalWidth = targetWidth || adjusted[0]?.length || 0;
+    let output = adjusted;
+    if (targetHeight && targetHeight > 0){
+      if (output.length > targetHeight){
+        output = output.slice(0, targetHeight);
+      } else if (output.length < targetHeight){
+        const filler = padAsciiRow('', finalWidth || 0);
+        while (output.length < targetHeight){
+          output.push(filler);
+        }
+      }
+    }
+    return output;
+  }
+
+  function pickVisibleRadiusFromRules(ruleSet){
+    const candidates = [
+      Number.isFinite(ruleSet?.level?.visibleTilesRadius) ? ruleSet.level.visibleTilesRadius : null,
+      Number.isFinite(ruleSet?.globals?.visibleTilesRadius) ? ruleSet.globals.visibleTilesRadius : null,
+    ];
+    for (const value of candidates){
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+    return null;
+  }
+
   async function loadDebugAsciiMap(fallbackLines){
     const fallback = {
       lines: Array.isArray(fallbackLines) ? fallbackLines.slice() : FALLBACK_DEBUG_ASCII_MAP.slice(),
@@ -3090,6 +3228,21 @@ function drawEntities(c2){
   async function resolveAsciiMapForLevel(level){
     const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
     const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
+    let levelRules = null;
+    let ruleVisibleRadius = null;
+    let targetWidth = null;
+    let targetHeight = null;
+
+    if (!shouldUseDebugAscii && window.XMLRules?.load){
+      try {
+        levelRules = await window.XMLRules.load(level);
+        targetWidth = Number.isFinite(levelRules?.level?.width) ? levelRules.level.width : null;
+        targetHeight = Number.isFinite(levelRules?.level?.height) ? levelRules.level.height : null;
+        ruleVisibleRadius = pickVisibleRadiusFromRules(levelRules);
+      } catch (err) {
+        console.warn('[level_rules] no se pudo cargar level_rules.xml', err);
+      }
+    }
 
     if (shouldUseDebugAscii) {
       const payload = await loadDebugAsciiMap(asciiFallback).catch((err) => {
@@ -3132,7 +3285,10 @@ function drawEntities(c2){
         const asciiText = typeof res.ascii === 'string'
           ? res.ascii
           : (typeof MapGenAPI.toAscii === 'function' ? MapGenAPI.toAscii(res) : '');
-        const rows = normalizeAsciiFromText(asciiText);
+        let rows = normalizeAsciiFromText(asciiText);
+        if (targetWidth || targetHeight) {
+          rows = enforceAsciiDimensions(rows, targetWidth, targetHeight);
+        }
         if (rows.length) {
           asciiLines = rows;
           placements = Array.isArray(res.placements) ? res.placements.slice() : [];
@@ -3152,9 +3308,12 @@ function drawEntities(c2){
     }
 
     if (!asciiLines || !asciiLines.length) {
-      asciiLines = asciiFallback.slice();
+      asciiLines = enforceAsciiDimensions(asciiFallback.slice(), targetWidth, targetHeight);
       source = 'fallback';
     }
+
+    const finalWidth = asciiLines?.[0]?.length || 0;
+    const finalHeight = asciiLines?.length || 0;
 
     return {
       lines: asciiLines,
@@ -3163,7 +3322,11 @@ function drawEntities(c2){
       placements,
       areas,
       mode: 'normal',
-      meta
+      meta,
+      levelRules,
+      visibleTilesRadius: ruleVisibleRadius,
+      width: finalWidth,
+      height: finalHeight
     };
   }
 
@@ -3300,9 +3463,16 @@ function drawEntities(c2){
     G.flags.DEBUG_FORCE_ASCII = !!(DEBUG_MAP_MODE || window.DEBUG_FORCE_ASCII);
 
     const payload = await resolveAsciiMapForLevel(level);
+    if (payload?.levelRules) {
+      G.levelRules = payload.levelRules;
+    }
     const asciiLines = Array.isArray(payload.lines) && payload.lines.length
       ? payload.lines.slice()
       : (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
+
+    if (Number.isFinite(payload?.visibleTilesRadius) && payload.visibleTilesRadius > 0) {
+      G.visibleTilesRadius = payload.visibleTilesRadius;
+    }
 
     ASCII_MAP = asciiLines;
     G.debugAsciiSource = payload.source || (DEBUG_MAP_MODE ? 'debug' : 'procedural');

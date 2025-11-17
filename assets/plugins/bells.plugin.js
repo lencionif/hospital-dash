@@ -4,59 +4,35 @@
 // Permite: apagar timbre con E (cerca) y mute global (teléfono).
 
 (function () {
-  function ensureWarningSpriteVariant(bell) {
-    if (!bell) return null;
-    if (bell._spriteWarning) return bell._spriteWarning;
+  const PNG_EXT = /\.(png|jpg|jpeg|gif)$/i;
 
-    const sprites = window.Sprites || null;
-    const baseKey = (bell._spriteRinging || bell.spriteKey || 'timbre_encendido');
-    const hasNormalize = !!(sprites && typeof sprites._normalizeKey === 'function');
-    const normalizedBase = hasNormalize
-      ? sprites._normalizeKey(baseKey)
-      : String(baseKey).trim().toLowerCase();
-    const warningKey = `${normalizedBase || 'timbre_encendido'}_alerta`;
+  function coerceSpriteName(value, fallback){
+    const raw = (value == null) ? '' : String(value).trim();
+    if (!raw) return fallback;
+    return PNG_EXT.test(raw) ? raw : `${raw}.png`;
+  }
 
-    if (!sprites || !sprites._imgs || !sprites._imgs[normalizedBase]) {
-      return normalizedBase;
-    }
-    if (!sprites._imgs[warningKey]) {
-      try {
-        const img = sprites._imgs[normalizedBase];
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = 'rgba(255, 72, 64, 0.85)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalCompositeOperation = 'screen';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalCompositeOperation = 'source-over';
-        sprites._imgs[warningKey] = canvas;
-        if (!sprites._keys?.includes(warningKey)) {
-          sprites._keys = sprites._keys || [];
-          sprites._keys.push(warningKey);
-        }
-      } catch (err) {
-        console.warn('[Bells] No se pudo crear sprite de alerta:', err);
-        bell._spriteWarning = normalizedBase;
-        return bell._spriteWarning;
+  function applyBellSprite(bell, spriteKey) {
+    if (!bell || !spriteKey) return;
+    bell.spriteKey = spriteKey;
+    bell.skin = spriteKey;
+    try {
+      if (bell.puppet && typeof bell.puppet.setSkin === 'function') {
+        bell.puppet.setSkin(spriteKey);
+      } else if (window.PuppetAPI?.attach && bell.puppet) {
+        bell.puppet.skin = spriteKey;
       }
-    }
-    bell._spriteWarning = warningKey;
-    return bell._spriteWarning;
+    } catch (_) {}
   }
 
   function updateBellSpriteVisual(bell, ringing) {
     if (!bell) return;
-    const idle = bell._spriteIdle || bell.spriteKey || 'timbre_apagado';
-    const active = bell._spriteRinging || idle;
-    const isWarning = !!bell._warning && !!ringing;
-    const warning = isWarning ? (ensureWarningSpriteVariant(bell) || active) : active;
+    const idle = coerceSpriteName(bell._spriteIdle || bell.spriteKey || 'timbre_apagado.png', 'timbre_apagado.png');
+    const active = coerceSpriteName(bell._spriteRinging || bell.spriteKey || 'timbre_encendido.png', 'timbre_encendido.png');
+    const sprite = ringing ? active : idle;
     bell.ringing = !!ringing;
-    bell.spriteKey = ringing ? warning : idle;
+    bell.active = !!ringing;
+    applyBellSprite(bell, sprite);
   }
 
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -227,6 +203,9 @@
       if (!this._isPatientActive(entry.patient)) return false;
       entry.state = 'ringing';
       entry.tLeft = Number.isFinite(opts.duration) ? opts.duration : this.cfg.ringDuration;
+      entry.ringDuration = entry.tLeft;
+      entry.ringStartedAt = Date.now();
+      entry.ringDeadline = entry.ringStartedAt + (entry.tLeft || this.cfg.ringDuration) * 1000;
       if (entry.e) {
         entry.e._warning = false;
       }
@@ -316,6 +295,8 @@
       const tile = this.TILE || (typeof window.TILE_SIZE !== 'undefined' ? window.TILE_SIZE : 32);
       const width = Number.isFinite(opts.w) ? opts.w : tile * 0.75;
       const height = Number.isFinite(opts.h) ? opts.h : tile * 0.75;
+      const idleSprite = coerceSpriteName(opts.spriteKey || opts.idleSprite, 'timbre_apagado.png');
+      const ringingSprite = coerceSpriteName(opts.ringingSprite, 'timbre_encendido.png');
       const bell = {
         id: opts.id || `BELL_${Math.random().toString(36).slice(2, 9)}`,
         kind: (G.ENT && typeof G.ENT.BELL !== 'undefined') ? G.ENT.BELL
@@ -328,9 +309,9 @@
         h: height,
         static: true,
         solid: false,
-        spriteKey: opts.spriteKey || opts.idleSprite || 'timbre_apagado',
-        _spriteIdle: opts.spriteKey || opts.idleSprite || 'timbre_apagado',
-        _spriteRinging: opts.ringingSprite || 'timbre_encendido',
+        spriteKey: idleSprite,
+        _spriteIdle: idleSprite,
+        _spriteRinging: ringingSprite,
         label: opts.label || 'Timbre',
         pairName: opts.pairName || opts.keyName || opts.targetName || opts.link || null,
         anchorPatient: opts.patient || null,
@@ -347,7 +328,7 @@
       if (!G.entities.includes(bell)) G.entities.push(bell);
       if (!G.decor.includes(bell)) G.decor.push(bell);
       if (!G.bells.includes(bell)) G.bells.push(bell);
-      updateBellSpriteVisual(bell, false);
+      applyBellSprite(bell, idleSprite);
       return bell;
     },
 
@@ -386,6 +367,22 @@
         entry.e._warning = false;
       }
       updateBellSpriteVisual(entry.e, ringing);
+      if (ringing) {
+        const baseDuration = Number.isFinite(entry.tLeft) ? entry.tLeft : (this.cfg.ringDuration || 0);
+        if (!Number.isFinite(entry.ringDuration) || entry.ringDuration <= 0) {
+          entry.ringDuration = baseDuration;
+        }
+        if (!Number.isFinite(entry.ringStartedAt)) {
+          entry.ringStartedAt = Date.now();
+        }
+        if (!Number.isFinite(entry.ringDeadline)) {
+          entry.ringDeadline = entry.ringStartedAt + baseDuration * 1000;
+        }
+      } else {
+        entry.ringStartedAt = null;
+        entry.ringDeadline = null;
+        entry.ringDuration = null;
+      }
       const patient = entry.patient;
       if (patient && typeof patient === 'object') {
         patient.ringing = !!ringing;
@@ -535,6 +532,7 @@
         const b = this.bells[i];
         const bell = b.e;
         if (!bell || bell.dead) { this.bells.splice(i, 1); continue; }
+        bell.active = b.state === 'ringing';
 
         // Si el paciente ya no existe o ya está satisfecho -> desactiva ese timbre
         if (!b.patient || b.patient.dead || b.patient.satisfied) {
@@ -605,6 +603,33 @@
           }
         }
       }
+    },
+
+    getActiveTimers(limit = null) {
+      this._ensureInit();
+      const out = [];
+      const now = Date.now();
+      for (const entry of this.bells) {
+        if (!entry || entry.state !== 'ringing') continue;
+        const seconds = Math.max(0, Number(entry.tLeft || 0));
+        const total = (Number.isFinite(entry.ringDuration) && entry.ringDuration > 0)
+          ? entry.ringDuration
+          : this.cfg.ringDuration;
+        const patient = entry.patient;
+        const name = patient?.displayName || patient?.name || patient?.keyName || entry.e?.label || 'Paciente';
+        const id = entry.e?.id || patient?.id || `bell_${out.length}`;
+        out.push({
+          id,
+          patientName: name,
+          secondsLeft: seconds,
+          totalSeconds: total,
+          urgent: !!(entry.e && entry.e._warning),
+          deadline: entry.ringDeadline || (now + seconds * 1000)
+        });
+      }
+      out.sort((a, b) => a.secondsLeft - b.secondsLeft);
+      if (Number.isFinite(limit) && limit > 0) return out.slice(0, limit);
+      return out;
     },
 
     // Intenta apagar un timbre cercano cuando el jugador pulsa E
