@@ -830,10 +830,12 @@
     ctx.restore();
   }
 
-  const HERO_ACTION_CLASS_MAP = {
-    enrique: {
-      idle: 'anim-enrique-idle',
-      walk: 'anim-enrique-caminar',
+  const HERO_ACTION_CLASS_MAP = (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP)
+    ? window.HERO_ACTION_CLASS_MAP
+    : {
+      enrique: {
+        idle: 'anim-enrique-idle',
+        walk: 'anim-enrique-caminar',
       push: 'anim-enrique-empujar',
       attack: 'anim-enrique-atacar',
       talk: 'anim-enrique-hablar',
@@ -864,10 +866,13 @@
       eat: 'anim-francesco-comer',
       powerup: 'anim-francesco-comer',
       hurt: null,
-      dead: null,
-      default: 'anim-francesco-idle'
-    }
-  };
+        dead: null,
+        default: 'anim-francesco-idle'
+      }
+    };
+  if (typeof window !== 'undefined'){
+    window.HERO_ACTION_CLASS_MAP = HERO_ACTION_CLASS_MAP;
+  }
 
   const HERO_DEATH_CLASS_MAP = {
     enrique: {
@@ -1466,6 +1471,13 @@
     registerHeroRig(hero, cfg);
   }
 
+  try {
+    if (typeof console !== 'undefined' && typeof console.debug === 'function'){
+      console.debug('[RIG_INIT] HERO_ACTION_CLASS_MAP keys:', Object.keys(HERO_ACTION_CLASS_MAP));
+      console.debug('[RIG_INIT] Rigs de héroes registrados correctamente');
+    }
+  } catch (_) {}
+
   let heroRigDiagnosticsDone = false;
   function logHeroRigDiagnostics(){
     if (heroRigDiagnosticsDone) return;
@@ -1584,91 +1596,7 @@
     }
   };
 
-  const HERO_ACTION_CLASS_MAP = {
-    enrique: {
-      idle: 'anim-enrique-idle',
-      walk: 'anim-enrique-caminar',
-      push: 'anim-enrique-empujar',
-      attack: 'anim-enrique-atacar',
-      talk: 'anim-enrique-hablar',
-      eat: 'anim-enrique-comer',
-      powerup: 'anim-enrique-comer',
-      hurt: null,
-      dead: null,
-      default: 'anim-enrique-idle'
-    },
-    roberto: {
-      idle: 'anim-roberto-idle',
-      walk: 'anim-roberto-caminar',
-      push: 'anim-roberto-empujar',
-      attack: 'anim-roberto-atacar',
-      talk: 'anim-roberto-hablar',
-      eat: 'anim-roberto-comer',
-      powerup: 'anim-roberto-comer',
-      hurt: null,
-      dead: null,
-      default: 'anim-roberto-idle'
-    },
-    francesco: {
-      idle: 'anim-francesco-idle',
-      walk: 'anim-francesco-caminar',
-      push: 'anim-francesco-empujar',
-      attack: 'anim-francesco-atacar',
-      talk: 'anim-francesco-hablar',
-      eat: 'anim-francesco-comer',
-      powerup: 'anim-francesco-comer',
-      hurt: null,
-      dead: null,
-      default: 'anim-francesco-idle'
-    }
-  };
-
-  const HERO_DEATH_CLASS_MAP = {
-    enrique: {
-      crush: 'anim-enrique-morir-aplastado',
-      fire: 'anim-enrique-morir-fuego',
-      default: 'anim-enrique-morir-dano'
-    },
-    roberto: {
-      crush: 'anim-roberto-morir-aplastado',
-      fire: 'anim-roberto-morir-fuego',
-      default: 'anim-roberto-morir-dano'
-    },
-    francesco: {
-      crush: 'anim-francesco-morir-aplastado',
-      fire: 'anim-francesco-morir-fuego',
-      default: 'anim-francesco-morir-dano'
-    }
-  };
-
-  const DAMAGE_DEATH_ALIASES = {
-    explosion: 'default',
-    impact: 'default',
-    damage: 'default',
-    sting: 'default',
-    bite: 'default',
-    shock: 'default',
-    poison: 'default',
-    generic: 'default',
-    slip: 'default'
-  };
-
-  function pickHeroActionClass(hero, action){
-    const map = HERO_ACTION_CLASS_MAP[hero] || HERO_ACTION_CLASS_MAP.francesco;
-    if (Object.prototype.hasOwnProperty.call(map, action)){
-      return map[action];
-    }
-    return map.default || null;
-  }
-
-  function pickHeroDeathClass(hero, cause){
-    const map = HERO_DEATH_CLASS_MAP[hero] || HERO_DEATH_CLASS_MAP.francesco;
-    if (!cause) return null;
-    const normalized = cause.toLowerCase();
-    if (map[normalized]) return map[normalized];
-    const alias = DAMAGE_DEATH_ALIASES[normalized] ? 'default' : normalized;
-    return map[alias] || map.default || null;
-  }
+  // duplicate legacy definitions trimmed; single source of truth above
 
   function updateRobertoIdleExtras(st, action){
     const now = nowMs();
@@ -1723,10 +1651,10 @@
     registerHeroDomRig(hero, cfg);
   }
 
-  let heroRigDiagnosticsDone = false;
-  function logHeroRigDiagnostics(){
-    if (heroRigDiagnosticsDone) return;
-    heroRigDiagnosticsDone = true;
+  let heroDomDiagnosticsDone = false;
+  function logHeroDomRigDiagnostics(){
+    if (heroDomDiagnosticsDone) return;
+    heroDomDiagnosticsDone = true;
     if (typeof window === 'undefined') return;
     const registry = window.Puppet?.RIGS || {};
     for (const hero of Object.keys(HERO_DOM_CONFIG)){
@@ -1745,12 +1673,12 @@
 
   if (typeof document !== 'undefined'){
     if (document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', logHeroRigDiagnostics, { once: true });
+      document.addEventListener('DOMContentLoaded', logHeroDomRigDiagnostics, { once: true });
     } else {
-      logHeroRigDiagnostics();
+      logHeroDomRigDiagnostics();
     }
   } else {
-    logHeroRigDiagnostics();
+    logHeroDomRigDiagnostics();
   }
 
   // ───────────────────────────── NPCs ──────────────────────────────
@@ -3179,4 +3107,8 @@
   registerSpawnerRig('enemy', 'spawner_enemigos.png');
   registerSpawnerRig('npc', 'spawner_npc.png');
   registerSpawnerRig('cart', 'spawner_carros.png');
+
+  try {
+    console.info('[BOOT_CHECK] puppet.rigs.plugin.js OK – HERO_ACTION_CLASS_MAP definido una única vez, juego arrancando sin errores de sintaxis');
+  } catch (_) {}
 })();

@@ -1,0 +1,36 @@
+Playwright debug smoke test (index.html?map=debug)
+------------------------------------------------
+[captured console]
+%cMAP_MODE color:#0bf debug (query)
+[AI] register entity {key: RAT}
+[AI] register entity {key: MOSQUITO}
+[AI] register system {key: FURIOUS}
+[AI] register system {key: MEDIC}
+[AI] register system {key: JEFESERVICIO}
+[AI] register system {key: SUPERVISORA}
+[AI] register system {key: NURSE}
+[AI] register system {key: FAMILIAR}
+[AI] register system {key: CLEANER}
+[AI] register system {key: TCAE}
+[AI] register system {key: GUARDIA}
+[AI] register entity {key: CELADOR}
+[AI] register system {key: ELEVATOR}
+AI_SUMMARY {entities: Array(3), systems: Array(10)}
+[AI] activated {entities: Array(3), systems: Array(10)}
+[RIG_INIT] HERO_ACTION_CLASS_MAP keys: [enrique, roberto, francesco]
+[RIG_INIT] Rigs de héroes registrados correctamente
+[HeroRig] rig "hero_enrique" listo para usarse.
+[HeroRig] rig "hero_roberto" listo para usarse.
+[HeroRig] rig "hero_francesco" listo para usarse.
+[HeroRig] rig "hero_enrique" listo para usarse.
+[HeroRig] rig "hero_roberto" listo para usarse.
+[HeroRig] rig "hero_francesco" listo para usarse.
+[BOOT_CHECK] puppet.rigs.plugin.js OK – HERO_ACTION_CLASS_MAP definido una única vez, juego arrancando sin errores de sintaxis
+[LEVEL_DEBUG] Selected debug level level1
+[Puppet] Reset rigs (level-reset) -> antes: rigs=0, entidades=0
+[Puppet] Reset(level-reset) antes: 0 rigs activos.
+[Puppet] Reset(level-reset) después: 0 rigs activos.
+[Puppet] Reset rigs (level-reset) -> después: rigs=0
+[startGame] estado global reseteado {debug: true}
+[bootstrap] dependencias OK {debug: true, diag: false}
+(no se registraron errores de consola ni pageerror)
