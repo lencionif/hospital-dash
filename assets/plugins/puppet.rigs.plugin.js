@@ -1122,6 +1122,137 @@
     }
   }
 
+  function resolveHeroDomAnimCfg(hero, cfg = {}){
+    if (cfg && cfg.anim) return cfg.anim;
+    const profile = HERO_DRAW_PROFILE[hero];
+    return profile?.anim || {};
+  }
+
+  function stepHeroDomAnimation(st, e, dt = 0, cfg = {}){
+    if (!st) return;
+    const animCfg = resolveHeroDomAnimCfg(st.hero, cfg);
+    const action = st.action || 'idle';
+    const blend = (speed) => Math.min(1, dt > 0 ? dt * speed : 1);
+    const walkCycle = action === 'walk' ? (animCfg.walkCycle || 1) : (animCfg.idleCycle || 0.5);
+    st.walkPhase = (st.walkPhase + dt * walkCycle * TAU) % TAU;
+    const swingAmp = action === 'walk' ? (animCfg.walkSwing ?? 0.5) : (animCfg.idleSwing ?? 0.12);
+    const armAmp = action === 'walk' ? (animCfg.armSwing ?? 0.48) : (animCfg.idleArmSwing ?? 0.18);
+    const bobAmp = action === 'walk' ? (animCfg.walkBob ?? 2.2) : (animCfg.idleBob ?? 0.8);
+    const legTarget = Math.sin(st.walkPhase) * swingAmp;
+    const armTarget = Math.sin(st.walkPhase + Math.PI) * armAmp;
+    const bobTarget = Math.sin(st.walkPhase * (action === 'walk' ? 2 : 1)) * bobAmp;
+    st.legSwing += (legTarget - st.legSwing) * blend(9);
+    st.armSwing += (armTarget - st.armSwing) * blend(8);
+    st.bob += (bobTarget - st.bob) * blend(6);
+    const attackTarget = action === 'attack' ? 1 : 0;
+    st.attack += (attackTarget - st.attack) * blend(action === 'attack' ? 6 : 4);
+    const pushTarget = action === 'push' ? 1 : 0;
+    st.push += (pushTarget - st.push) * blend(5);
+    const talkTarget = action === 'talk' ? 1 : 0;
+    st.talk += (talkTarget - st.talk) * blend(6);
+    const eatTarget = (action === 'eat' || action === 'powerup') ? 1 : 0;
+    st.eat += (eatTarget - st.eat) * blend(5);
+    const hurtTarget = action === 'hurt' ? 1 : 0;
+    st.hurt += (hurtTarget - st.hurt) * blend(6);
+    const leanTarget = (animCfg.pushLean ?? 0.2) * st.push + (animCfg.attackLean ?? -0.12) * st.attack;
+    st.lean += (leanTarget - st.lean) * blend(5);
+    const jawTarget = st.talk > 0 ? (0.4 + 0.4 * Math.sin(st.time * 8)) * st.talk : 0;
+    const chew = st.eat * 0.6;
+    st.jaw += ((jawTarget + chew) - st.jaw) * blend(7);
+    if (action === 'dead'){
+      st.deathProgress = Math.min(1, st.deathProgress + dt * 0.9);
+    } else {
+      st.deathProgress = Math.max(0, st.deathProgress - dt * 1.2);
+    }
+    const dropTarget = st.deathProgress * (cfg.deathDropPx ?? cfg.deathDrop ?? 10);
+    st.deathDrop += (dropTarget - st.deathDrop) * blend(5);
+    const tiltTarget = action === 'dead'
+      ? (st.deathCause === 'crush' ? 0 : (st.deathCause === 'fire' ? 0.1 : 0.6))
+      : 0;
+    st.deathTilt += (tiltTarget - st.deathTilt) * blend(3);
+    const smokeTarget = st.deathCause === 'fire' ? 1 : 0;
+    st.smoke += (smokeTarget - st.smoke) * blend(1.8);
+    const sweatTarget = (e?.hero === 'roberto' && (st.push > 0.15 || st.action === 'push')) ? 1 : 0;
+    st.sweat = (st.sweat ?? 0) + (sweatTarget - (st.sweat ?? 0)) * blend(4);
+  }
+
+  function setArmPose(node, angle, offsetX, offsetY){
+    if (!node) return;
+    const safeAngle = Number.isFinite(angle) ? angle : 0;
+    const safeX = Number.isFinite(offsetX) ? offsetX : 0;
+    const safeY = Number.isFinite(offsetY) ? offsetY : 0;
+    setCssVar(node, '--hero-arm-angle', `${safeAngle.toFixed(2)}deg`);
+    setCssVar(node, '--hero-arm-offset-x', `${safeX.toFixed(2)}px`);
+    setCssVar(node, '--hero-arm-offset-y', `${safeY.toFixed(2)}px`);
+  }
+
+  function setLegPose(node, angle, offsetY){
+    if (!node) return;
+    const safeAngle = Number.isFinite(angle) ? angle : 0;
+    const safeY = Number.isFinite(offsetY) ? offsetY : 0;
+    setCssVar(node, '--hero-leg-angle', `${safeAngle.toFixed(2)}deg`);
+    setCssVar(node, '--hero-leg-offset-y', `${safeY.toFixed(2)}px`);
+  }
+
+  function applyHeroDomPose(st, cfg = {}){
+    if (!st?.parts || !st.root) return;
+    const pose = Object.assign({}, HERO_DOM_POSE_DEFAULTS, cfg.pose || {});
+    const dir = st.dir || 1;
+    const orientation = st.orientation || 'down';
+    const bobPx = (pose.bob ?? 4) * st.bob;
+    const dropPx = st.deathDrop || 0;
+    const hurtDrop = (pose.hurtDrop ?? 4) * st.hurt;
+    const talkLift = (pose.talkLift ?? 4) * st.talk;
+    const eatLift = (pose.eatLift ?? 3) * st.eat;
+    const pushLift = (pose.pushLift ?? 1.5) * st.push;
+    const torsoOffset = bobPx - dropPx - hurtDrop + talkLift - eatLift + pushLift;
+    setCssVar(st.parts.torso, '--hero-torso-offset-y', `${torsoOffset.toFixed(2)}px`);
+    const leanDeg = (pose.lean ?? 6) * st.lean + (pose.pushLean ?? 8) * st.push + (pose.attackLean ?? -5) * st.attack;
+    setCssVar(st.parts.torso, '--hero-torso-lean', `${leanDeg.toFixed(2)}deg`);
+    const headOffset = bobPx * 0.35 - dropPx * 0.6 - hurtDrop * 0.5 + talkLift * 0.5 - eatLift * 0.25;
+    setCssVar(st.parts.head, '--hero-head-offset-y', `${headOffset.toFixed(2)}px`);
+    const headTilt = (pose.headTilt ?? 3) * st.talk + (pose.hurtTilt ?? -2) * st.hurt;
+    setCssVar(st.parts.head, '--hero-head-tilt', `${headTilt.toFixed(2)}deg`);
+    if (st.faceImg){
+      setCssVar(st.faceImg, '--hero-face-offset-y', `${((pose.jaw ?? 2) * st.jaw).toFixed(2)}px`);
+    }
+    const swingScale = orientation === 'side' ? 1 : 0.55;
+    const arms = st.parts.arms || {};
+    const armFront = dir >= 0 ? arms.right : arms.left;
+    const armBack = dir >= 0 ? arms.left : arms.right;
+    const armSwing = (pose.armSwing ?? 18) * st.armSwing * swingScale;
+    const reach = (pose.pushReach ?? 8) * st.push + (pose.attackReach ?? 10) * st.attack;
+    const talkArmLift = (pose.talkArmLift ?? 1.8) * st.talk;
+    const attackLift = (pose.attackLift ?? 3) * st.attack;
+    const armOffset = (pose.armOffset ?? 1.5) * dir;
+    setArmPose(armFront, armSwing + reach, armOffset, bobPx * 0.1 + talkArmLift + attackLift);
+    setArmPose(armBack, -armSwing + reach * 0.2, -armOffset * 0.8, bobPx * 0.05 - talkArmLift * 0.5);
+    const legs = st.parts.legs || {};
+    const legFront = dir >= 0 ? legs.right : legs.left;
+    const legBack = dir >= 0 ? legs.left : legs.right;
+    const stridePhase = orientation === 'side'
+      ? st.legSwing
+      : Math.sin((st.walkPhase || 0) * 2) * 0.6;
+    const strideAmount = (orientation === 'side'
+      ? (pose.sideStride ?? pose.verticalStride ?? 4)
+      : (pose.verticalStride ?? pose.sideStride ?? 4)) * stridePhase;
+    const verticalSign = orientation === 'up' ? -1 : 1;
+    const legSwingDeg = (pose.legSwing ?? 14) * stridePhase * swingScale * verticalSign;
+    const legLift = (pose.legLift ?? 2.6) * Math.abs(stridePhase);
+    setLegPose(legFront, legSwingDeg, bobPx * 0.25 - dropPx - hurtDrop + legLift + strideAmount * 0.12);
+    setLegPose(legBack, -legSwingDeg, bobPx * 0.12 - dropPx * 0.5 - hurtDrop * 0.5 - legLift * 0.3 - strideAmount * 0.08);
+    if (st.parts.accessory){
+      const accessoryOffset = (pose.accessoryBob ?? 2.4) * Math.sin((st.walkPhase || 0) * 1.3 + dir)
+        + (pose.accessoryLift ?? 4) * st.push
+        + (pose.accessoryAttackLift ?? 3) * st.attack
+        - dropPx * 0.15;
+      setCssVar(st.parts.accessory, '--hero-accessory-offset-y', `${accessoryOffset.toFixed(2)}px`);
+    }
+    if (st.root){
+      st.root.classList.toggle('hero-sweating', (st.sweat ?? 0) > 0.35 || st.root.classList.contains('hero-sweating') && (st.sweat ?? 0) > 0.2);
+    }
+  }
+
   function applyHeroDomState(st, e, dt = 0, cfg = {}){
     if (!st || !e) return;
     const culled = isEntityCulled(e);

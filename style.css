@@ -1434,6 +1434,10 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 }
 
 .puppet-hero.hero-orientation-up .hero-face{ filter: saturate(0.85); }
+.puppet-hero.hero-orientation-up .hero-leg-right,
+.puppet-hero.hero-orientation-up .hero-leg-left{ opacity:0.8; }
+.puppet-hero.hero-orientation-side .hero-leg-left{ opacity:0.75; }
+.puppet-hero.hero-orientation-side .hero-leg-right{ opacity:0.95; }
 .puppet-hero.hero-orientation-down .hero-face{ filter: saturate(1.05); }
 
 .puppet-hero.hero-sweating .hero-head::after{
