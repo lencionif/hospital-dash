@@ -59,6 +59,44 @@
     bell.spriteKey = ringing ? warning : idle;
   }
 
+  function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function getEntityRect(ent, tileSize) {
+    if (!ent) return null;
+    const ms = typeof window !== 'undefined' ? window.MovementSystem : null;
+    const st = ms && typeof ms.getState === 'function' ? ms.getState(ent) : null;
+    const x = st ? st.x : (ent.x || 0);
+    const y = st ? st.y : (ent.y || 0);
+    const w = Number.isFinite(ent.w) ? ent.w : tileSize;
+    const h = Number.isFinite(ent.h) ? ent.h : tileSize;
+    return { x, y, w, h };
+  }
+
+  function tileFromEntity(ent, tileSize) {
+    if (!ent) return null;
+    const rect = getEntityRect(ent, tileSize);
+    if (!rect) return null;
+    const cx = rect.x + rect.w * 0.5;
+    const cy = rect.y + rect.h * 0.5;
+    return {
+      tx: Math.floor(cx / tileSize),
+      ty: Math.floor(cy / tileSize)
+    };
+  }
+
+  const ADJACENT_OFFSETS = [
+    { dx: 1, dy: 0 },
+    { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: 0, dy: -1 },
+    { dx: 1, dy: 1 },
+    { dx: -1, dy: 1 },
+    { dx: 1, dy: -1 },
+    { dx: -1, dy: -1 }
+  ];
+
   const BellsAPI = {
     G: null, TILE: 32,
     cfg: {
@@ -125,6 +163,139 @@
       if (!Array.isArray(G.patients)) G.patients = [];
       if (!Array.isArray(G.bells)) G.bells = [];
       return G;
+    },
+
+    _linkBellAndPatient(entry, patient) {
+      if (!entry || !patient) return;
+      entry.patient = patient;
+      if (typeof patient === 'object') {
+        patient.bellId = entry.e?.id || patient.bellId;
+        patient.anchorBell = entry.e || patient.anchorBell;
+      }
+      if (entry.e) {
+        entry.e.patientId = patient.id || entry.e.patientId;
+        entry.e.forPatientId = patient.id || entry.e.forPatientId;
+      }
+    },
+
+    _isPatientActive(patient) {
+      if (!patient) return false;
+      if (patient.dead || patient.attended || patient.satisfied || patient.hidden) return false;
+      return true;
+    },
+
+    _resolvePatientTile(patient) {
+      if (!patient) return null;
+      const tile = this.TILE || 32;
+      return tileFromEntity(patient, tile);
+    },
+
+    _isTileFreeForBell(patient, tx, ty) {
+      const G = this.G || window.G || {};
+      const map = G.map || [];
+      const tile = this.TILE || 32;
+      if (!Number.isInteger(tx) || !Number.isInteger(ty)) return false;
+      if (!map[ty] || map[ty][tx] !== 0) return false;
+      const rect = { x: tx * tile, y: ty * tile, w: tile, h: tile };
+      for (const ent of G.entities || []) {
+        if (!ent || ent === patient || ent.dead || !ent.solid) continue;
+        const otherRect = getEntityRect(ent, tile);
+        if (!otherRect) continue;
+        if (rectsOverlap(rect.x, rect.y, rect.w, rect.h, otherRect.x, otherRect.y, otherRect.w, otherRect.h)) {
+          return false;
+        }
+      }
+      return true;
+    },
+
+    findFreeAdjacentTile(entity) {
+      this._ensureInit();
+      const base = this._resolvePatientTile(entity);
+      if (!base) return null;
+      for (const offset of ADJACENT_OFFSETS) {
+        const tx = base.tx + offset.dx;
+        const ty = base.ty + offset.dy;
+        if (this._isTileFreeForBell(entity, tx, ty)) {
+          return { tx, ty };
+        }
+      }
+      return null;
+    },
+
+    _beginRinging(entry, opts = {}) {
+      if (!entry || entry.state === 'ringing') return false;
+      if (!this._isPatientActive(entry.patient)) return false;
+      entry.state = 'ringing';
+      entry.tLeft = Number.isFinite(opts.duration) ? opts.duration : this.cfg.ringDuration;
+      if (entry.e) {
+        entry.e._warning = false;
+      }
+      if (entry.patient && typeof entry.patient === 'object') {
+        entry.patient.ringingUrgent = false;
+      }
+      if (opts.playSound !== false && window.AudioAPI) {
+        try { AudioAPI.play(this.cfg.sfxRing, { at: { x: entry.e?.x, y: entry.e?.y }, volume: 0.9 }); }
+        catch (_) {}
+      }
+      this._applyRingingState(entry, true);
+      this._logBellOn(entry);
+      return true;
+    },
+
+    spawnPatientBell(patient, tileX = null, tileY = null, opts = {}) {
+      this._ensureInit();
+      if (!patient) return null;
+      if (patient.bellId && !opts.force) {
+        const existing = this.bells.find((entry) => entry?.e?.id === patient.bellId);
+        if (existing && existing.e) {
+          this._linkBellAndPatient(existing, patient);
+          return existing.e;
+        }
+      }
+      let targetTile = null;
+      if (Number.isInteger(tileX) && Number.isInteger(tileY)) {
+        targetTile = this._isTileFreeForBell(patient, tileX, tileY)
+          ? { tx: tileX, ty: tileY }
+          : null;
+      }
+      if (!targetTile) {
+        targetTile = this.findFreeAdjacentTile(patient);
+      }
+      if (!targetTile) {
+        const id = patient.id || patient.keyName || 'unknown';
+        console.warn('[BELL] No free tile for patient', id);
+        return null;
+      }
+      const tile = this.TILE || 32;
+      const px = targetTile.tx * tile + tile * 0.1;
+      const py = targetTile.ty * tile + tile * 0.1;
+      const bell = this.spawnBell(px, py, {
+        ...opts,
+        patient,
+        patientId: patient.id,
+        link: opts.link || patient.id,
+        pairName: opts.pairName || patient.id,
+        forPatientId: patient.id,
+      });
+      if (!bell) return null;
+      const entry = this.bells.find((b) => b && b.e === bell);
+      if (entry) {
+        this._linkBellAndPatient(entry, patient);
+      }
+      return bell;
+    },
+
+    forceActivateFirstBell(opts = {}) {
+      this._ensureInit();
+      for (const entry of this.bells) {
+        if (!entry || entry.state === 'ringing') continue;
+        if (!this._isPatientActive(entry.patient)) continue;
+        if (this._beginRinging(entry, { playSound: opts.playSound !== false })) {
+          entry.nextAt = this.now + this.cfg.ringMax;
+          return entry.e || null;
+        }
+      }
+      return null;
     },
 
     _getWarningThreshold() {
@@ -298,20 +469,15 @@
       const entry = this.registerBellEntity(bell);
       const target = this._resolvePatientTarget(opts);
       if (entry && target) {
-        entry.patient = target;
-        if (typeof target === 'object') {
-          target.bellId = target.bellId || bell.id;
-        }
+        this._linkBellAndPatient(entry, target);
+      }
+      if (opts.patientId && !bell.patientId) {
+        bell.patientId = opts.patientId;
       }
       if (entry) {
         if (typeof opts.nextAt === 'number') entry.nextAt = opts.nextAt;
         if (opts.startRinging) {
-          entry.state = 'ringing';
-          entry.tLeft = Number.isFinite(opts.initialDuration) ? opts.initialDuration : this.cfg.ringDuration;
-          if (bell) bell._warning = false;
-          if (entry.patient && typeof entry.patient === 'object') entry.patient.ringingUrgent = false;
-          this._applyRingingState(entry, true);
-          this._logBellOn(entry);
+          this._beginRinging(entry, { duration: Number.isFinite(opts.initialDuration) ? opts.initialDuration : undefined });
         } else {
           this._applyRingingState(entry, false);
         }
@@ -320,25 +486,7 @@
     },
 
     spawnBellNear(patient, opts = {}) {
-      if (!patient) return null;
-      const pad = Number.isFinite(opts.offsetX) ? opts.offsetX : 8;
-      const x = Number.isFinite(opts.x)
-        ? opts.x
-        : (patient.x || 0) + (patient.w || this.TILE || 32) + pad;
-      const y = Number.isFinite(opts.y) ? opts.y : (patient.y || 0);
-      const bell = this.spawnBell(x, y, {
-        ...opts,
-        patient,
-        link: opts.link || patient.id,
-        pairName: opts.pairName || patient.id,
-        forPatientId: patient.id,
-      });
-      if (bell) {
-        bell.forPatientId = patient.id;
-        bell.pairName = bell.pairName || patient.id;
-        bell.anchorPatient = bell.anchorPatient || patient;
-      }
-      return bell;
+      return this.spawnPatientBell(patient, opts.tileX ?? null, opts.tileY ?? null, opts);
     },
 
     // Llamar desde parseMap al ver 'T' (timbre): registra la entidad
@@ -372,10 +520,7 @@
           if (d < bestD) { bestD = d; best = p; }
         }
         if (best && bestD <= this.cfg.pairMaxDist) {
-          b.patient = best;
-          if (typeof best === 'object') {
-            best.bellId = best.bellId || b.e?.id || null;
-          }
+          this._linkBellAndPatient(b, best);
         }
       }
     },
@@ -409,15 +554,7 @@
 
         // 1) Programación de la próxima llamada
         if (b.state === 'idle' && this.now >= b.nextAt) {
-          b.state = 'ringing';
-          b.tLeft = this.cfg.ringDuration;
-          if (bell) bell._warning = false;
-          if (b.patient && typeof b.patient === 'object') b.patient.ringingUrgent = false;
-          // Sonido:
-          if (window.AudioAPI) AudioAPI.play(this.cfg.sfxRing, { at: { x: bell.x, y: bell.y }, volume: 0.9 });
-          // Visual opcional: marca
-          this._applyRingingState(b, true);
-          this._logBellOn(b);
+          this._beginRinging(b);
         }
 
         // 2) Si está sonando, cuenta atrás; si llega a 0 -> convertir paciente en furiosa
@@ -569,5 +706,8 @@
   };
   window.spawnBell = function (x, y, opts) {
     return BellsAPI.spawnBell(x, y, opts || {});
+  };
+  window.spawnPatientBell = function (patient, tx, ty, opts) {
+    return BellsAPI.spawnPatientBell(patient, tx, ty, opts || {});
   };
 })();

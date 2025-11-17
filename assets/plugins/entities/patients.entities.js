@@ -102,6 +102,7 @@
     if (e.dynamic || !e.static) {
       if (!G.movers.includes(e)) G.movers.push(e);
     }
+    try { W.MovementSystem?.register?.(e); } catch (_) {}
   }
 
   function removeEntity(e) {
@@ -180,6 +181,7 @@
     ensureCollections();
     const identity = opts.identity || nextIdentity();
     const stats = ensureStats();
+    const autoBell = opts.autoBell !== false;
 
     const variantIndex = (identity.index != null ? identity.index : stats.totalPatients || 0);
     const skinName = opts.skin || `paciente${(variantIndex % 7) + 1}.png`;
@@ -224,6 +226,11 @@
 
     addEntity(patient);
     registerPatient(patient);
+
+    if (autoBell && !patient.bellId) {
+      try { W.BellsAPI?.spawnPatientBell?.(patient); }
+      catch (err) { console.warn('[BELL] auto spawn error', err); }
+    }
 
     const prevOnCure = patient.onCure;
     patient.onCure = function () {
@@ -495,6 +502,9 @@
     syncPatientArrayCounters();
     emitPatientsCounter();
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+    if ((G.patientsPending | 0) === 0 && (G.patientsFurious | 0) === 0) {
+      try { W.Doors?.openUrgencias?.(); } catch (_) {}
+    }
   }
 
   function getPatients() {

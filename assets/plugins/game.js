@@ -29,14 +29,25 @@
   window.DEBUG_MAP_FILE = DEBUG_MAP_FILE;
   const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
   const LEVEL_PARAM_RAW = SEARCH_PARAMS.get('level');
+  const MAP_DEBUG_LEVEL_PARAM_RAW = getParamCaseInsensitive('MapDebug');
   const DEFAULT_LEVEL_ID = 'level1';
   const NORMALIZED_LEVEL_ID = normalizeLevelParam(LEVEL_PARAM_RAW);
-  const DEBUG_LEVEL_ID = DEBUG_MAP_MODE ? (NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID) : null;
+  const NORMALIZED_MAP_DEBUG_LEVEL = normalizeLevelParam(MAP_DEBUG_LEVEL_PARAM_RAW);
+  const DEBUG_LEVEL_ID = DEBUG_MAP_MODE
+    ? (NORMALIZED_MAP_DEBUG_LEVEL || NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID)
+    : null;
   const DEBUG_LEVEL_NUMBER = DEBUG_LEVEL_ID ? extractLevelNumber(DEBUG_LEVEL_ID) : null;
+  const CURRENT_LEVEL_ID = DEBUG_MAP_MODE
+    ? (DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID)
+    : (NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID);
+  const CURRENT_LEVEL_NUMBER = extractLevelNumber(CURRENT_LEVEL_ID) || 1;
   window.DEBUG_MAP_MODE = DEBUG_MAP_MODE;
-  window.DEBUG_LEVEL_PARAM = LEVEL_PARAM_RAW || null;
+  window.DEBUG_LEVEL_PARAM = MAP_DEBUG_LEVEL_PARAM_RAW || LEVEL_PARAM_RAW || null;
   window.DEBUG_LEVEL_ID = DEBUG_LEVEL_ID;
   window.DEBUG_LEVEL_NUMBER = DEBUG_LEVEL_NUMBER;
+  if (DEBUG_MAP_MODE) {
+    console.debug('[LEVEL_DEBUG] Selected debug level', DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID);
+  }
 
   function logThrough(level, ...args){
     const logger = window.LOG;
@@ -47,6 +58,17 @@
     const fallback = (level === 'error') ? console.error
       : (level === 'warn') ? console.warn : console.log;
     fallback(...args);
+  }
+
+  function getParamCaseInsensitive(name){
+    if (!name) return null;
+    const direct = SEARCH_PARAMS.get(name);
+    if (direct != null) return direct;
+    const needle = name.toLowerCase();
+    for (const [key, value] of SEARCH_PARAMS.entries()) {
+      if (key.toLowerCase() === needle) return value;
+    }
+    return null;
   }
 
   function normalizeLevelParam(value){
@@ -158,8 +180,11 @@
     health: 6, // medias vidas (0..6)
     levelState: 'READY_TO_START', // READY_TO_START | LOADING | READY | PLAYING | PAUSED | IDLE
     pendingLevel: null,
-    debugLevelId: DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID,
-    debugLevelNumber: DEBUG_LEVEL_NUMBER || 1,
+    level: CURRENT_LEVEL_NUMBER,
+    debugLevelId: DEBUG_LEVEL_ID || CURRENT_LEVEL_ID || DEFAULT_LEVEL_ID,
+    debugLevelNumber: DEBUG_LEVEL_NUMBER || CURRENT_LEVEL_NUMBER,
+    currentLevelId: CURRENT_LEVEL_ID,
+    currentLevelNumber: CURRENT_LEVEL_NUMBER,
     entities: [],
     movers: [],
     hostiles: [],
@@ -191,7 +216,12 @@
     visibleTilesRadius: 8,
     visualRadiusTiles: 8,
     visualRadiusPx: 8 * TILE,
-    isDebugMap: DEBUG_MAP_MODE
+    isDebugMap: DEBUG_MAP_MODE,
+    firstBellDelayMinutes: 5,
+    firstBellDelaySeconds: 300,
+    firstBellDeadline: null,
+    firstBellTriggered: false,
+    _firstBellPendingLog: false
   };
   window.G = G; // (expuesto)
   G.ENT = ENT;
@@ -314,6 +344,29 @@
     setEntityActivity(ent, active);
     return active;
   }
+  const PATH_BLOCK_LOG_INTERVAL_MS = 220;
+  function describeEntity(ent){
+    if (!ent) return 'entity';
+    return ent.id || ent.name || ent.kindName || ent.kind || 'entity';
+  }
+  function logPathBlocked(ent, reason){
+    if (!ent) return;
+    const nowTs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    if (ent._lastPathBlockedLog && nowTs - ent._lastPathBlockedLog < PATH_BLOCK_LOG_INTERVAL_MS) return;
+    ent._lastPathBlockedLog = nowTs;
+    const suffix = reason ? ` (${reason})` : '';
+    console.debug(`[PATH_BLOCKED] ${describeEntity(ent)}${suffix}`);
+  }
+  function snapEntityInsideMap(ent){
+    try {
+      if (window.Physics?.snapInsideMap) {
+        window.Physics.snapInsideMap(ent);
+      }
+    } catch (_) {}
+  }
+
   const MovementSystem = (() => {
     const states = new WeakMap();
     const movers = new Set();
@@ -334,6 +387,12 @@
         teleportX: e.x || 0,
         teleportY: e.y || 0,
         forceTeleport: false,
+        teleportFromX: e.x || 0,
+        teleportFromY: e.y || 0,
+        lastSafeX: e.x || 0,
+        lastSafeY: e.y || 0,
+        pendingTeleportApproved: true,
+        pendingTeleportReason: null,
         friction: typeof e.mu === 'number' ? Math.max(0, Math.min(1, e.mu)) : 0
       };
       states.set(e, st);
@@ -349,9 +408,11 @@
         get(){ return st.x; },
         set(value){
           const v = Number(value) || 0;
+          st.teleportFromX = st.x;
           st.teleportX = v;
           st.x = v;
           st.forceTeleport = true;
+          st.pendingTeleportApproved = false;
         }
       });
       Object.defineProperty(e, 'y', {
@@ -360,9 +421,11 @@
         get(){ return st.y; },
         set(value){
           const v = Number(value) || 0;
+          st.teleportFromY = st.y;
           st.teleportY = v;
           st.y = v;
           st.forceTeleport = true;
+          st.pendingTeleportApproved = false;
         }
       });
       Object.defineProperty(e, 'vx', {
@@ -444,6 +507,36 @@
       return false;
     }
 
+    function consumeTeleport(e, st){
+      const targetX = st.teleportX;
+      const targetY = st.teleportY;
+      const fromX = st.teleportFromX ?? targetX;
+      const fromY = st.teleportFromY ?? targetY;
+      const delta = Math.hypot(targetX - fromX, targetY - fromY);
+      const needsApproval = !e.static && delta > tileSize * 0.5;
+      const allowed = st.pendingTeleportApproved || !needsApproval;
+      const blocked = isBlocked(targetX, targetY, e.w, e.h) || collidesEntity(e, targetX, targetY);
+      if (!allowed) {
+        logPathBlocked(e, 'teleport_denied');
+        snapEntityInsideMap(e);
+        st.x = st.lastSafeX ?? st.x;
+        st.y = st.lastSafeY ?? st.y;
+      } else if (blocked) {
+        logPathBlocked(e, 'teleport_blocked');
+        snapEntityInsideMap(e);
+        st.x = st.lastSafeX ?? st.x;
+        st.y = st.lastSafeY ?? st.y;
+      } else {
+        st.x = targetX;
+        st.y = targetY;
+        st.lastSafeX = st.x;
+        st.lastSafeY = st.y;
+      }
+      st.forceTeleport = false;
+      st.pendingTeleportApproved = false;
+      st.pendingTeleportReason = null;
+    }
+
     function moveAxis(e, st, dt, axis){
       const vel = axis === 'x' ? st.vx : st.vy;
       if (Math.abs(vel) < 1e-6) return;
@@ -456,11 +549,16 @@
         const nx = axis === 'x' ? next : st.x;
         const ny = axis === 'y' ? next : st.y;
         if (isBlocked(nx, ny, e.w, e.h) || collidesEntity(e, nx, ny)){
+          logPathBlocked(e, axis === 'x' ? 'axis-x' : 'axis-y');
           if (axis === 'x') st.vx = 0; else st.vy = 0;
           return;
         }
         pos = next;
         if (axis === 'x') st.x = pos; else st.y = pos;
+      }
+      if (!isBlocked(st.x, st.y, e.w, e.h)) {
+        st.lastSafeX = st.x;
+        st.lastSafeY = st.y;
       }
     }
 
@@ -481,11 +579,7 @@
         const st = ensure(e);
         if (!st) continue;
         if (st.forceTeleport){
-          st.x = st.teleportX;
-          st.y = st.teleportY;
-          st.forceTeleport = false;
-          st.vx = st.intentVx;
-          st.vy = st.intentVy;
+          consumeTeleport(e, st);
           continue;
         }
         if (!shouldUpdateEntity(e)){
@@ -519,7 +613,14 @@
       unregister,
       step,
       setMap,
-      getState(e){ return ensure(e); }
+      getState(e){ return ensure(e); },
+      allowTeleport(e, opts = {}) {
+        const st = ensure(e);
+        if (!st) return null;
+        st.pendingTeleportApproved = true;
+        st.pendingTeleportReason = opts.reason || 'manual';
+        return st;
+      }
     };
   })();
   window.MovementSystem = MovementSystem;
@@ -2321,6 +2422,32 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
   }
 
+  function maybeTriggerFirstBell(){
+    if (G.firstBellTriggered) return;
+    if (!window.BellsAPI || !Array.isArray(window.BellsAPI.bells) || !window.BellsAPI.bells.length) return;
+    const hasActive = window.BellsAPI.bells.some((entry) => entry && entry.state === 'ringing');
+    if (hasActive) {
+      G.firstBellTriggered = true;
+      return;
+    }
+    const delaySeconds = Number.isFinite(G.firstBellDelaySeconds) ? G.firstBellDelaySeconds : 300;
+    const deadline = Number.isFinite(G.firstBellDeadline) ? G.firstBellDeadline : delaySeconds;
+    if (G.time < deadline) return;
+    const bell = window.BellsAPI.forceActivateFirstBell?.({ reason: 'first_bell_auto' });
+    if (bell) {
+      G.firstBellTriggered = true;
+      G.firstBellDeadline = null;
+      G._firstBellPendingLog = false;
+      console.debug(`[FIRST_BELL] Forced activation at ${G.time.toFixed(2)}s`, bell?.id || '');
+      return;
+    }
+    G.firstBellDeadline = G.time + 1;
+    if (!G._firstBellPendingLog) {
+      console.debug('[FIRST_BELL] Waiting for available bell to auto-activate.');
+      G._firstBellPendingLog = true;
+    }
+  }
+
   function runtimePushableSafety(dt){
     if (!window.Placement?.ensureNoPushableOverlap) return;
     if (!Number.isFinite(dt) || dt <= 0) dt = 0;
@@ -2529,6 +2656,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     runEntityAI(dt);
     updateEntities(dt);
 
+    maybeTriggerFirstBell();
     if (window.BellsAPI?.update) {
       try { window.BellsAPI.update(dt); }
       catch (err) { if (dbg) console.warn('[Bells] update error', err); }
@@ -3576,9 +3704,12 @@ function drawEntities(c2){
   }
 
   function startGame(levelNumber){
-    const targetLevel = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
+    const fallbackLevel = Number.isFinite(G.currentLevelNumber) ? G.currentLevelNumber : (G.level || 1);
+    const targetLevel = typeof levelNumber === 'number' ? levelNumber : fallbackLevel;
     const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
     G.level = targetLevel;
+    G.currentLevelNumber = targetLevel;
+    G.currentLevelId = `level${targetLevel}`;
     G.debugMap = DEBUG_MAP_MODE;
     G.isDebugMap = DEBUG_MAP_MODE;
     G._hasPlaced = false;
@@ -3624,6 +3755,12 @@ function drawEntities(c2){
 
     G.time = 0;
     G.cycleSeconds = 0;
+    const delayMinutes = Number.isFinite(G.firstBellDelayMinutes) ? Math.max(0, G.firstBellDelayMinutes) : 5;
+    G.firstBellDelayMinutes = delayMinutes;
+    G.firstBellDelaySeconds = delayMinutes * 60;
+    G.firstBellDeadline = G.firstBellDelaySeconds;
+    G.firstBellTriggered = false;
+    G._firstBellPendingLog = false;
     if (!wasRestart) G.score = 0;
     G.delivered = 0;
     G.timbresRest = 1;
