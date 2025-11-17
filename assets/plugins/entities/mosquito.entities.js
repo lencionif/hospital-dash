@@ -57,6 +57,14 @@
       aiId: 'MOSQUITO'
     };
 
+    ent.solid = true;
+    ent.dynamic = true;
+    ent.pushable = true;
+    ent.mass = 0.3;
+    ent.rest = 0.6;
+    ent.restitution = 0.6;
+    ent.mu = 0.018;
+
     ent._spawnX = ent.x;
     ent._spawnY = ent.y;
     ent._wanderTimer = 0;

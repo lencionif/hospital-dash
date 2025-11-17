@@ -53,6 +53,14 @@
       aiId: 'RAT'
     };
 
+    ent.solid = true;
+    ent.dynamic = true;
+    ent.pushable = true;
+    ent.mass = 0.45;
+    ent.rest = 0.52;
+    ent.restitution = 0.52;
+    ent.mu = 0.02;
+
     try { window.AI?.attach?.(ent, 'RAT'); } catch (_) {}
 
     attachPuppet(ent);

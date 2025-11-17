@@ -226,7 +226,14 @@
     it.bob = 0;
     it._remove = false;
     it.static = false;
-    it.pushable = false;
+    it.pushable = true;
+    it.dynamic = true;
+    it.solid = false;
+    it.mass = Number.isFinite(opts.mass) ? Math.max(0.1, opts.mass) : 0.2;
+    const bounce = Number.isFinite(opts.rest) ? opts.rest : 0.55;
+    it.rest = bounce;
+    it.restitution = bounce;
+    it.mu = typeof opts.mu === 'number' ? opts.mu : 0.02;
     const k = String(kind || '').toLowerCase();
     let rigName = null;
     const rigData = {};
