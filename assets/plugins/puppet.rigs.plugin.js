@@ -830,6 +830,153 @@
     ctx.restore();
   }
 
+  function heroFaceAsset(hero, facing){
+    const suffix = facing === 'back' ? '_back' : '';
+    return `assets/images/${hero}${suffix}.png`;
+  }
+
+  function buildHeroDom(hero, cfg = {}, entity){
+    const overlay = buildHeroOverlay(hero, entity) || {};
+    const head = overlay.parts?.head || null;
+    let faceImg = null;
+    if (typeof document !== 'undefined' && head){
+      head.classList.add('hero-head-has-face');
+      head.innerHTML = '';
+      faceImg = document.createElement('img');
+      faceImg.className = 'hero-face hero-face-front';
+      faceImg.alt = `${hero} face`;
+      faceImg.draggable = false;
+      faceImg.decoding = 'async';
+      faceImg.loading = 'lazy';
+      faceImg.src = heroFaceAsset(hero, 'front');
+      head.appendChild(faceImg);
+    }
+    const state = {
+      ...overlay,
+      hero,
+      faceImg,
+      faceFrontSrc: heroFaceAsset(hero, 'front'),
+      faceBackSrc: heroFaceAsset(hero, 'back'),
+      currentFaceSrc: heroFaceAsset(hero, 'front'),
+      faceState: 'front',
+      orientation: 'down',
+      dir: 1,
+      action: 'idle',
+      actionStart: nowMs(),
+      actionElapsed: 0,
+      breath: 0,
+      breathPhase: Math.random() * TAU,
+      time: 0,
+      depthBias: cfg.depthBias ?? overlay.depthBias ?? 18
+    };
+    if (state.root){
+      state.root.classList.add('hero-dom-ready', 'hero-dir-right', 'hero-state-idle');
+    }
+    paintHeroOverlayIcon(state, HERO_DRAW_PROFILE[hero] || {});
+    return state;
+  }
+
+  function determineHeroFaceDirection(st, e, anim){
+    const vx = Number(e?.vx) || 0;
+    const vy = Number(e?.vy) || 0;
+    const moving = Math.abs(vx) + Math.abs(vy) > 0.01;
+    if (moving){
+      if (Math.abs(vy) > Math.abs(vx)){
+        return vy < 0 ? 'back' : 'front';
+      }
+      return vy < 0 && Math.abs(vy) > Math.abs(vx) * 0.4 ? 'back' : 'front';
+    }
+    const orientation = anim?.orientation || st.orientation || 'down';
+    if (orientation === 'up') return 'back';
+    return 'front';
+  }
+
+  function updateHeroDomFace(st, e, anim){
+    if (!st?.faceImg) return;
+    const facing = determineHeroFaceDirection(st, e, anim);
+    const desiredSrc = facing === 'back'
+      ? (st.faceBackSrc || st.faceFrontSrc)
+      : (st.faceFrontSrc || st.currentFaceSrc);
+    if (desiredSrc && st.currentFaceSrc !== desiredSrc){
+      st.faceImg.src = desiredSrc;
+      st.currentFaceSrc = desiredSrc;
+    }
+    st.faceImg.classList.toggle('hero-face-back', facing === 'back');
+    st.faceImg.classList.toggle('hero-face-front', facing !== 'back');
+    st.faceState = facing;
+  }
+
+  function updateHeroDomBreath(st, dt, cfg = {}){
+    if (!st) return;
+    const speed = cfg.breathSpeed ?? 0.45;
+    const amp = cfg.breathAmp ?? 0.05;
+    const easing = Math.min(1, dt ? dt * 5 : 0.2);
+    st.breathPhase = (st.breathPhase + dt * speed * TAU) % TAU;
+    const target = st.action === 'idle' ? Math.sin(st.breathPhase) * amp : 0;
+    st.breath += (target - st.breath) * easing;
+    if (st.parts?.torso && st.parts.torso.style){
+      const scale = 1 + st.breath;
+      st.parts.torso.style.setProperty('--hero-breath-scale', scale.toFixed(4));
+    }
+  }
+
+  function applyHeroDomState(st, e, dt = 0, cfg = {}){
+    if (!st || !e) return;
+    const culled = isEntityCulled(e);
+    if (culled){
+      if (!st.culled && st.root){
+        st.root.classList.add('hero-culled');
+        st.root.style.visibility = 'hidden';
+      }
+      st.culled = true;
+      st.offscreen = true;
+      return;
+    }
+    if (st.culled && st.root){
+      st.root.classList.remove('hero-culled');
+      st.root.style.visibility = '';
+    }
+    st.depthBias = cfg.depthBias ?? st.depthBias ?? 18;
+    st.culled = false;
+    st.offscreen = false;
+    st.time = (st.time || 0) + dt;
+    const anim = resolveHeroAnim(e);
+    const heroKey = st.hero;
+    st.orientation = anim?.orientation || st.orientation || 'down';
+    const dir = anim?.dir ?? st.dir ?? 1;
+    if (dir < 0){
+      st.dir = -1;
+      st.root?.classList.add('hero-dir-left');
+      st.root?.classList.remove('hero-dir-right');
+    } else {
+      st.dir = 1;
+      st.root?.classList.add('hero-dir-right');
+      st.root?.classList.remove('hero-dir-left');
+    }
+    const action = anim?.action || 'idle';
+    if (st.action !== action){
+      if (st.action && st.root) st.root.classList.remove(`hero-state-${st.action}`);
+      if (st.root) st.root.classList.add(`hero-state-${action}`);
+      st.action = action;
+      st.actionStart = nowMs();
+      st.actionElapsed = 0;
+    } else {
+      st.actionElapsed = nowMs() - (st.actionStart || nowMs());
+    }
+    st.moving = !!(anim?.moving);
+    st.deathCause = action === 'dead' ? (anim?.deathCause || e.deathCause || 'damage') : '';
+    updateHeroOverlayClasses(st, heroKey, action, st.deathCause, anim);
+    updateHeroDomFace(st, e, anim);
+    updateHeroDomBreath(st, dt, cfg);
+  }
+
+  function positionHeroDom(st, cam, e, cfg = {}){
+    if (!st || !e) return;
+    const [cx, cy, sc] = toScreen(cam, e);
+    const scale = sc * (cfg.scale ?? 1);
+    positionHeroOverlay(st, cam, e, cx, cy, scale);
+  }
+
   const HERO_ACTION_CLASS_MAP = (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP)
     ? window.HERO_ACTION_CLASS_MAP
     : {
@@ -1625,14 +1772,14 @@
     API.registerRig(`hero_${hero}`, {
       create(entity){
         const state = buildHeroDom(hero, cfg, entity);
-        applyHeroDomState(state, entity);
+        applyHeroDomState(state, entity, 0, cfg);
         return state;
       },
-      update(state, entity){
-        applyHeroDomState(state, entity);
+      update(state, entity, dt){
+        applyHeroDomState(state, entity, dt || 0, cfg);
       },
       draw(ctx, cam, entity, state){
-        positionHeroDom(state, cam, entity);
+        positionHeroDom(state, cam, entity, cfg);
       },
       dispose(state, entity){
         if (!state) return;
@@ -1669,6 +1816,9 @@
         } catch (_) {}
       }
     }
+    try {
+      console.info('[HeroRig] Rigs DOM con caras personalizadas activos; no se requiere fallback.');
+    } catch (_) {}
   }
 
   if (typeof document !== 'undefined'){
