@@ -525,26 +525,42 @@
       e.spec.skin = `${key}.png`;
       e.skin = `${key}.png`;
       const rigName = `hero_${key}`;
-      let puppet = null;
-      try {
-        if (window.Puppet?.bind) {
-          puppet = window.Puppet.bind(e, rigName, { z: 0, scale: 1, data: { hero: key } });
-        }
-      } catch (err) {
-        console.warn(`[HeroRig] Error en Puppet.bind(${rigName})`, err);
-      }
-      if (!puppet && window.PuppetAPI?.attach) {
+      const fallbackRigName = 'default';
+      const baseRigData = { hero: key };
+      const attachRig = (targetRig, extraData = {}) => {
+        const payload = { z: 0, scale: 1, data: { ...baseRigData, ...extraData } };
+        let bound = null;
         try {
-          puppet = window.PuppetAPI.attach(e, { rig: rigName, z: 0, scale: 1, data: { hero: key } });
+          if (window.Puppet?.bind) {
+            bound = window.Puppet.bind(e, targetRig, payload);
+          }
         } catch (err) {
-          console.warn(`[HeroRig] Error en PuppetAPI.attach(${rigName})`, err);
+          console.warn(`[HeroRig] Error en Puppet.bind(${targetRig})`, err);
+        }
+        if (!bound && window.PuppetAPI?.attach) {
+          try {
+            bound = window.PuppetAPI.attach(e, { rig: targetRig, ...payload });
+          } catch (err) {
+            console.warn(`[HeroRig] Error en PuppetAPI.attach(${targetRig})`, err);
+          }
+        }
+        return bound;
+      };
+
+      let puppet = attachRig(rigName);
+      let resolvedRigName = rigName;
+      if (!puppet && rigName !== fallbackRigName) {
+        puppet = attachRig(fallbackRigName, { fallback: rigName });
+        resolvedRigName = puppet?.rigName || fallbackRigName;
+        if (puppet) {
+          console.warn(`[HeroRig] ${rigName} no disponible; usando rig de respaldo '${fallbackRigName}'.`);
         }
       }
       if (!puppet) {
         console.error(`[HeroRig] No se pudo vincular ${rigName}; verifica registro en PuppetAPI.`);
       }
       e.rig = puppet || null;
-      e.rigName = puppet?.rigName || rigName;
+      e.rigName = resolvedRigName;
       e.rigOk = !!(puppet && puppet.rigName === rigName);
       if (!e.rigOk) {
         console.warn(`[HeroRig] ${key} no tiene rig ${rigName}; PuppetAPI devolvió ${puppet?.rigName || 'ninguno'}.`);
