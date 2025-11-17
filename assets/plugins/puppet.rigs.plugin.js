@@ -1730,7 +1730,7 @@
     ctx.restore();
   }
 
-  function drawHeroRig(ctx, cam, e, st, cfg){
+  function drawHeroRig(ctx, cam, e, st, cfg, domCfg){
     if (!ctx || !e || !st || st.offscreen) return;
     const [cx, cy, sc] = toScreen(cam, e);
     const tile = window.G?.TILE_SIZE || window.TILE_SIZE || 32;
@@ -1747,13 +1747,20 @@
       drawHeroFigure(ctx, st, cfg);
     }
     ctx.restore();
-    positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
+    if (domCfg){
+      positionHeroDom(st, cam, e, domCfg);
+    } else {
+      positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
+    }
   }
 
   function registerHeroRig(hero, cfg){
+    const domCfg = HERO_DOM_CONFIG?.[hero];
     API.registerRig(`hero_${hero}`, {
       create(entity){
-        const overlay = buildHeroOverlay(hero, entity);
+        const overlay = domCfg
+          ? buildHeroDom(hero, domCfg, entity)
+          : buildHeroOverlay(hero, entity);
         const state = {
           hero,
           root: overlay.root,
@@ -1797,13 +1804,19 @@
           idleExtraCooldown: 0
         };
         paintHeroOverlayIcon(state, cfg);
+        if (domCfg){
+          applyHeroDomState(state, entity, 0, domCfg);
+        }
         return state;
       },
       update(st, e, dt){
         updateHeroRigState(st, e, dt, cfg);
+        if (domCfg){
+          applyHeroDomState(st, e, dt || 0, domCfg);
+        }
       },
       draw(ctx2, cam, e, st){
-        drawHeroRig(ctx2, cam, e, st, cfg);
+        drawHeroRig(ctx2, cam, e, st, cfg, domCfg);
       },
       dispose(st, entity){
         if (!st) return;
@@ -2056,71 +2069,7 @@
     }
   }
 
-  function registerHeroDomRig(hero, cfg){
-    API.registerRig(`hero_${hero}`, {
-      create(entity){
-        const state = buildHeroDom(hero, cfg, entity);
-        applyHeroDomState(state, entity, 0, cfg);
-        return state;
-      },
-      update(state, entity, dt){
-        applyHeroDomState(state, entity, dt || 0, cfg);
-      },
-      draw(ctx, cam, entity, state){
-        positionHeroDom(state, cam, entity, cfg);
-      },
-      dispose(state, entity){
-        if (!state) return;
-        if (typeof state.cleanup === 'function'){
-          try { state.cleanup(); } catch (_) {}
-        }
-        if (entity && Array.isArray(entity._destroyCbs) && state.cleanup){
-          entity._destroyCbs = entity._destroyCbs.filter((fn) => fn !== state.cleanup);
-        }
-        state.cleanup = null;
-      }
-    });
-  }
-
-  for (const [hero, cfg] of Object.entries(HERO_DOM_CONFIG)){
-    registerHeroDomRig(hero, cfg);
-  }
-
-  let heroDomDiagnosticsDone = false;
-  function logHeroDomRigDiagnostics(){
-    if (heroDomDiagnosticsDone) return;
-    heroDomDiagnosticsDone = true;
-    if (typeof window === 'undefined') return;
-    const registry = window.Puppet?.RIGS || {};
-    for (const hero of Object.keys(HERO_DOM_CONFIG)){
-      const id = `hero_${hero}`;
-      if (registry && registry[id]){
-        try {
-          console.log(`[HeroRig] rig "${id}" listo para usarse.`);
-        } catch (_) {}
-      } else {
-        try {
-          console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
-        } catch (_) {}
-      }
-    }
-    try {
-      console.info('[HeroRig] Rigs DOM con caras personalizadas activos; no se requiere fallback.');
-    } catch (_) {}
-    try {
-      console.info('[RIG_TEST] Héroes: rigs cargados y animaciones funcionando correctamente; sin fallback.');
-    } catch (_) {}
-  }
-
-  if (typeof document !== 'undefined'){
-    if (document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', logHeroDomRigDiagnostics, { once: true });
-    } else {
-      logHeroDomRigDiagnostics();
-    }
-  } else {
-    logHeroDomRigDiagnostics();
-  }
+  // DOM hero rigs share the same Puppet rig registration as canvas rigs.
 
   // ───────────────────────────── NPCs ──────────────────────────────
   registerHumanRig('npc_celador', {
