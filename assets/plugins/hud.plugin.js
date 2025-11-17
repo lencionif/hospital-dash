@@ -25,6 +25,340 @@
 
   const FloatingMessages = [];
 
+  const HUD_DOM = {
+    root: null,
+    left: null,
+    center: null,
+    right: null,
+    heartsCanvas: null,
+    heartsCtx: null,
+    patientsValue: null,
+    pendingValue: null,
+    furiousValue: null,
+    urgenciasValue: null,
+    scoreValue: null,
+    objectiveText: null,
+    carryBox: null,
+    carryPrimary: null,
+    carrySecondary: null,
+    bellsPanel: null,
+    bellsList: null,
+    bellsCount: null,
+    bellsEmpty: null,
+  };
+
+  function createHudStat(label, valueClass) {
+    const wrap = document.createElement('div');
+    wrap.className = 'hud-item';
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    const span = document.createElement('span');
+    span.className = `hud-value ${valueClass || ''}`.trim();
+    wrap.appendChild(strong);
+    wrap.appendChild(span);
+    return { wrap, value: span };
+  }
+
+  function setHudPositionAttr(pos){
+    if (!HUD_DOM.root) return;
+    HUD_DOM.root.dataset.position = pos;
+    HUD_DOM.root.classList.toggle('hud-bottom', pos === 'bottom');
+  }
+
+  function ensureHudDom(){
+    if (HUD_DOM.root || typeof document === 'undefined') return HUD_DOM;
+    const container = document.getElementById('game-container') || document.body;
+    if (!container) {
+      if (!HUD_DOM._waitDom && typeof document !== 'undefined') {
+        HUD_DOM._waitDom = true;
+        document.addEventListener('DOMContentLoaded', () => {
+          HUD_DOM._waitDom = false;
+          ensureHudDom();
+        }, { once: true });
+      }
+      return HUD_DOM;
+    }
+    const root = document.createElement('div');
+    root.id = 'hud';
+    const left = document.createElement('div');
+    left.className = 'hud-left';
+    const center = document.createElement('div');
+    center.className = 'hud-center';
+    const right = document.createElement('div');
+    right.className = 'hud-right';
+
+    const heartsCanvas = document.createElement('canvas');
+    heartsCanvas.className = 'hud-hearts';
+    const heartsCtx = heartsCanvas.getContext('2d');
+    left.appendChild(heartsCanvas);
+
+    const patientsStat = createHudStat('Pacientes', 'hud-patients');
+    const pendingStat = createHudStat('Pendientes', 'hud-pending');
+    const furiousStat = createHudStat('Furiosas activas', 'hud-furious');
+    left.appendChild(patientsStat.wrap);
+    left.appendChild(pendingStat.wrap);
+    left.appendChild(furiousStat.wrap);
+
+    const objective = document.createElement('div');
+    objective.className = 'hud-objective';
+    objective.textContent = 'Objetivo: ninguno';
+
+    const carryBox = document.createElement('div');
+    carryBox.className = 'hud-carry';
+    carryBox.hidden = true;
+    const carryPrimary = document.createElement('div');
+    carryPrimary.className = 'pill pill-label';
+    const carrySecondary = document.createElement('div');
+    carrySecondary.className = 'pill pill-target';
+    carryBox.appendChild(carryPrimary);
+    carryBox.appendChild(carrySecondary);
+
+    center.appendChild(objective);
+    center.appendChild(carryBox);
+
+    const urgenciasStat = createHudStat('Urgencias', 'hud-urgencias');
+    const scoreStat = createHudStat('Puntos', 'hud-score');
+    right.appendChild(urgenciasStat.wrap);
+    right.appendChild(scoreStat.wrap);
+
+    root.appendChild(left);
+    root.appendChild(center);
+    root.appendChild(right);
+
+    const bellsPanel = document.createElement('section');
+    bellsPanel.className = 'hud-bells-panel';
+    const bellsHeader = document.createElement('header');
+    const bellsTitle = document.createElement('span');
+    bellsTitle.textContent = 'Timbres activos';
+    const bellsCount = document.createElement('span');
+    bellsCount.className = 'hud-bells-count';
+    bellsHeader.appendChild(bellsTitle);
+    bellsHeader.appendChild(bellsCount);
+    const bellsList = document.createElement('div');
+    bellsList.className = 'hud-bells-list';
+    const bellsEmpty = document.createElement('p');
+    bellsEmpty.className = 'hud-bells-empty';
+    bellsEmpty.textContent = 'Sin timbres activos';
+    bellsPanel.appendChild(bellsHeader);
+    bellsPanel.appendChild(bellsList);
+    bellsPanel.appendChild(bellsEmpty);
+
+    root.appendChild(bellsPanel);
+    container.appendChild(root);
+
+    HUD_DOM.root = root;
+    HUD_DOM.left = left;
+    HUD_DOM.center = center;
+    HUD_DOM.right = right;
+    HUD_DOM.heartsCanvas = heartsCanvas;
+    HUD_DOM.heartsCtx = heartsCtx;
+    HUD_DOM.patientsValue = patientsStat.value;
+    HUD_DOM.pendingValue = pendingStat.value;
+    HUD_DOM.furiousValue = furiousStat.value;
+    HUD_DOM.urgenciasValue = urgenciasStat.value;
+    HUD_DOM.scoreValue = scoreStat.value;
+    HUD_DOM.objectiveText = objective;
+    HUD_DOM.carryBox = carryBox;
+    HUD_DOM.carryPrimary = carryPrimary;
+    HUD_DOM.carrySecondary = carrySecondary;
+    HUD_DOM.bellsPanel = bellsPanel;
+    HUD_DOM.bellsList = bellsList;
+    HUD_DOM.bellsCount = bellsCount;
+    HUD_DOM.bellsEmpty = bellsEmpty;
+
+    setHudPositionAttr(S.position);
+    return HUD_DOM;
+  }
+
+  const numberFormatter = (typeof Intl !== 'undefined' && typeof Intl.NumberFormat === 'function')
+    ? new Intl.NumberFormat('es-ES')
+    : null;
+
+  function formatNumber(value){
+    const safe = Number.isFinite(value) ? value : 0;
+    if (numberFormatter) return numberFormatter.format(safe);
+    return `${safe}`;
+  }
+
+  function getPatientCounters(G){
+    const baseSnapshot = (typeof window.patientsSnapshot === 'function')
+      ? window.patientsSnapshot()
+      : {
+          total: G?.stats?.totalPatients || 0,
+          pending: G?.stats?.remainingPatients || 0,
+          cured: G?.stats?.furiosasNeutralized || G?.stats?.patientsAttended || 0,
+          furious: G?.stats?.activeFuriosas || 0,
+        };
+    const store = (!Array.isArray(G?.patients) && typeof G?.patients === 'object') ? G.patients : null;
+    return {
+      total: Number.isFinite(store?.total) ? store.total : (baseSnapshot.total || 0),
+      pending: Number.isFinite(store?.pending) ? store.pending : (baseSnapshot.pending || 0),
+      cured: Number.isFinite(store?.cured) ? store.cured : (baseSnapshot.cured || 0),
+      furious: Number.isFinite(store?.furious) ? store.furious : (baseSnapshot.furious || 0),
+    };
+  }
+
+  function updateHeartsCanvas(G){
+    if (!HUD_DOM.heartsCanvas || !HUD_DOM.heartsCtx) return;
+    const canvas = HUD_DOM.heartsCanvas;
+    const ctx = HUD_DOM.heartsCtx;
+    const halves = Number.isFinite(G?.health) ? G.health : Math.max(0, (G?.player?.hp || 0) * 2);
+    const maxHearts = Math.max(1, ((G?.healthMax | 0) ? (G.healthMax | 0) / 2 : (G?.player?.hpMax || 3)));
+    const healthRatio = maxHearts > 0 ? Math.max(0, Math.min(1, halves / (maxHearts * 2))) : 1;
+    const tNow = (G?.time != null) ? G.time : (performance.now() / 1000);
+    const bps = 1.2 + (3.0 * (1 - healthRatio));
+    const phase = (tNow * bps) % 1;
+    const p1 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.06) / 0.12)), 3.2);
+    const p2 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.38) / 0.18)), 3.0);
+    const pulse = Math.min(1, p1 * 1.0 + p2 * 0.85);
+    const amp = 0.16 + 0.28 * (1 - healthRatio);
+    const squash = 0.10 + 0.24 * (1 - healthRatio);
+    const scaleX = 1 + amp * pulse;
+    const scaleY = 1 - squash * pulse;
+    const glow = 0.25 + 0.65 * pulse;
+
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const cssW = Math.max(120, 24 * maxHearts + 28);
+    const cssH = 48;
+    const width = Math.round(cssW * dpr);
+    const height = Math.round(cssH * dpr);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    drawHearts(ctx, 12, 6, halves, maxHearts, scaleX, scaleY, glow);
+  }
+
+  function formatBellTime(seconds){
+    const safe = Math.max(0, seconds);
+    const whole = Math.floor(safe);
+    const mins = Math.floor(whole / 60);
+    const secs = whole % 60;
+    if (mins > 0) return `${mins}:${String(secs).padStart(2, '0')}`;
+    return `${secs}s`;
+  }
+
+  function collectBellSnapshot(){
+    const api = window.BellsAPI;
+    if (!api || !Array.isArray(api.bells)) return [];
+    const now = Date.now();
+    const durationFallback = Number.isFinite(api.cfg?.ringDuration) ? api.cfg.ringDuration : 45;
+    const snapshot = [];
+    for (const entry of api.bells) {
+      if (!entry || entry.state !== 'ringing') continue;
+      const patient = entry.patient;
+      const label = patient?.displayName || patient?.name || patient?.keyName || entry.e?.label || 'Paciente';
+      const total = Number.isFinite(entry.ringDuration) ? Math.max(1, entry.ringDuration) : durationFallback;
+      let timeLeft = Number.isFinite(entry.tLeft) ? entry.tLeft : null;
+      if (!Number.isFinite(timeLeft) && Number.isFinite(entry.ringDeadline)) {
+        timeLeft = Math.max(0, (entry.ringDeadline - now) / 1000);
+      }
+      const safeTime = Number.isFinite(timeLeft) ? Math.max(0, timeLeft) : total;
+      snapshot.push({
+        id: patient?.id || entry.e?.id || label,
+        name: label,
+        timeLeft: safeTime,
+        total,
+        urgent: !!(patient?.ringingUrgent || entry.e?._warning)
+      });
+    }
+    snapshot.sort((a, b) => a.timeLeft - b.timeLeft);
+    return snapshot;
+  }
+
+  function updateBellsPanel(){
+    if (!HUD_DOM.bellsPanel) return;
+    const entries = collectBellSnapshot();
+    const count = entries.length;
+    if (HUD_DOM.bellsCount) HUD_DOM.bellsCount.textContent = `${count}`;
+    if (HUD_DOM.bellsEmpty) HUD_DOM.bellsEmpty.hidden = count > 0;
+    if (HUD_DOM.bellsList) HUD_DOM.bellsList.hidden = count === 0;
+    HUD_DOM.bellsPanel.classList.toggle('has-items', count > 0);
+    if (!count) {
+      if (HUD_DOM.bellsList) HUD_DOM.bellsList.textContent = '';
+      HUD_DOM._bellsHash = '';
+      return;
+    }
+    const hash = entries.map((e) => `${e.id}:${Math.round(e.timeLeft * 10)}:${Math.round(e.total * 10)}:${e.urgent ? 1 : 0}`).join('|');
+    const now = performance.now();
+    const shouldRefresh = !HUD_DOM._bellsHash
+      || HUD_DOM._bellsHash !== hash
+      || !HUD_DOM._bellsStamp
+      || (now - HUD_DOM._bellsStamp) > 120;
+    if (!shouldRefresh) return;
+    HUD_DOM._bellsStamp = now;
+    HUD_DOM._bellsHash = hash;
+    if (HUD_DOM.bellsList) HUD_DOM.bellsList.textContent = '';
+    for (const entry of entries) {
+      const row = document.createElement('div');
+      row.className = 'hud-bell-row';
+      if (entry.urgent) row.classList.add('is-urgent');
+      const head = document.createElement('div');
+      head.className = 'hud-bell-head';
+      const name = document.createElement('span');
+      name.className = 'hud-bell-name';
+      name.textContent = entry.name;
+      const timer = document.createElement('span');
+      timer.className = 'hud-bell-timer';
+      timer.textContent = formatBellTime(entry.timeLeft);
+      head.appendChild(name);
+      head.appendChild(timer);
+      const bar = document.createElement('div');
+      bar.className = 'hud-bell-bar';
+      const fill = document.createElement('div');
+      fill.className = 'hud-bell-fill';
+      const ratio = entry.total > 0 ? Math.max(0, Math.min(entry.timeLeft / entry.total, 1)) : 0;
+      fill.style.width = `${Math.round(ratio * 100)}%`;
+      bar.appendChild(fill);
+      row.appendChild(head);
+      row.appendChild(bar);
+      HUD_DOM.bellsList?.appendChild(row);
+    }
+  }
+
+  function updateCarryInfo(carry){
+    if (!HUD_DOM.carryBox) return;
+    if (carry) {
+      HUD_DOM.carryBox.hidden = false;
+      if (HUD_DOM.carryPrimary) HUD_DOM.carryPrimary.textContent = carry.label || 'Pastilla';
+      if (HUD_DOM.carrySecondary) {
+        const who = carry.patientName || carry.pairName || 'Paciente asignado';
+        HUD_DOM.carrySecondary.textContent = `Para: ${who}`;
+      }
+    } else {
+      HUD_DOM.carryBox.hidden = true;
+    }
+  }
+
+  function updateDomHud(G){
+    if (!G) return;
+    ensureHudDom();
+    if (!HUD_DOM.root) return;
+    const counters = getPatientCounters(G);
+    if (HUD_DOM.patientsValue) HUD_DOM.patientsValue.textContent = `${counters.cured}/${counters.total}`;
+    if (HUD_DOM.pendingValue) HUD_DOM.pendingValue.textContent = `${counters.pending}`;
+    if (HUD_DOM.furiousValue) {
+      HUD_DOM.furiousValue.textContent = `${counters.furious}`;
+      HUD_DOM.furiousValue.classList.toggle('is-alert', counters.furious > 0);
+    }
+    const urgOpen = !!(G?.urgenciasOpen || (counters.pending === 0 && counters.furious === 0));
+    if (HUD_DOM.urgenciasValue) {
+      HUD_DOM.urgenciasValue.textContent = urgOpen ? 'ABIERTO' : 'CERRADO';
+      HUD_DOM.urgenciasValue.classList.toggle('is-open', urgOpen);
+      HUD_DOM.urgenciasValue.classList.toggle('is-closed', !urgOpen);
+    }
+    if (HUD_DOM.scoreValue) HUD_DOM.scoreValue.textContent = formatNumber(G?.score || 0);
+    if (HUD_DOM.objectiveText) HUD_DOM.objectiveText.textContent = computeObjective(G);
+    const carry = G?.player?.carry || G?.carry || null;
+    updateCarryInfo(carry);
+    updateHeartsCanvas(G);
+    updateBellsPanel();
+  }
+
   (function ensurePatientStore(){
     const G = getG();
     if (!G) return;
@@ -280,81 +614,21 @@
     });
   }
 
-    function drawPatientsCounterPanel(ctx, G) {
-      const ensureCounters = () => {
-        let store = G.patients;
-        if (!store) {
-          store = { total: 0, pending: 0, cured: 0, furious: 0 };
-          G.patients = store;
-        }
-        const hasNumbers = (obj) => obj && ['total', 'pending', 'cured', 'furious'].every((k) => typeof obj[k] === 'number');
-        if (!hasNumbers(store)) {
-          const fallback = window.patientsSnapshot ? window.patientsSnapshot() : {
-            total: G?.stats?.totalPatients || 0,
-            pending: G?.stats?.remainingPatients || 0,
-            cured: G?.stats?.furiosasNeutralized || 0,
-            furious: G?.stats?.activeFuriosas || 0,
-          };
-          const target = (() => {
-            if (Array.isArray(store)) return store;
-            if (store && typeof store === 'object') return store;
-            const arr = [];
-            G.patients = arr;
-            return arr;
-          })();
-          target.total = fallback.total | 0;
-          target.pending = fallback.pending | 0;
-          target.cured = fallback.cured | 0;
-          target.furious = fallback.furious | 0;
-          store = target;
-        }
-        return {
-          total: store.total | 0,
-          pending: store.pending | 0,
-          cured: store.cured | 0,
-          furious: store.furious | 0,
-        };
-      };
-
-      const snap = ensureCounters();
-      const remaining = snap.pending || 0;
-      const cured = snap.cured || 0;
-      const total = snap.total || 0;
-      const furiosas = snap.furious || 0;
-      const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
-      const r = { x: 12, y: 12, w: 260, h: 96 };
-      ctx.save();
-      ctx.globalAlpha = 0.82;
-      ctx.fillStyle = '#05070b';
-      ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = urgOpen ? '#2ecc71' : '#e67e22';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(r.x, r.y, r.w, r.h);
-      ctx.font = 'bold 15px sans-serif';
-      ctx.fillStyle = '#e6edf3';
-      ctx.textAlign = 'left';
-      ctx.fillText(`Pacientes: ${cured} / ${total}`, r.x + 12, r.y + 24);
-      ctx.fillStyle = '#9aa6b1';
-      ctx.fillText(`Pendientes: ${remaining}`, r.x + 12, r.y + 42);
-      ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : '#9aa6b1';
-      ctx.fillText(`Furiosas activas: ${furiosas}`, r.x + 12, r.y + 60);
-      const carrying = (G.player?.carry || G.carry || null);
-      if (carrying && carrying.kind === 'PILL') {
-        ctx.fillStyle = '#ffd166';
-        ctx.fillText('Objetivo: entrega Pastilla al paciente asignado', r.x + 12, r.y + 78);
-      } else {
-        ctx.fillStyle = urgOpen ? '#ffd166' : '#9aa6b1';
-        ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, r.x + 12, r.y + 78);
-      }
-      ctx.restore();
-    }
-
   // API pública
   const HUD = {
     position: S.position, // 'top' | 'bottom'
-    setPosition(pos){ if (pos==='top' || pos==='bottom') { S.position = pos; HUD.position = pos; } },
-    togglePosition(){ S.position = (S.position === 'top') ? 'bottom' : 'top'; HUD.position = S.position; },
+    setPosition(pos){
+      if (pos==='top' || pos==='bottom') {
+        S.position = pos;
+        HUD.position = pos;
+        setHudPositionAttr(pos);
+      }
+    },
+    togglePosition(){
+      S.position = (S.position === 'top') ? 'bottom' : 'top';
+      HUD.position = S.position;
+      setHudPositionAttr(S.position);
+    },
 
     init(opts){
       if (opts && opts.position) HUD.setPosition(opts.position);
@@ -362,6 +636,8 @@
       window.addEventListener('keydown', (e) => {
         if (e.key === 'h' || e.key === 'H') HUD.togglePosition();
       });
+      ensureHudDom();
+      setHudPositionAttr(S.position);
       const G = getG();
       if (G && typeof G === 'object' && typeof G.onUrgenciasStateChanged !== 'function') {
         G.onUrgenciasStateChanged = (open) => {
@@ -373,8 +649,12 @@
     // Render principal del HUD como BARRA superior o inferior
     render(ctx, _camera, Gref){
       const G = Gref || getG();
-      if (!ctx || !G) return;
+      if (!G) return;
+      ensureHudDom();
+      updateDomHud(G);
+      if (!ctx) return;
       const canvas = ctx.canvas;
+      if (!canvas) return;
       const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
       const cssW = canvas.clientWidth || canvas.width || 0;
       const cssH = canvas.clientHeight || canvas.height || 0;
@@ -385,114 +665,6 @@
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
-
-      const panelWidth = Math.min(cssW - S.pad * 2, 480);
-      const panelHeight = S.height;
-      const panelX = S.pad;
-      const panelY = (S.position === 'top') ? S.pad : Math.max(S.pad, cssH - panelHeight - S.pad);
-
-      ctx.save();
-      ctx.fillStyle = THEME.bg;
-      ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
-      ctx.strokeStyle = '#19c37d';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1);
-
-      const halves = Number(G.health || 0);
-      const maxHearts = Math.max(1, ((G.healthMax | 0) ? (G.healthMax | 0) / 2 : (G.player?.hpMax || 3)));
-      const healthRatio = Math.max(0, Math.min(1, (maxHearts > 0 ? halves / (maxHearts * 2) : 1)));
-      const tNow = (G.time != null) ? G.time : (performance.now() / 1000);
-      const bps = 1.2 + (3.0 * (1 - healthRatio));
-      const phase = (tNow * bps) % 1;
-      const p1 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.06) / 0.12)), 3.2);
-      const p2 = Math.pow(Math.max(0, 1 - Math.abs((phase - 0.38) / 0.18)), 3.0);
-      const pulse = Math.min(1, p1 * 1.0 + p2 * 0.85);
-      const amp = 0.16 + 0.28 * (1 - healthRatio);
-      const squash = 0.10 + 0.24 * (1 - healthRatio);
-      const scaleX = 1 + amp * pulse;
-      const scaleY = 1 - squash * pulse;
-      const glow = 0.25 + 0.65 * pulse;
-
-      const heartsX = panelX + 18;
-      const heartsY = panelY + 18;
-      drawHearts(ctx, heartsX, heartsY, halves, maxHearts, scaleX, scaleY, glow);
-
-      const snap = window.patientsSnapshot ? window.patientsSnapshot() : {
-        total: G.stats?.totalPatients || 0,
-        pending: G.stats?.remainingPatients || 0,
-        cured: G.stats?.furiosasNeutralized || 0,
-        furious: G.stats?.activeFuriosas || 0,
-      };
-      const remaining = snap.pending || 0;
-      const cured = snap.cured || 0;
-      const total = snap.total || 0;
-      const furiosas = snap.furious || 0;
-      const urgOpen = (G?.urgenciasOpen === true) || (remaining === 0 && furiosas === 0);
-
-      const statsX = heartsX + 22 * maxHearts + 28;
-      const statsY = panelY + 12;
-      const statsStep = 18;
-      ctx.font = S.font;
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = THEME.text;
-      ctx.fillText(`Pacientes: ${cured}/${total}`, statsX, statsY);
-      ctx.fillText(`Pendientes: ${remaining}`, statsX, statsY + statsStep);
-      ctx.fillStyle = furiosas > 0 ? '#ff6b6b' : THEME.text;
-      ctx.fillText(`Furiosas activas: ${furiosas}`, statsX, statsY + statsStep * 2);
-      ctx.fillStyle = urgOpen ? THEME.ok : THEME.warn;
-      ctx.fillText(`Urgencias: ${urgOpen ? 'ABIERTO' : 'CERRADO'}`, statsX, statsY + statsStep * 3);
-
-      const scoreX = panelX + panelWidth - 18;
-      ctx.textAlign = 'right';
-      ctx.fillStyle = THEME.text;
-      ctx.fillText(`Puntos: ${G.score ?? 0}`, scoreX, statsY);
-      ctx.textAlign = 'left';
-
-      const objetivoRaw = computeObjective(G);
-      const objectiveWidth = panelWidth - 36;
-      const basePx = parseInt(S.font, 10) || 14;
-      const { px, lines } = fitAndWrap(ctx, basePx, objetivoRaw, objectiveWidth, 2, 12);
-      const objectiveLines = lines.length ? lines : [objetivoRaw];
-      const lineGap = 6;
-      const totalObjectiveHeight = objectiveLines.length > 1 ? (objectiveLines.length - 1) * (px + lineGap) + px : px;
-      const objectiveTop = panelY + panelHeight - totalObjectiveHeight - 12;
-
-      ctx.font = S.font;
-      const infoWidth = panelX + panelWidth - statsX - 24;
-      let infoY = statsY + statsStep * 4 + 6;
-      const carry = G.player?.carry || G.carry;
-      if (infoWidth > 40 && carry){
-        ctx.fillStyle = THEME.text;
-        const c1 = ellipsize(ctx, `Llevas: ${carry.label || '—'}`, infoWidth);
-        if (infoY + statsStep < objectiveTop){
-          ctx.fillText(c1, statsX, infoY);
-          infoY += statsStep;
-        }
-        const c2 = ellipsize(ctx, `→ Para: ${carry.patientName || carry.pairName || '—'}`, infoWidth);
-        if (infoY + statsStep < objectiveTop){
-          ctx.fillText(c2, statsX, infoY);
-          infoY += statsStep;
-        }
-        if (carry.anagram && infoY + statsStep < objectiveTop){
-          ctx.fillStyle = '#9fb0cc';
-          ctx.fillText(ellipsize(ctx, `Pista: ${carry.anagram}`, infoWidth), statsX, infoY);
-          ctx.fillStyle = THEME.text;
-          infoY += statsStep;
-        }
-      }
-
-      ctx.font = `${px}px monospace`;
-      ctx.fillStyle = THEME.accent;
-      ctx.textAlign = 'center';
-      const objectiveX = panelX + panelWidth * 0.5;
-      for (let i = 0; i < objectiveLines.length; i++){
-        const line = objectiveLines[i] || objetivoRaw;
-        const y = objectiveTop + i * (px + lineGap);
-        ctx.fillText(line, objectiveX, y);
-      }
-
-      ctx.restore();
     }
   };
 

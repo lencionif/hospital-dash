@@ -62,12 +62,24 @@
       entity.restitution = profile.restitution;
     }
     const slip = Number.isFinite(profile.friction) ? clamp01(profile.friction) : null;
-    if (slip != null) {
-      const mu = Math.max(0, Math.min((1 - slip) * 0.5, 0.25));
+    if (Number.isFinite(profile.mu)) {
+      entity.mu = clamp(profile.mu, 0, 0.25);
+    } else if (slip != null) {
+      entity.mu = Math.max(0, Math.min((1 - slip) * 0.5, 0.25));
+    }
+    if (Number.isFinite(profile.slideFriction)) {
+      const slide = clamp(profile.slideFriction, 0.002, 0.3);
+      entity.slideFriction = slide;
+      entity._slideFrictionOverride = slide;
+    } else if (slip != null) {
       const slideFriction = Math.max(0.002, Math.min(0.22, (1 - slip) * 0.2 + 0.002));
-      entity.mu = mu;
       entity.slideFriction = slideFriction;
       entity._slideFrictionOverride = slideFriction;
+    }
+    if (Number.isFinite(profile.drag)) {
+      const drag = clamp(profile.drag, 0.005, 0.25);
+      entity.friction = drag;
+      entity._frictionOverride = drag;
     }
     if (Number.isFinite(profile.vmax)) {
       entity.maxSpeed = profile.vmax;
@@ -79,7 +91,9 @@
       vmax: profile.vmax,
       maxSpeedPx,
       restitution: profile.restitution,
-      slip: slip
+      mu: Number.isFinite(entity.mu) ? entity.mu : null,
+      slide: entity._slideFrictionOverride,
+      drag: entity._frictionOverride
     };
     return entity._physProfile;
   }

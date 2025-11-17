@@ -43,9 +43,9 @@
     ragdollDuration: 1.1,
     ragdollCooldown: 0.65,
     cartProfiles: {
-      er:   { mass: 0.6, restitution: 0.85, friction: 0.92, vmax: 10 },
-      med:  { mass: 1.1, restitution: 0.55, friction: 0.90, vmax: 8 },
-      food: { mass: 2.3, restitution: 0.00, friction: 0.88, vmax: 6 }
+      er:   { mass: 1.1,  restitution: 0.96, mu: 0.004, slideFriction: 0.0045, drag: 0.012, vmax: 15 },
+      med:  { mass: 1.6,  restitution: 0.8,  mu: 0.012, slideFriction: 0.011,  drag: 0.018, vmax: 11.5 },
+      food: { mass: 2.6,  restitution: 0.6,  mu: 0.02,  slideFriction: 0.02,   drag: 0.026, vmax: 9 }
     },
     bedProfiles: {
       bed:         { mass: 2.0, restitution: 0.45, friction: 0.88, vmax: 7 },
@@ -321,11 +321,22 @@
       if (!e) return;
       const sub = 4;
       const wantsSlide = (e.slide != null) ? !!e.slide : isCartEntity(e);
-      const mu = (e.mu != null) ? e.mu : (wantsSlide ? (CFG.cartSlideMu ?? 0) : 0);
-      const base = 1 - (CFG.friction ?? 0.02);
+      const muSource = (e.mu != null) ? e.mu : (wantsSlide ? (CFG.cartSlideMu ?? 0) : 0);
+      const mu = clamp(muSource, 0, 0.95);
+      const baseFrictionValue = (typeof e._frictionOverride === 'number')
+        ? clamp(e._frictionOverride, 0, 0.95)
+        : (typeof e.friction === 'number'
+          ? clamp(e.friction, 0, 0.95)
+          : (CFG.friction ?? 0.02));
+      const base = 1 - baseFrictionValue;
       const fr = base * (1 - mu);
       const wr = Math.max(CFG.restitution, resolveRestitution(e));
-      const slideCoef = 1 - ((CFG.slideFriction ?? CFG.friction) ?? 0.02);
+      const slideFrictionValue = (typeof e._slideFrictionOverride === 'number')
+        ? clamp(e._slideFrictionOverride, 0.001, 0.95)
+        : (typeof e.slideFriction === 'number'
+          ? clamp(e.slideFriction, 0.001, 0.95)
+          : ((CFG.slideFriction ?? CFG.friction) ?? 0.02));
+      const slideCoef = 1 - slideFrictionValue;
       const entMass = massOf(e);
       const minFireMass = CFG.fireMinMass ?? DEFAULTS.fireMinMass ?? 0;
       const allowFireSpawn = !e.static && (Number.isFinite(entMass) ? entMass : minFireMass) >= minFireMass;

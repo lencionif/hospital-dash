@@ -140,13 +140,19 @@
 
     const radius = opts.radius   || TILE * 6.5;
     const intensity = (typeof opts.intensity === 'number' ? opts.intensity : 0.90);
+    const offsetX = Number.isFinite(opts.offsetX) ? opts.offsetX
+      : (Number.isFinite(owner.flashlightOffsetX) ? owner.flashlightOffsetX : 0);
+    const offsetY = Number.isFinite(opts.offsetY) ? opts.offsetY
+      : (Number.isFinite(owner.flashlightOffsetY) ? owner.flashlightOffsetY : 0);
     const id = W.LightingAPI.addLight({
       owner,
       color,
       radius,
       coneDeg: opts.coneDeg  || 70,
       intensity,
-      type: 'npc'
+      type: 'npc',
+      offsetX,
+      offsetY
     });
 
     try {

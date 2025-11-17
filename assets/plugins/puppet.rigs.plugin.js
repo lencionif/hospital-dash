@@ -1316,10 +1316,15 @@
 
   function positionHeroDom(st, cam, e, cfg = {}){
     if (!st || !e) return;
-    const [cx, cy, sc] = toScreen(cam, e);
+    const [worldCX, worldCY, puppetScale] = toScreen(cam, e);
     const zoom = resolveCameraZoom(cam);
-    const scale = Math.max(0.1, sc * (cfg.scale ?? 1) * zoom);
-    positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
+    const scale = Math.max(0.1, puppetScale * (cfg.scale ?? 1) * zoom);
+    st.currentZoom = zoom;
+    st.puppetScale = puppetScale;
+    st.worldCenterX = worldCX;
+    st.worldCenterY = worldCY;
+    positionHeroOverlay(st, cam, e, worldCX, worldCY, scale, cfg);
+    updateHeroFlashAnchor(st, e);
   }
 
   const HERO_ACTION_CLASS_MAP = (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP)
@@ -1620,6 +1625,12 @@
       ? cfgOffset
       : (Number.isFinite(st.offsetY) ? st.offsetY : -(tile * 0.4));
     st.root.style.transform = `translate(${x}px, ${y + offsetY}px) scale(${scale})`;
+    st.screenX = x;
+    st.screenY = y + offsetY;
+    st.worldCenterX = worldX;
+    st.worldCenterY = worldY;
+    st.renderScale = scale;
+    st.offsetYApplied = offsetY;
     const depthBias = Number.isFinite(st.depthBias)
       ? st.depthBias
       : (Number.isFinite(cfg.depthBias) ? cfg.depthBias : 18);
@@ -1627,6 +1638,45 @@
     const baseZ = Number.isFinite(cfg.zIndexBase) ? cfg.zIndexBase : 12;
     const zIndex = Math.min(80, baseZ + depth * 0.04);
     st.root.style.zIndex = zIndex.toFixed(0);
+  }
+
+  function updateHeroFlashAnchor(st, e){
+    if (!st || !e || !st.parts || !st.parts.arms || st.offscreen) return;
+    if (typeof document === 'undefined') return;
+    const arm = st.parts.arms.right || st.parts.arms.left;
+    if (!arm || typeof arm.getBoundingClientRect !== 'function') return;
+    const armRect = arm.getBoundingClientRect();
+    const rootRect = st.root?.getBoundingClientRect?.();
+    if (!armRect || !rootRect) return;
+    const dir = st.dir || 1;
+    const grabX = dir >= 0
+      ? (armRect.right - armRect.width * 0.15)
+      : (armRect.left + armRect.width * 0.15);
+    const grabY = armRect.bottom - armRect.height * 0.18;
+    const anchorScreenX = (typeof st.screenX === 'number')
+      ? st.screenX
+      : ((rootRect.left + rootRect.right) * 0.5);
+    const anchorScreenY = (typeof st.screenY === 'number')
+      ? st.screenY
+      : ((rootRect.top + rootRect.bottom) * 0.5);
+    const zoom = st.currentZoom || resolveCameraZoom(null) || 1;
+    if (!(zoom > 0.0001)) return;
+    const offsetX = (grabX - anchorScreenX) / zoom;
+    const offsetY = (grabY - anchorScreenY) / zoom;
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) return;
+    const blend = 0.35;
+    const prevX = Number.isFinite(st.flashOffsetX) ? st.flashOffsetX : (e.flashlightOffsetX || 0);
+    const prevY = Number.isFinite(st.flashOffsetY) ? st.flashOffsetY : (e.flashlightOffsetY || 0);
+    const smoothX = prevX + (offsetX - prevX) * blend;
+    const smoothY = prevY + (offsetY - prevY) * blend;
+    st.flashOffsetX = smoothX;
+    st.flashOffsetY = smoothY;
+    e.flashlightOffsetX = smoothX;
+    e.flashlightOffsetY = smoothY;
+    if (e._flashlightId && window.LightingAPI?.updateLight) {
+      try { window.LightingAPI.updateLight(e._flashlightId, { offsetX: smoothX, offsetY: smoothY }); }
+      catch (_) {}
+    }
   }
 
   function updateHeroRigState(st, e, dt, cfg){

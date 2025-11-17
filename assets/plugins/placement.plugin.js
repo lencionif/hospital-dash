@@ -1639,6 +1639,24 @@
             rigOk: false
           };
         }
+      } else if (type === 'hazard_fire') {
+        if (root.HazardsAPI?.spawnFire) {
+          entity = root.HazardsAPI.spawnFire(tx, ty, entry || {});
+        } else {
+          const size = TILE_SIZE() * 0.8;
+          entity = {
+            kind: 'HAZARD_FIRE',
+            x: world.x + (TILE_SIZE() - size) * 0.5,
+            y: world.y + (TILE_SIZE() - size) * 0.5,
+            w: size,
+            h: size,
+            solid: false,
+            dynamic: false,
+            pushable: false,
+            color: '#ff8a3c',
+            rigOk: false
+          };
+        }
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true || true;

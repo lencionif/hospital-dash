@@ -105,6 +105,8 @@
       turnSpeed: 6.0,          // radianes/segundo (~143º/s) -> ajustable
       _facingHold: 0,          // anti-parpadeo de cardinales
       _flashlightId: null,
+      flashlightOffsetX: 0,
+      flashlightOffsetY: 0,
       _fogRange: null,
       _lastHitAt: 0,
       _destroyCbs: [],
@@ -153,9 +155,11 @@
     }
 
     const extAttach = W.Entities?.attachFlashlight;
+    const offsetX = Number.isFinite(e.flashlightOffsetX) ? e.flashlightOffsetX : 0;
+    const offsetY = Number.isFinite(e.flashlightOffsetY) ? e.flashlightOffsetY : 0;
     if (typeof extAttach === 'function') {
       try {
-        const id = extAttach(e, { color, radius, intensity, coneDeg });
+        const id = extAttach(e, { color, radius, intensity, coneDeg, offsetX, offsetY });
         if (id != null) {
           e._flashlightId = id;
           e._destroyCbs.push(() => { try { W.LightingAPI?.removeLight?.(id); } catch (_) {} });
@@ -174,7 +178,9 @@
         intensity,
         radius,
         innerRadius: inner,
-        coneDeg
+        coneDeg,
+        offsetX,
+        offsetY
       });
       e._flashlightId = id;
       e._destroyCbs.push(() => { try { W.LightingAPI.removeLight(id); } catch(_){} });
