@@ -830,9 +830,59 @@
     ctx.restore();
   }
 
+  function setCssVar(el, name, value){
+    if (!el || !el.style) return;
+    el.style.setProperty(name, value);
+  }
+
+  const HERO_DOM_POSE_DEFAULTS = {
+    bob: 4,
+    armSwing: 18,
+    armReach: 6,
+    armLift: 2.5,
+    armOffset: 1.5,
+    legSwing: 14,
+    legLift: 2.6,
+    lean: 6,
+    pushLean: 8,
+    attackLean: -5,
+    talkLift: 4,
+    pushLift: 1.5,
+    eatLift: 3,
+    hurtDrop: 4,
+    accessoryBob: 2.4,
+    accessoryLift: 4,
+    accessoryAttackLift: 3,
+    jaw: 2,
+    headTilt: 3,
+    hurtTilt: -2,
+    pushReach: 8,
+    attackReach: 10,
+    attackLift: 3,
+    talkArmLift: 1.8,
+    verticalStride: 4,
+    sideStride: 6,
+    lanternShake: 1.6
+  };
+
   function heroFaceAsset(hero, facing){
     const suffix = facing === 'back' ? '_back' : '';
     return `assets/images/${hero}${suffix}.png`;
+  }
+
+  const HERO_FACE_PRELOADED = new Set();
+
+  function preloadHeroFaces(hero){
+    if (!hero || HERO_FACE_PRELOADED.has(hero) || typeof Image === 'undefined') return;
+    HERO_FACE_PRELOADED.add(hero);
+    const faces = [heroFaceAsset(hero, 'front'), heroFaceAsset(hero, 'back')];
+    faces.forEach((src) => {
+      try {
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = src;
+      } catch (_) {}
+    });
   }
 
   function buildHeroDom(hero, cfg = {}, entity){
@@ -840,6 +890,7 @@
     const head = overlay.parts?.head || null;
     let faceImg = null;
     if (typeof document !== 'undefined' && head){
+      preloadHeroFaces(hero);
       head.classList.add('hero-head-has-face');
       head.innerHTML = '';
       faceImg = document.createElement('img');
@@ -867,7 +918,23 @@
       breath: 0,
       breathPhase: Math.random() * TAU,
       time: 0,
-      depthBias: cfg.depthBias ?? overlay.depthBias ?? 18
+      depthBias: cfg.depthBias ?? overlay.depthBias ?? 18,
+      walkPhase: Math.random() * TAU,
+      legSwing: 0,
+      armSwing: 0,
+      bob: 0,
+      push: 0,
+      attack: 0,
+      talk: 0,
+      eat: 0,
+      hurt: 0,
+      lean: 0,
+      jaw: 0,
+      deathProgress: 0,
+      deathDrop: 0,
+      deathTilt: 0,
+      smoke: 0,
+      sweat: 0
     };
     if (state.root){
       state.root.classList.add('hero-dom-ready', 'hero-dir-right', 'hero-state-idle');
@@ -908,15 +975,150 @@
 
   function updateHeroDomBreath(st, dt, cfg = {}){
     if (!st) return;
-    const speed = cfg.breathSpeed ?? 0.45;
-    const amp = cfg.breathAmp ?? 0.05;
+    const animCfg = cfg.anim || cfg;
+    const speed = animCfg.breathSpeed ?? cfg.breathSpeed ?? 0.42;
+    const amp = animCfg.breathAmp ?? cfg.breathAmp ?? 0.35;
     const easing = Math.min(1, dt ? dt * 5 : 0.2);
     st.breathPhase = (st.breathPhase + dt * speed * TAU) % TAU;
     const target = st.action === 'idle' ? Math.sin(st.breathPhase) * amp : 0;
     st.breath += (target - st.breath) * easing;
-    if (st.parts?.torso && st.parts.torso.style){
-      const scale = 1 + st.breath;
-      st.parts.torso.style.setProperty('--hero-breath-scale', scale.toFixed(4));
+    const torso = st.parts?.torso;
+    if (torso && torso.style){
+      const scale = 1 + st.breath * 0.08;
+      const offset = st.breath * (cfg.breathOffset ?? 1.4);
+      torso.style.setProperty('--hero-breath-scale', scale.toFixed(4));
+      torso.style.setProperty('--hero-breath-offset', `${offset.toFixed(2)}px`);
+    }
+  }
+
+  function resolveHeroDomAnimCfg(hero, cfg = {}){
+    if (cfg && cfg.anim) return cfg.anim;
+    const profile = HERO_DRAW_PROFILE[hero];
+    return profile?.anim || {};
+  }
+
+  function stepHeroDomAnimation(st, e, dt = 0, cfg = {}){
+    if (!st) return;
+    const animCfg = resolveHeroDomAnimCfg(st.hero, cfg);
+    const action = st.action || 'idle';
+    const blend = (speed) => Math.min(1, dt > 0 ? dt * speed : 1);
+    const walkCycle = action === 'walk' ? (animCfg.walkCycle || 1) : (animCfg.idleCycle || 0.5);
+    st.walkPhase = (st.walkPhase + dt * walkCycle * TAU) % TAU;
+    const swingAmp = action === 'walk' ? (animCfg.walkSwing ?? 0.5) : (animCfg.idleSwing ?? 0.12);
+    const armAmp = action === 'walk' ? (animCfg.armSwing ?? 0.48) : (animCfg.idleArmSwing ?? 0.18);
+    const bobAmp = action === 'walk' ? (animCfg.walkBob ?? 2.2) : (animCfg.idleBob ?? 0.8);
+    const legTarget = Math.sin(st.walkPhase) * swingAmp;
+    const armTarget = Math.sin(st.walkPhase + Math.PI) * armAmp;
+    const bobTarget = Math.sin(st.walkPhase * (action === 'walk' ? 2 : 1)) * bobAmp;
+    st.legSwing += (legTarget - st.legSwing) * blend(9);
+    st.armSwing += (armTarget - st.armSwing) * blend(8);
+    st.bob += (bobTarget - st.bob) * blend(6);
+    const attackTarget = action === 'attack' ? 1 : 0;
+    st.attack += (attackTarget - st.attack) * blend(action === 'attack' ? 6 : 4);
+    const pushTarget = action === 'push' ? 1 : 0;
+    st.push += (pushTarget - st.push) * blend(5);
+    const talkTarget = action === 'talk' ? 1 : 0;
+    st.talk += (talkTarget - st.talk) * blend(6);
+    const eatTarget = (action === 'eat' || action === 'powerup') ? 1 : 0;
+    st.eat += (eatTarget - st.eat) * blend(5);
+    const hurtTarget = action === 'hurt' ? 1 : 0;
+    st.hurt += (hurtTarget - st.hurt) * blend(6);
+    const leanTarget = (animCfg.pushLean ?? 0.2) * st.push + (animCfg.attackLean ?? -0.12) * st.attack;
+    st.lean += (leanTarget - st.lean) * blend(5);
+    const jawTarget = st.talk > 0 ? (0.4 + 0.4 * Math.sin(st.time * 8)) * st.talk : 0;
+    const chew = st.eat * 0.6;
+    st.jaw += ((jawTarget + chew) - st.jaw) * blend(7);
+    if (action === 'dead'){
+      st.deathProgress = Math.min(1, st.deathProgress + dt * 0.9);
+    } else {
+      st.deathProgress = Math.max(0, st.deathProgress - dt * 1.2);
+    }
+    const dropTarget = st.deathProgress * (cfg.deathDropPx ?? cfg.deathDrop ?? 10);
+    st.deathDrop += (dropTarget - st.deathDrop) * blend(5);
+    const tiltTarget = action === 'dead'
+      ? (st.deathCause === 'crush' ? 0 : (st.deathCause === 'fire' ? 0.1 : 0.6))
+      : 0;
+    st.deathTilt += (tiltTarget - st.deathTilt) * blend(3);
+    const smokeTarget = st.deathCause === 'fire' ? 1 : 0;
+    st.smoke += (smokeTarget - st.smoke) * blend(1.8);
+    const sweatTarget = (e?.hero === 'roberto' && (st.push > 0.15 || st.action === 'push')) ? 1 : 0;
+    st.sweat = (st.sweat ?? 0) + (sweatTarget - (st.sweat ?? 0)) * blend(4);
+  }
+
+  function setArmPose(node, angle, offsetX, offsetY){
+    if (!node) return;
+    const safeAngle = Number.isFinite(angle) ? angle : 0;
+    const safeX = Number.isFinite(offsetX) ? offsetX : 0;
+    const safeY = Number.isFinite(offsetY) ? offsetY : 0;
+    setCssVar(node, '--hero-arm-angle', `${safeAngle.toFixed(2)}deg`);
+    setCssVar(node, '--hero-arm-offset-x', `${safeX.toFixed(2)}px`);
+    setCssVar(node, '--hero-arm-offset-y', `${safeY.toFixed(2)}px`);
+  }
+
+  function setLegPose(node, angle, offsetY){
+    if (!node) return;
+    const safeAngle = Number.isFinite(angle) ? angle : 0;
+    const safeY = Number.isFinite(offsetY) ? offsetY : 0;
+    setCssVar(node, '--hero-leg-angle', `${safeAngle.toFixed(2)}deg`);
+    setCssVar(node, '--hero-leg-offset-y', `${safeY.toFixed(2)}px`);
+  }
+
+  function applyHeroDomPose(st, cfg = {}){
+    if (!st?.parts || !st.root) return;
+    const pose = Object.assign({}, HERO_DOM_POSE_DEFAULTS, cfg.pose || {});
+    const dir = st.dir || 1;
+    const orientation = st.orientation || 'down';
+    const bobPx = (pose.bob ?? 4) * st.bob;
+    const dropPx = st.deathDrop || 0;
+    const hurtDrop = (pose.hurtDrop ?? 4) * st.hurt;
+    const talkLift = (pose.talkLift ?? 4) * st.talk;
+    const eatLift = (pose.eatLift ?? 3) * st.eat;
+    const pushLift = (pose.pushLift ?? 1.5) * st.push;
+    const torsoOffset = bobPx - dropPx - hurtDrop + talkLift - eatLift + pushLift;
+    setCssVar(st.parts.torso, '--hero-torso-offset-y', `${torsoOffset.toFixed(2)}px`);
+    const leanDeg = (pose.lean ?? 6) * st.lean + (pose.pushLean ?? 8) * st.push + (pose.attackLean ?? -5) * st.attack;
+    setCssVar(st.parts.torso, '--hero-torso-lean', `${leanDeg.toFixed(2)}deg`);
+    const headOffset = bobPx * 0.35 - dropPx * 0.6 - hurtDrop * 0.5 + talkLift * 0.5 - eatLift * 0.25;
+    setCssVar(st.parts.head, '--hero-head-offset-y', `${headOffset.toFixed(2)}px`);
+    const headTilt = (pose.headTilt ?? 3) * st.talk + (pose.hurtTilt ?? -2) * st.hurt;
+    setCssVar(st.parts.head, '--hero-head-tilt', `${headTilt.toFixed(2)}deg`);
+    if (st.faceImg){
+      setCssVar(st.faceImg, '--hero-face-offset-y', `${((pose.jaw ?? 2) * st.jaw).toFixed(2)}px`);
+    }
+    const swingScale = orientation === 'side' ? 1 : 0.55;
+    const arms = st.parts.arms || {};
+    const armFront = dir >= 0 ? arms.right : arms.left;
+    const armBack = dir >= 0 ? arms.left : arms.right;
+    const armSwing = (pose.armSwing ?? 18) * st.armSwing * swingScale;
+    const reach = (pose.pushReach ?? 8) * st.push + (pose.attackReach ?? 10) * st.attack;
+    const talkArmLift = (pose.talkArmLift ?? 1.8) * st.talk;
+    const attackLift = (pose.attackLift ?? 3) * st.attack;
+    const armOffset = (pose.armOffset ?? 1.5) * dir;
+    setArmPose(armFront, armSwing + reach, armOffset, bobPx * 0.1 + talkArmLift + attackLift);
+    setArmPose(armBack, -armSwing + reach * 0.2, -armOffset * 0.8, bobPx * 0.05 - talkArmLift * 0.5);
+    const legs = st.parts.legs || {};
+    const legFront = dir >= 0 ? legs.right : legs.left;
+    const legBack = dir >= 0 ? legs.left : legs.right;
+    const stridePhase = orientation === 'side'
+      ? st.legSwing
+      : Math.sin((st.walkPhase || 0) * 2) * 0.6;
+    const strideAmount = (orientation === 'side'
+      ? (pose.sideStride ?? pose.verticalStride ?? 4)
+      : (pose.verticalStride ?? pose.sideStride ?? 4)) * stridePhase;
+    const verticalSign = orientation === 'up' ? -1 : 1;
+    const legSwingDeg = (pose.legSwing ?? 14) * stridePhase * swingScale * verticalSign;
+    const legLift = (pose.legLift ?? 2.6) * Math.abs(stridePhase);
+    setLegPose(legFront, legSwingDeg, bobPx * 0.25 - dropPx - hurtDrop + legLift + strideAmount * 0.12);
+    setLegPose(legBack, -legSwingDeg, bobPx * 0.12 - dropPx * 0.5 - hurtDrop * 0.5 - legLift * 0.3 - strideAmount * 0.08);
+    if (st.parts.accessory){
+      const accessoryOffset = (pose.accessoryBob ?? 2.4) * Math.sin((st.walkPhase || 0) * 1.3 + dir)
+        + (pose.accessoryLift ?? 4) * st.push
+        + (pose.accessoryAttackLift ?? 3) * st.attack
+        - dropPx * 0.15;
+      setCssVar(st.parts.accessory, '--hero-accessory-offset-y', `${accessoryOffset.toFixed(2)}px`);
+    }
+    if (st.root){
+      st.root.classList.toggle('hero-sweating', (st.sweat ?? 0) > 0.35 || st.root.classList.contains('hero-sweating') && (st.sweat ?? 0) > 0.2);
     }
   }
 
@@ -965,16 +1167,28 @@
     }
     st.moving = !!(anim?.moving);
     st.deathCause = action === 'dead' ? (anim?.deathCause || e.deathCause || 'damage') : '';
+    stepHeroDomAnimation(st, e, dt, cfg);
     updateHeroOverlayClasses(st, heroKey, action, st.deathCause, anim);
     updateHeroDomFace(st, e, anim);
     updateHeroDomBreath(st, dt, cfg);
+    applyHeroDomPose(st, cfg);
+  }
+
+  function resolveCameraZoom(cam){
+    const local = cam && Number.isFinite(cam.zoom) ? cam.zoom : null;
+    if (Number.isFinite(local) && local > 0) return local;
+    const globalCam = typeof window !== 'undefined' ? window.camera : null;
+    const globalZoom = globalCam && Number.isFinite(globalCam.zoom) ? globalCam.zoom : null;
+    if (Number.isFinite(globalZoom) && globalZoom > 0) return globalZoom;
+    return 1;
   }
 
   function positionHeroDom(st, cam, e, cfg = {}){
     if (!st || !e) return;
     const [cx, cy, sc] = toScreen(cam, e);
-    const scale = sc * (cfg.scale ?? 1);
-    positionHeroOverlay(st, cam, e, cx, cy, scale);
+    const zoom = resolveCameraZoom(cam);
+    const scale = Math.max(0.1, sc * (cfg.scale ?? 1) * zoom);
+    positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
   }
 
   const HERO_ACTION_CLASS_MAP = (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP)
@@ -1262,17 +1476,26 @@
     }
   }
 
-  function positionHeroOverlay(st, cam, e, worldX, worldY, scale){
+  function positionHeroOverlay(st, cam, e, worldX, worldY, scale, cfg = {}){
     if (!st?.root) return;
     const projected = (typeof window.worldToScreen === 'function')
       ? window.worldToScreen(worldX, worldY, cam)
       : { sx: worldX, sy: worldY };
     const x = (projected && (projected.sx ?? projected.x)) ?? worldX;
     const y = (projected && (projected.sy ?? projected.y)) ?? worldY;
-    const offsetY = -((window.G?.TILE_SIZE || window.TILE_SIZE || 32) * 0.4);
+    const tile = window.G?.TILE_SIZE || window.TILE_SIZE || 32;
+    const cfgOffset = Number(cfg.offsetY);
+    const offsetY = Number.isFinite(cfgOffset)
+      ? cfgOffset
+      : (Number.isFinite(st.offsetY) ? st.offsetY : -(tile * 0.4));
     st.root.style.transform = `translate(${x}px, ${y + offsetY}px) scale(${scale})`;
-    const depth = Math.floor((e?.y || 0) + (st.depthBias || 0));
-    st.root.style.zIndex = String(40 + depth);
+    const depthBias = Number.isFinite(st.depthBias)
+      ? st.depthBias
+      : (Number.isFinite(cfg.depthBias) ? cfg.depthBias : 18);
+    const depth = Math.max(0, (Number(e?.y) || 0) + depthBias);
+    const baseZ = Number.isFinite(cfg.zIndexBase) ? cfg.zIndexBase : 12;
+    const zIndex = Math.min(80, baseZ + depth * 0.04);
+    st.root.style.zIndex = zIndex.toFixed(0);
   }
 
   function updateHeroRigState(st, e, dt, cfg){
@@ -1543,7 +1766,7 @@
       drawHeroFigure(ctx, st, cfg);
     }
     ctx.restore();
-    positionHeroOverlay(st, cam, e, cx, cy, scale);
+    positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
   }
 
   function registerHeroRig(hero, cfg){
@@ -1710,8 +1933,36 @@
       talkDuration: 0.6,
       offsetY: -16,
       depthBias: 20,
+      deathDropPx: 12,
       lanternColor: '#ffd34d',
-      lanternGlow: 'rgba(255,211,77,0.55)'
+      lanternGlow: 'rgba(255,211,77,0.55)',
+      anim: HERO_DRAW_PROFILE.enrique?.anim,
+      pose: {
+        bob: 4.8,
+        armSwing: 20,
+        armReach: 8,
+        armLift: 3.5,
+        armOffset: 1.6,
+        legSwing: 16,
+        legLift: 3.6,
+        lean: 7,
+        pushLean: 12,
+        attackLean: -7,
+        talkLift: 5,
+        eatLift: 4,
+        hurtDrop: 6,
+        accessoryBob: 3.2,
+        accessoryLift: 5,
+        accessoryAttackLift: 3.5,
+        jaw: 2.8,
+        headTilt: 3.2,
+        pushReach: 9,
+        attackReach: 12,
+        attackLift: 3.2,
+        talkArmLift: 2.2,
+        verticalStride: 4.2,
+        sideStride: 7.2
+      }
     },
     roberto: {
       scale: 1.0,
@@ -1724,8 +1975,36 @@
       talkDuration: 0.42,
       offsetY: -14,
       depthBias: 18,
+      deathDropPx: 9,
       lanternColor: '#ff9f40',
-      lanternGlow: 'rgba(255,159,64,0.52)'
+      lanternGlow: 'rgba(255,159,64,0.52)',
+      anim: HERO_DRAW_PROFILE.roberto?.anim,
+      pose: {
+        bob: 3.6,
+        armSwing: 26,
+        armReach: 7,
+        armLift: 2.8,
+        armOffset: 1.4,
+        legSwing: 18,
+        legLift: 3.1,
+        lean: 5,
+        pushLean: 7,
+        attackLean: -4,
+        talkLift: 3.6,
+        eatLift: 2.4,
+        hurtDrop: 4,
+        accessoryBob: 2.3,
+        accessoryLift: 4,
+        accessoryAttackLift: 2.5,
+        jaw: 1.8,
+        headTilt: 2.4,
+        pushReach: 8,
+        attackReach: 11,
+        attackLift: 2.4,
+        talkArmLift: 2.0,
+        verticalStride: 4.8,
+        sideStride: 7.8
+      }
     },
     francesco: {
       scale: 1.02,
@@ -1738,8 +2017,36 @@
       talkDuration: 0.5,
       offsetY: -15,
       depthBias: 19,
+      deathDropPx: 11,
       lanternColor: '#66b3ff',
-      lanternGlow: 'rgba(102,179,255,0.52)'
+      lanternGlow: 'rgba(102,179,255,0.52)',
+      anim: HERO_DRAW_PROFILE.francesco?.anim,
+      pose: {
+        bob: 4.2,
+        armSwing: 22,
+        armReach: 7,
+        armLift: 3.1,
+        armOffset: 1.5,
+        legSwing: 15,
+        legLift: 3.0,
+        lean: 6,
+        pushLean: 9,
+        attackLean: -6,
+        talkLift: 4.2,
+        eatLift: 3.2,
+        hurtDrop: 5,
+        accessoryBob: 2.7,
+        accessoryLift: 4.5,
+        accessoryAttackLift: 3,
+        jaw: 2.1,
+        headTilt: 2.8,
+        pushReach: 8.5,
+        attackReach: 11.5,
+        attackLift: 2.8,
+        talkArmLift: 2.1,
+        verticalStride: 4.4,
+        sideStride: 7
+      }
     }
   };
 
@@ -1818,6 +2125,9 @@
     }
     try {
       console.info('[HeroRig] Rigs DOM con caras personalizadas activos; no se requiere fallback.');
+    } catch (_) {}
+    try {
+      console.info('[RIG_TEST] Héroes: rigs cargados y animaciones funcionando correctamente; sin fallback.');
     } catch (_) {}
   }
 

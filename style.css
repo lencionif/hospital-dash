@@ -1297,10 +1297,11 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   height:1px;
   pointer-events:none;
   transform-origin:center center;
-  z-index:140;
+  z-index:25;
   color:#66b3ff;
   filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
-  transition: opacity 0.25s ease;
+  transition: transform 0.2s ease;
+  will-change: transform;
 }
 
 .puppet-hero.hero-enrique{ color:#ffd34d; }
@@ -1318,10 +1319,10 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   height:34px;
   transform:translate(-50%, -50%);
   border-radius:18px;
-  background:radial-gradient(circle at 40% 35%, rgba(255,255,255,0.5), rgba(255,255,255,0));
+  background:radial-gradient(circle at 40% 35%, #ffffff, rgba(207,216,255,0.95));
   box-shadow:0 0 16px currentColor;
-  opacity:0.65;
-  transition: box-shadow 0.35s ease, opacity 0.25s ease;
+  opacity:1;
+  transition: box-shadow 0.35s ease;
 }
 
 .puppet-hero.hero-dir-right .hero-overlay{ transform:translate(-50%, -50%) scaleX(1); }
@@ -1333,7 +1334,7 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   right:-10px;
   width:36px;
   height:36px;
-  opacity:0.4;
+  opacity:0.95;
   mix-blend-mode:screen;
 }
 
@@ -1349,23 +1350,114 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 .puppet-hero .hero-part{
   position:absolute;
   border-radius:50%;
-  opacity:0.7;
-  mix-blend-mode:screen;
+  opacity:1;
+  mix-blend-mode:normal;
+  will-change: transform;
+  box-shadow:0 1px 2px rgba(0,0,0,0.35);
 }
 
-.puppet-hero .hero-head{ width:12px; height:12px; top:4px; left:50%; transform:translate(-50%, -50%); }
+.puppet-hero .hero-head{
+  width:14px;
+  height:14px;
+  top:4px;
+  left:50%;
+  --hero-head-offset-x: 0px;
+  --hero-head-offset-y: 0px;
+  --hero-head-tilt: 0deg;
+  transform:translate(calc(-50% + var(--hero-head-offset-x, 0px)), calc(-50% + var(--hero-head-offset-y, 0px))) rotate(var(--hero-head-tilt, 0deg));
+  transition: transform 0.12s ease;
+}
 .puppet-hero .hero-head-has-face{ overflow:hidden; border-radius:50%; border:1px solid rgba(255,255,255,0.12); background:rgba(6,10,18,0.45); }
-.puppet-hero .hero-face{ width:100%; height:100%; display:block; object-fit:cover; image-rendering:auto; pointer-events:none; user-select:none; filter:drop-shadow(0 0 2px rgba(0,0,0,0.35)); transition:opacity 0.2s ease; }
-.puppet-hero .hero-face-back{ opacity:0.92; }
+.puppet-hero .hero-face{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  image-rendering:pixelated;
+  pointer-events:none;
+  user-select:none;
+  filter:drop-shadow(0 0 2px rgba(0,0,0,0.65));
+  transition:opacity 0.2s ease, transform 0.08s ease;
+  transform: translateY(var(--hero-face-offset-y, 0px));
+}
+.puppet-hero .hero-face-back{ opacity:1; }
 .puppet-hero .hero-face-front{ opacity:1; }
-.puppet-hero .hero-torso{ width:18px; height:20px; top:50%; left:50%; border-radius:12px; transform-origin:50% 85%; --hero-breath-scale:1; transform:translate(-50%, -65%) scaleY(var(--hero-breath-scale, 1)); transition:transform 0.2s ease; }
-.puppet-hero .hero-arm{ width:8px; height:16px; top:8px; border-radius:6px; }
+.puppet-hero .hero-torso{
+  width:18px;
+  height:20px;
+  top:50%;
+  left:50%;
+  border-radius:12px;
+  transform-origin:50% 85%;
+  --hero-breath-scale:1;
+  --hero-breath-offset:0px;
+  --hero-torso-offset-y: 0px;
+  --hero-torso-lean: 0deg;
+  transform:translate(-50%, calc(-65% + var(--hero-torso-offset-y, 0px) + var(--hero-breath-offset, 0px))) scaleY(var(--hero-breath-scale, 1)) rotate(var(--hero-torso-lean, 0deg));
+  transition:transform 0.1s ease;
+}
+.puppet-hero .hero-arm{
+  width:8px;
+  height:16px;
+  top:8px;
+  border-radius:6px;
+  transform-origin:50% 10%;
+  --hero-arm-angle: 0deg;
+  --hero-arm-offset-x: 0px;
+  --hero-arm-offset-y: 0px;
+  transform:translate(var(--hero-arm-offset-x, 0px), calc(var(--hero-arm-offset-y, 0px) + var(--hero-arm-bob, 0px))) rotate(var(--hero-arm-angle, 0deg));
+  transition:transform 0.08s ease;
+}
 .puppet-hero .hero-arm-left{ left:4px; }
 .puppet-hero .hero-arm-right{ right:4px; }
-.puppet-hero .hero-leg{ width:8px; height:14px; bottom:4px; border-radius:5px; }
+.puppet-hero .hero-leg{
+  width:8px;
+  height:14px;
+  bottom:4px;
+  border-radius:5px;
+  transform-origin:50% 15%;
+  --hero-leg-angle: 0deg;
+  --hero-leg-offset-y: 0px;
+  transform:translateY(var(--hero-leg-offset-y, 0px)) rotate(var(--hero-leg-angle, 0deg));
+  transition:transform 0.08s ease;
+}
 .puppet-hero .hero-leg-left{ left:6px; }
 .puppet-hero .hero-leg-right{ right:6px; }
-.puppet-hero .hero-accessory{ width:10px; height:10px; bottom:0; left:50%; transform:translate(-50%, 40%); }
+.puppet-hero .hero-accessory{
+  width:10px;
+  height:10px;
+  bottom:0;
+  left:50%;
+  --hero-accessory-offset-y: 0px;
+  transform:translate(-50%, calc(40% + var(--hero-accessory-offset-y, 0px)));
+  transition:transform 0.08s ease, opacity 0.15s ease;
+}
+
+.puppet-hero.hero-orientation-up .hero-face{ filter: saturate(0.85); }
+.puppet-hero.hero-orientation-down .hero-face{ filter: saturate(1.05); }
+
+.puppet-hero.hero-sweating .hero-head::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  right:-3px;
+  width:4px;
+  height:6px;
+  border-radius:50%;
+  background:rgba(102,179,255,0.65);
+  filter:blur(0.3px);
+  animation: heroSweat 1.2s infinite;
+}
+
+.puppet-hero.hero-smoking .hero-accessory::after{
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,150,80,0.45), rgba(255,120,60,0));
+  filter: blur(3px);
+  animation: heroSmoke 1.4s ease-in-out infinite;
+}
 
 .puppet-hero.hero-enrique .enrique-cabeza{ background:#f5c79a; }
 .puppet-hero.hero-enrique .enrique-torso{ background:#1f2c44; box-shadow:0 0 8px rgba(255,179,71,0.3); }
@@ -1412,12 +1504,59 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
 
 .puppet-hero.hero-roberto.anim-roberto-idle-extra .hero-overlay{ animation: heroOverlaySneak 1.2s ease-in-out infinite; }
 
+.puppet-hero.hero-enrique.anim-enrique-hablar .hero-face{ animation: heroFaceTalkHeavy 0.6s ease-in-out infinite; }
+.puppet-hero.hero-roberto.anim-roberto-hablar .hero-face{ animation: heroFaceTalkQuick 0.45s ease-in-out infinite; }
+.puppet-hero.hero-francesco.anim-francesco-hablar .hero-face{ animation: heroFaceTalkCalm 0.62s ease-in-out infinite; }
+
+.puppet-hero.hero-enrique.anim-enrique-comer .hero-arm-right{ animation: heroEatHeavy 0.9s ease-in-out infinite; }
+.puppet-hero.hero-roberto.anim-roberto-comer .hero-arm-right{ animation: heroEatFast 0.7s ease-in-out infinite; }
+.puppet-hero.hero-francesco.anim-francesco-comer .hero-arm-right{ animation: heroEatCalm 1s ease-in-out infinite; }
+
+.puppet-hero.hero-enrique.anim-enrique-empujar .hero-arm-left,
+.puppet-hero.hero-enrique.anim-enrique-empujar .hero-arm-right{ animation: heroPushHeavy 0.95s ease-in-out infinite; }
+.puppet-hero.hero-roberto.anim-roberto-empujar .hero-arm-left,
+.puppet-hero.hero-roberto.anim-roberto-empujar .hero-arm-right{ animation: heroPushFast 0.8s ease-in-out infinite; }
+.puppet-hero.hero-francesco.anim-francesco-empujar .hero-arm-left,
+.puppet-hero.hero-francesco.anim-francesco-empujar .hero-arm-right{ animation: heroPushBalanced 0.9s ease-in-out infinite; }
+
+.puppet-hero.hero-enrique.anim-enrique-atacar .hero-arm-right{ animation: heroAttackHeavy 0.75s ease-out infinite; }
+.puppet-hero.hero-roberto.anim-roberto-atacar .hero-arm-right{ animation: heroAttackFast 0.55s ease-out infinite; }
+.puppet-hero.hero-francesco.anim-francesco-atacar .hero-arm-right{ animation: heroAttackBalanced 0.65s ease-out infinite; }
+
+.puppet-hero.hero-enrique.anim-enrique-morir-aplastado .hero-overlay,
+.puppet-hero.hero-roberto.anim-roberto-morir-aplastado .hero-overlay,
+.puppet-hero.hero-francesco.anim-francesco-morir-aplastado .hero-overlay{ animation: heroDeathCrush 0.9s ease forwards; }
+
+.puppet-hero.hero-enrique.anim-enrique-morir-dano .hero-overlay,
+.puppet-hero.hero-roberto.anim-roberto-morir-dano .hero-overlay,
+.puppet-hero.hero-francesco.anim-francesco-morir-dano .hero-overlay{ animation: heroDeathDamage 0.9s ease forwards; }
+
+.puppet-hero.hero-enrique.anim-enrique-morir-fuego .hero-overlay,
+.puppet-hero.hero-roberto.anim-roberto-morir-fuego .hero-overlay,
+.puppet-hero.hero-francesco.anim-francesco-morir-fuego .hero-overlay{ animation: heroDeathFireDom 1.1s ease forwards; }
+
 .puppet-hero.hero-is-attacking .hero-overlay{ box-shadow:0 0 22px rgba(255,255,255,0.6); }
-.puppet-hero.hero-is-pushing .hero-overlay{ opacity:0.85; }
+.puppet-hero.hero-is-pushing .hero-overlay{ box-shadow:0 0 18px currentColor; }
 .puppet-hero.hero-is-talking .hero-head{ box-shadow:0 0 6px rgba(255,255,255,0.35); }
-.puppet-hero.hero-is-dead .hero-overlay{ opacity:0.18; filter:grayscale(0.8); }
-.puppet-hero.hero-death-crush .hero-overlay{ transform:translate(-50%, -50%) scaleY(0.35); box-shadow:0 0 8px rgba(0,0,0,0.35); }
+.puppet-hero.hero-is-dead .hero-overlay{ filter:grayscale(0.8); }
 .puppet-hero.hero-death-fire .hero-overlay{ animation: heroOverlayFire 1.4s ease-in-out infinite; }
+
+.puppet-hero.hero-sparking .hero-accessory{
+  opacity:0.9;
+  box-shadow:0 0 14px currentColor;
+}
+
+@keyframes heroSweat{
+  0%,100%{ transform:translate(0, -1px) scale(0.9); opacity:0; }
+  40%{ transform:translate(0, 2px) scale(1); opacity:0.9; }
+  80%{ transform:translate(0, 6px) scale(0.7); opacity:0; }
+}
+
+@keyframes heroSmoke{
+  0%{ transform:scale(0.7); opacity:0.4; }
+  50%{ transform:scale(1.2); opacity:0.2; }
+  100%{ transform:scale(1.4); opacity:0; }
+}
 
 @keyframes heroOverlayBreath{
   0%,100%{ opacity:0.58; box-shadow:0 0 14px currentColor; }
@@ -1478,4 +1617,89 @@ body.ascii-mode #start-screen { filter: none !important; opacity: 1 !important; 
   0%{ opacity:0.55; box-shadow:0 0 18px rgba(255,120,60,0.6); }
   50%{ opacity:0.3; box-shadow:0 0 30px rgba(255,160,100,0.8); }
   100%{ opacity:0.55; box-shadow:0 0 18px rgba(255,120,60,0.6); }
+}
+
+@keyframes heroFaceTalkHeavy{
+  0%,100%{ filter:drop-shadow(0 0 2px rgba(0,0,0,0.65)) brightness(1); }
+  50%{ filter:drop-shadow(0 0 3px rgba(0,0,0,0.45)) brightness(1.08); }
+}
+
+@keyframes heroFaceTalkQuick{
+  0%{ filter:drop-shadow(0 0 2px rgba(0,0,0,0.65)) saturate(1); }
+  50%{ filter:drop-shadow(0 0 3px rgba(0,0,0,0.35)) saturate(1.2); }
+  100%{ filter:drop-shadow(0 0 2px rgba(0,0,0,0.65)) saturate(1); }
+}
+
+@keyframes heroFaceTalkCalm{
+  0%{ filter:drop-shadow(0 0 2px rgba(0,0,0,0.65)) hue-rotate(0deg); }
+  50%{ filter:drop-shadow(0 0 3px rgba(0,0,0,0.5)) hue-rotate(8deg); }
+  100%{ filter:drop-shadow(0 0 2px rgba(0,0,0,0.65)) hue-rotate(0deg); }
+}
+
+@keyframes heroEatHeavy{
+  0%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  50%{ box-shadow:0 0 10px rgba(255,211,77,0.5); }
+  100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+}
+
+@keyframes heroEatFast{
+  0%,100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  30%{ box-shadow:0 0 6px rgba(255,159,64,0.7); }
+  60%{ box-shadow:0 0 2px rgba(0,0,0,0.35); }
+}
+
+@keyframes heroEatCalm{
+  0%,100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  50%{ box-shadow:0 0 8px rgba(102,179,255,0.6); }
+}
+
+@keyframes heroPushHeavy{
+  0%,100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  40%{ box-shadow:0 0 8px rgba(255,211,77,0.6); }
+}
+
+@keyframes heroPushFast{
+  0%,100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  30%{ box-shadow:0 0 6px rgba(255,159,64,0.8); }
+  60%{ box-shadow:0 0 3px rgba(0,0,0,0.4); }
+}
+
+@keyframes heroPushBalanced{
+  0%,100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  45%{ box-shadow:0 0 7px rgba(102,179,255,0.55); }
+}
+
+@keyframes heroAttackHeavy{
+  0%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  30%{ box-shadow:0 0 14px rgba(255,211,77,0.8); }
+  100%{ box-shadow:0 2px 6px rgba(0,0,0,0.45); }
+}
+
+@keyframes heroAttackFast{
+  0%,100%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  40%{ box-shadow:0 0 12px rgba(255,159,64,0.85); }
+}
+
+@keyframes heroAttackBalanced{
+  0%{ box-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  50%{ box-shadow:0 0 12px rgba(102,179,255,0.75); }
+  100%{ box-shadow:0 2px 4px rgba(0,0,0,0.4); }
+}
+
+@keyframes heroDeathCrush{
+  0%{ transform:translate(-50%, -50%) scale(1); box-shadow:0 0 16px currentColor; }
+  70%{ transform:translate(-50%, -50%) scaleY(0.45); box-shadow:0 0 4px rgba(0,0,0,0.6); }
+  100%{ transform:translate(-50%, -50%) scaleY(0.35); box-shadow:0 0 3px rgba(0,0,0,0.7); }
+}
+
+@keyframes heroDeathDamage{
+  0%{ transform:translate(-50%, -50%) rotate(0deg); opacity:1; }
+  60%{ transform:translate(-50%, -45%) rotate(-12deg); opacity:0.7; }
+  100%{ transform:translate(-50%, -40%) rotate(-18deg); opacity:0.55; }
+}
+
+@keyframes heroDeathFireDom{
+  0%{ box-shadow:0 0 14px rgba(255,120,0,0.9); filter: sepia(0); }
+  50%{ box-shadow:0 0 26px rgba(255,200,120,0.9); filter: sepia(0.45); }
+  100%{ box-shadow:0 0 10px rgba(120,60,0,0.8); filter: sepia(0.75); }
 }
