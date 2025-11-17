@@ -2017,12 +2017,16 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       anagram: pill.anagram || null,
       forPatientId: pill.forPatientId || pill.patientId || null,
       patientId: pill.patientId || pill.forPatientId || null,
+      targetPatientId: pill.forPatientId || pill.patientId || null,
     };
     carrier.carry = carry;
     G.carry = carry;
+    carrier.currentPill = carry;
+    G.currentPill = carry;
     carrier.inventory = carrier.inventory || {};
     carrier.inventory.medicine = Object.assign({}, carry);
-    try { window.ArrowGuide?.setTargetByKeyName?.(carry.pairName); } catch (_) {}
+    console.debug('[PILL] Player picked pill', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
+    try { window.ObjectiveSystem?.onPillPicked?.(carry); } catch (_) {}
     try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== pill);
@@ -2374,6 +2378,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
     try { window.Entities?.Hero?.triggerPush?.(p, { heavy: !!(hit && (hit.mass || 0) > 140) }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] push trigger error', err); }
     if (hit) {
+      if (isCartEntity(hit) && (G.urgenciasOpen || window.GameFlowAPI?.getState?.()?.bossDoorOpened)) {
+        try { window.ObjectiveSystem?.onCartEngaged?.(hit); } catch (_) {}
+      }
       // 1) Desatasco preventivo: si está tocando muro, sácalo o colócalo en un punto libre cercano
       try { if (window.Physics?.snapInsideMap) Physics.snapInsideMap(hit); } catch(_){}
       if (typeof isWallAt === 'function' && isWallAt(hit.x, hit.y, hit.w, hit.h)) {
@@ -4216,6 +4223,12 @@ function drawEntities(c2){
         window.GameFlowAPI?.startLevel?.(targetLevel);
       } catch (err){
         console.warn('[GameFlow] startLevel error:', err);
+      }
+
+      try {
+        window.ObjectiveSystem?.resetForLevel?.(G);
+      } catch (err) {
+        if (window.DEBUG_FORCE_ASCII) console.warn('[ObjectiveSystem] reset error', err);
       }
 
       try {

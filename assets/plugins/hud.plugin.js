@@ -46,6 +46,7 @@
     bellsCount: null,
     bellsEmpty: null,
   };
+  let objectiveOverride = null;
 
   function createHudStat(label, valueClass) {
     const wrap = document.createElement('div');
@@ -352,7 +353,9 @@
       HUD_DOM.urgenciasValue.classList.toggle('is-closed', !urgOpen);
     }
     if (HUD_DOM.scoreValue) HUD_DOM.scoreValue.textContent = formatNumber(G?.score || 0);
-    if (HUD_DOM.objectiveText) HUD_DOM.objectiveText.textContent = computeObjective(G);
+    const explicitObjective = objectiveOverride || G?.currentObjectiveLabel || G?.currentObjective?.label;
+    const objectiveText = explicitObjective || computeObjective(G);
+    if (HUD_DOM.objectiveText) HUD_DOM.objectiveText.textContent = objectiveText;
     const carry = G?.player?.carry || G?.carry || null;
     updateCarryInfo(carry);
     updateHeartsCanvas(G);
@@ -674,6 +677,14 @@
   };
 
   HUD.showFloatingMessage = showFloatingMessage;
+  HUD.setObjectiveText = function (text) {
+    objectiveOverride = text || null;
+    ensureHudDom();
+    if (HUD_DOM.objectiveText) {
+      const fallback = computeObjective(getG());
+      HUD_DOM.objectiveText.textContent = objectiveOverride || fallback;
+    }
+  };
 
   W.HUD = HUD;
   // Inicializa con posición por defecto (móvil abajo / PC arriba)

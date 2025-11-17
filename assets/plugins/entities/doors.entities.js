@@ -362,7 +362,9 @@
       try { window.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
       playDoorSound('boss', bossDoorRef || {}, {});
       try { window.DialogAPI?.system?.('¡Urgencias abiertas! Dirígete a la salida.', { ms: 4200 }); } catch (_) {}
-      try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
+      const stats = (window.G?.stats) || {};
+      console.debug('[URGENCIAS] Door opened', { remainingPatients: stats.remainingPatients ?? null });
+      try { window.ObjectiveSystem?.onUrgenciasOpened?.(bossDoorRef || null); } catch (_) {}
     }
     return opened;
   }
