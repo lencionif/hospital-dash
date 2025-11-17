@@ -117,6 +117,9 @@
       const manual = this._resolveManualTarget(G);
       if (manual) return manual;
 
+      const directive = window.ObjectiveSystem?.getArrowTarget?.(G);
+      if (directive) return directive;
+
       const carry = resolveCarry(G);
       const pending = listPendingPatients(G);
 

@@ -668,6 +668,8 @@
         W.Narrator?.say?.('final_delivery', { patientName: name });
         W.Narrator?.progress?.();
       } catch (_) {}
+      console.debug('[VICTORY] Cart reached boss with urgencias open = true');
+      try { window.ObjectiveSystem?.onCartDelivered?.(cart, patient); } catch (_) {}
     }
   }
 

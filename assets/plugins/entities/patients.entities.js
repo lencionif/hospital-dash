@@ -357,12 +357,17 @@
     return false;
   }
 
-  function clearCarry(hero) {
+  function clearCarry(hero, opts = {}) {
     if (hero) {
       if (hero.carry) hero.carry = null;
+      if (hero.currentPill) hero.currentPill = null;
       if (hero.inventory && hero.inventory.medicine) hero.inventory.medicine = null;
     }
-    if (G.carry) G.carry = null;
+    G.carry = null;
+    G.currentPill = null;
+    if (!opts.skipObjective) {
+      try { W.ObjectiveSystem?.onCarryCleared?.({ reason: opts.reason || 'cleared' }); } catch (_) {}
+    }
   }
 
   function deliverPill(hero, patient) {
@@ -373,10 +378,11 @@
     if (carry?.id && Array.isArray(G.pills)) {
       G.pills = G.pills.filter((p) => p && p.id !== carry.id);
     }
-    clearCarry(carrier);
+    clearCarry(carrier, { skipObjective: true, reason: 'delivery' });
     const stats = ensureStats();
     stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
     stats.attended = (stats.attended || 0) + 1;
+    console.debug('[PILL_DELIVERY] Delivered pill to patient', { patientId: patient.id || null, matched: true });
     patient.state = 'disappear_on_cure';
     patient.attended = true;
     patient.furious = false;
@@ -393,9 +399,12 @@
       syncPatientArrayCounters();
       try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
       try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
+    const remainingAfter = stats.remainingPatients || 0;
+    console.debug('[PATIENT] Cured + removed', { patientId: patient.id || null, remainingPatients: remainingAfter });
     try { W.GameFlowAPI?.notifyPatientDelivered?.(patient); } catch (_) {}
     try { W.ScoreAPI?.addScore?.(100, 'deliver_patient', { patient: patient.displayName }); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+    try { W.ObjectiveSystem?.onPatientDelivered?.(patient); } catch (_) {}
     const fadeMs = Number.isFinite(W.PATIENT_FADE_MS) ? W.PATIENT_FADE_MS : 650;
     setTimeout(() => {
       try { W.PuppetAPI?.detach?.(patient); } catch (_) {}
@@ -428,11 +437,12 @@
 
   function dropCarriedPillIfMatches(keyName) {
     if (!keyName) return;
-    const carry = G.carry;
+    const hero = G.player || null;
+    const carry = (hero?.carry) || G.carry;
     if (carry && carry.pairName === keyName) {
-      G.carry = null;
+      clearCarry(hero, { reason: 'patient_removed' });
       try { W.ArrowGuide?.clearTarget?.(); } catch (_) {}
-      const player = G.player || { x: 0, y: 0, w: 1, h: 1, id: 'player' };
+      const player = hero || { x: 0, y: 0, w: 1, h: 1, id: 'player' };
       try { W.HUD?.showFloatingMessage?.(player, 'La pastilla se ha retirado', 1.6); } catch (_) {}
     }
   }
