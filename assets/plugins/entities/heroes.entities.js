@@ -334,8 +334,15 @@
     const st = ensureAnimState(e);
     if (!st) return;
     const prof = st.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
-    const speed = Math.hypot(e.vx || 0, e.vy || 0);
-    st.moving = speed > 8;
+    const vx = Number(e.vx) || 0;
+    const vy = Number(e.vy) || 0;
+    const axisSum = Math.abs(vx) + Math.abs(vy);
+    if (axisSum < 0.01){
+      e.vx = 0;
+      e.vy = 0;
+    }
+    const speed = Math.hypot(vx, vy);
+    st.moving = axisSum > 0;
     e.isMoving = st.moving;
     if (typeof e.facing === 'string') {
       const f = e.facing.toUpperCase();
