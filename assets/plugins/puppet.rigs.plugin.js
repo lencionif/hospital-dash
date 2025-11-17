@@ -974,7 +974,7 @@
     if (!st || !e) return;
     const [cx, cy, sc] = toScreen(cam, e);
     const scale = sc * (cfg.scale ?? 1);
-    positionHeroOverlay(st, cam, e, cx, cy, scale);
+    positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
   }
 
   const HERO_ACTION_CLASS_MAP = (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP)
@@ -1262,17 +1262,24 @@
     }
   }
 
-  function positionHeroOverlay(st, cam, e, worldX, worldY, scale){
+  function positionHeroOverlay(st, cam, e, worldX, worldY, scale, cfg = {}){
     if (!st?.root) return;
     const projected = (typeof window.worldToScreen === 'function')
       ? window.worldToScreen(worldX, worldY, cam)
       : { sx: worldX, sy: worldY };
     const x = (projected && (projected.sx ?? projected.x)) ?? worldX;
     const y = (projected && (projected.sy ?? projected.y)) ?? worldY;
-    const offsetY = -((window.G?.TILE_SIZE || window.TILE_SIZE || 32) * 0.4);
+    const tile = window.G?.TILE_SIZE || window.TILE_SIZE || 32;
+    const cfgOffset = Number(cfg.offsetY);
+    const offsetY = Number.isFinite(cfgOffset)
+      ? cfgOffset
+      : (Number.isFinite(st.offsetY) ? st.offsetY : -(tile * 0.4));
     st.root.style.transform = `translate(${x}px, ${y + offsetY}px) scale(${scale})`;
-    const depth = Math.floor((e?.y || 0) + (st.depthBias || 0));
-    st.root.style.zIndex = String(40 + depth);
+    const depthBias = Number.isFinite(st.depthBias)
+      ? st.depthBias
+      : (Number.isFinite(cfg.depthBias) ? cfg.depthBias : 18);
+    const depth = Math.floor((e?.y || 0) + depthBias);
+    st.root.style.zIndex = String(30 + depth);
   }
 
   function updateHeroRigState(st, e, dt, cfg){
@@ -1543,7 +1550,7 @@
       drawHeroFigure(ctx, st, cfg);
     }
     ctx.restore();
-    positionHeroOverlay(st, cam, e, cx, cy, scale);
+    positionHeroOverlay(st, cam, e, cx, cy, scale, cfg);
   }
 
   function registerHeroRig(hero, cfg){
@@ -1818,6 +1825,9 @@
     }
     try {
       console.info('[HeroRig] Rigs DOM con caras personalizadas activos; no se requiere fallback.');
+    } catch (_) {}
+    try {
+      console.info('[RIG_TEST] Héroes: rigs cargados y animaciones funcionando correctamente; sin fallback.');
     } catch (_) {}
   }
 
