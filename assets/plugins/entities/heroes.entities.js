@@ -83,6 +83,8 @@
       heroId: key,
       x: Math.round(x), y: Math.round(y),
       w, h,
+      solid: true,
+      pushable: true,
       vx: 0, vy: 0,
       ax: 0, ay: 0,
       // vida

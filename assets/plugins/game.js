@@ -156,7 +156,7 @@
       restitution: 0.65,
       pushImpulse: 340,
       maxSpeedPlayer: 240,
-      maxSpeedObject: 360
+      maxSpeedObject: 1040
     },
     enemies: {
       mosquito: {
@@ -223,6 +223,51 @@
     firstBellTriggered: false,
     _firstBellPendingLog: false
   };
+
+  const PINBALL_GROUPS = new Set(['cart', 'human', 'animal']);
+
+  function pinballGroupName(ent){
+    return (ent && ent.group ? String(ent.group) : '').toLowerCase();
+  }
+
+  function isPinballCandidate(ent){
+    if (!ent || ent.dead || ent.pinballExempt) return false;
+    if (ent.static) return false;
+    if (ent.pushable) return true;
+    if (ent.kind === ENT.PLAYER) return true;
+    if (typeof isCartEntity === 'function' && isCartEntity(ent)) return true;
+    const group = pinballGroupName(ent);
+    return PINBALL_GROUPS.has(group);
+  }
+
+  function approximatePinballMass(ent){
+    if (!ent) return 0;
+    if (Number.isFinite(ent.mass)) return Math.max(0.2, ent.mass);
+    if (ent.kind === ENT.PLAYER) return 1.0;
+    if (typeof isCartEntity === 'function' && isCartEntity(ent)) return 3.5;
+    if (PINBALL_GROUPS.has(pinballGroupName(ent))) return 1.1;
+    return 1.0;
+  }
+
+  function pinballRestitution(ent){
+    const phys = physicsConfig();
+    let rest = (phys?.restitution ?? 0.32);
+    if (typeof isCartEntity === 'function' && isCartEntity(ent)) {
+      rest = Math.max(rest, phys?.cartRestitution ?? rest);
+    }
+    if (Number.isFinite(ent?.rest)) rest = Math.max(rest, ent.rest);
+    if (Number.isFinite(ent?.restitution)) rest = Math.max(rest, ent.restitution);
+    return Math.max(0.2, Math.min(0.98, rest));
+  }
+
+  function shouldDebugPushLogs(){
+    try {
+      if (window.DEBUG_PUSH || window.DEBUG_FORCE_ASCII) return true;
+      return typeof window.location?.search === 'string' && window.location.search.includes('map=debug');
+    } catch (_) {
+      return false;
+    }
+  }
   window.G = G; // (expuesto)
   G.ENT = ENT;
   if (typeof window === 'object') {
@@ -495,6 +540,7 @@
       for (const other of G.entities){
         if (!other || other === e) continue;
         if (!other.solid || other.dead) continue;
+        if (!other.static && isPinballCandidate(e) && isPinballCandidate(other)) continue;
         const stOther = states.get(other);
         const ox = stOther ? stOther.x : other.x;
         const oy = stOther ? stOther.y : other.y;
@@ -548,9 +594,17 @@
         const next = pos + step;
         const nx = axis === 'x' ? next : st.x;
         const ny = axis === 'y' ? next : st.y;
-        if (isBlocked(nx, ny, e.w, e.h) || collidesEntity(e, nx, ny)){
+        const hitWall = isBlocked(nx, ny, e.w, e.h);
+        const hitSolid = !hitWall && collidesEntity(e, nx, ny);
+        if (hitWall || hitSolid){
           logPathBlocked(e, axis === 'x' ? 'axis-x' : 'axis-y');
-          if (axis === 'x') st.vx = 0; else st.vy = 0;
+          const bounce = isPinballCandidate(e);
+          const rest = bounce ? pinballRestitution(e) : 0;
+          if (axis === 'x') {
+            st.vx = bounce ? -st.vx * rest : 0;
+          } else {
+            st.vy = bounce ? -st.vy * rest : 0;
+          }
           return;
         }
         pos = next;
@@ -2170,7 +2224,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   }
 
   function pushEntityWithImpulse(target, dir, baseForce){
-    if (!target || (!dir.x && !dir.y)) return;
+    if (!target) return null;
+    const pushDir = normalizeVec(dir.x || 0, dir.y || 0);
+    if (!pushDir.x && !pushDir.y) return null;
     const physCfg = physicsConfig() || {};
     const totalForce = computePushForce(baseForce);
     const profile = ensurePushableProfile(target);
@@ -2186,8 +2242,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       impulse = totalForce / Math.max(1, mass * 0.5);
     }
 
-    target.vx = (target.vx || 0) + (dir.x || 0) * impulse;
-    target.vy = (target.vy || 0) + (dir.y || 0) * impulse;
+    const ix = pushDir.x * impulse;
+    const iy = pushDir.y * impulse;
+    target.vx = (target.vx || 0) + ix;
+    target.vy = (target.vy || 0) + iy;
 
     const tile = window.TILE_SIZE || window.TILE || TILE;
     let maxSpeedPx = profile && Number.isFinite(profile.maxSpeedPx) ? profile.maxSpeedPx : null;
@@ -2225,6 +2283,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (!Number.isFinite(target.restitution) || target.restitution < rest) target.restitution = rest;
       if (!Number.isFinite(target.rest) || target.rest < rest) target.rest = rest;
     }
+    return { ix, iy, impulse, totalForce, minSpeedPx, maxSpeedPx };
   }
 
   function doAction() {
@@ -2302,8 +2361,17 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     p.pushAnimT = 1;
 
     // Dirección desde el facing actual
-    const dir = facingDir(p.facing);
+    const dir = resolvePushDirection(p);
     const hit = findPushableInFront(p, dir);
+    if (shouldDebugPushLogs()){
+      console.debug('[PUSH] Player intent', {
+        playerId: p.id || p.heroId || 'player',
+        dir,
+        targetId: hit?.id || null,
+        targetKind: hit?.kindName || hit?.kind || null,
+        group: hit?.group || null
+      });
+    }
     try { window.Entities?.Hero?.triggerPush?.(p, { heavy: !!(hit && (hit.mass || 0) > 140) }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] push trigger error', err); }
     if (hit) {
       // 1) Desatasco preventivo: si está tocando muro, sácalo o colócalo en un punto libre cercano
@@ -2316,7 +2384,29 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
       // 2) Empuje normal
       const F = (p.pushForce ?? p.push ?? FORCE_PLAYER);
-      pushEntityWithImpulse(hit, dir, F);
+      let scaledForce = F;
+      const aheadX = hit.x + hit.w * 0.5 + dir.x * (hit.w * 0.5 + 4) - hit.w * 0.5;
+      const aheadY = hit.y + hit.h * 0.5 + dir.y * (hit.h * 0.5 + 4) - hit.h * 0.5;
+      let blockedAhead = (typeof isWallAt === 'function' && isWallAt(aheadX, aheadY, hit.w, hit.h));
+      if (!blockedAhead && Array.isArray(G.entities)){
+        const aheadBox = { x: aheadX, y: aheadY, w: hit.w, h: hit.h };
+        blockedAhead = G.entities.some((ent) => ent && ent !== hit && ent.solid && ent.static && !ent.dead && AABB(aheadBox, ent));
+      }
+      if (blockedAhead) {
+        scaledForce *= 0.25;
+        if (shouldDebugPushLogs()){
+          console.debug('[PUSH] Blocked by wall/solid', { targetId: hit.id || null, reducedForce: scaledForce });
+        }
+      }
+      const impulseMeta = pushEntityWithImpulse(hit, dir, scaledForce);
+      if (shouldDebugPushLogs()){
+        console.debug('[PUSH] Impulse applied', {
+          targetId: hit.id || null,
+          vx: hit.vx || 0,
+          vy: hit.vy || 0,
+          impulse: impulseMeta || null
+        });
+      }
 
       // 3) Marca de autor del empuje (para atribuir kills)
       hit._lastPushedBy   = (p.tag==='follower' ? 'HERO' : 'PLAYER');
@@ -2379,6 +2469,23 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
   }
 
+  function normalizeVec(x, y){
+    const len = Math.hypot(x, y);
+    if (!len || !isFinite(len)) return { x: 0, y: 0 };
+    return { x: x / len, y: y / len };
+  }
+
+  function resolvePushDirection(p){
+    if (!p) return { x: 0, y: 0 };
+    const vel = Math.hypot(p.vx || 0, p.vy || 0);
+    if (vel > 0.1) return normalizeVec(p.vx || 0, p.vy || 0);
+    if (G.lastPushDir && (G.lastPushDir.x || G.lastPushDir.y)) {
+      return normalizeVec(G.lastPushDir.x || 0, G.lastPushDir.y || 0);
+    }
+    const facing = facingDir(p.facing);
+    return normalizeVec(facing.x, facing.y);
+  }
+
   function findPushableInFront(p, dir) {
     // AABB delante del jugador
     const range = 18;
@@ -2388,11 +2495,30 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
                   y: ry - (dir.y ? range/2 : p.h/2),
                   w: dir.x ? range : p.w,
                   h: dir.y ? range : p.h };
-
-    for (const e of G.movers) {
-      if (!e.dead && e.pushable && AABB(box, e)) return e;
+    const list = Array.isArray(G.entities) && G.entities.length ? G.entities : G.movers;
+    if (!Array.isArray(list)) return null;
+    const px = p.x + p.w * 0.5;
+    const py = p.y + p.h * 0.5;
+    let best = null;
+    let bestDist = Infinity;
+    for (const e of list) {
+      if (!e || e === p || e.dead) continue;
+      if (!isPinballCandidate(e)) continue;
+      if (!AABB(box, e)) continue;
+      const cx = e.x + e.w * 0.5;
+      const cy = e.y + e.h * 0.5;
+      const toX = cx - px;
+      const toY = cy - py;
+      if ((toX * dir.x + toY * dir.y) < -4) continue;
+      const dist = Math.hypot(toX, toY);
+      if (dist < bestDist) {
+        best = e;
+        bestDist = dist;
+      }
     }
-    return null;
+    if (p) p._pushCandidate = best || null;
+    G.pushCandidate = best || null;
+    return best;
   }
 
   // Paso de IA específica por entidad hostil (antes de la física)
@@ -2564,6 +2690,66 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (!G._firstBellPendingLog) {
       console.debug('[FIRST_BELL] Waiting for available bell to auto-activate.');
       G._firstBellPendingLog = true;
+    }
+  }
+
+  function resolvePinballCollisions(dt){
+    const ents = Array.isArray(G.entities) ? G.entities.filter(isPinballCandidate) : [];
+    if (ents.length <= 1) return;
+    const tile = window.TILE_SIZE || TILE;
+    const SLOP = 0.5;
+    const MAX_PUSH = tile * 0.5;
+    const MAX_IMPULSE = 2200;
+    for (let i = 0; i < ents.length; i++){
+      const a = ents[i];
+      for (let k = i + 1; k < ents.length; k++){
+        const b = ents[k];
+        if (!nearAABB(a, b, 6)) continue;
+        if (!AABB(a, b)) continue;
+        const ax = a.x + a.w * 0.5;
+        const ay = a.y + a.h * 0.5;
+        const bx = b.x + b.w * 0.5;
+        const by = b.y + b.h * 0.5;
+        const penX = (a.w * 0.5 + b.w * 0.5) - Math.abs(ax - bx);
+        const penY = (a.h * 0.5 + b.h * 0.5) - Math.abs(ay - by);
+        if (penX <= 0 || penY <= 0) continue;
+        let nx = 0, ny = 0;
+        if (penX < penY) {
+          nx = (ax < bx ? -1 : 1);
+        } else {
+          ny = (ay < by ? -1 : 1);
+        }
+        const invA = a.static ? 0 : (1 / Math.max(0.1, approximatePinballMass(a)));
+        const invB = b.static ? 0 : (1 / Math.max(0.1, approximatePinballMass(b)));
+        const invSum = invA + invB;
+        if (invSum <= 0) continue;
+        const pen = Math.min(penX, penY) + SLOP;
+        const corrA = Math.min((pen * invA) / invSum, MAX_PUSH);
+        const corrB = Math.min((pen * invB) / invSum, MAX_PUSH);
+        if (corrA > 0) { a.x += nx * corrA; a.y += ny * corrA; }
+        if (corrB > 0) { b.x -= nx * corrB; b.y -= ny * corrB; }
+        const stA = MovementSystem.getState?.(a);
+        const stB = MovementSystem.getState?.(b);
+        if (stA) { stA.lastSafeX = stA.x; stA.lastSafeY = stA.y; }
+        if (stB) { stB.lastSafeX = stB.x; stB.lastSafeY = stB.y; }
+        const rvx = (a.vx || 0) - (b.vx || 0);
+        const rvy = (a.vy || 0) - (b.vy || 0);
+        const velN = rvx * nx + rvy * ny;
+        if (velN > 0) continue;
+        const rest = Math.max(pinballRestitution(a), pinballRestitution(b));
+        let j = -(1 + rest) * velN / invSum;
+        j = Math.max(-MAX_IMPULSE, Math.min(MAX_IMPULSE, j));
+        const ix = j * nx;
+        const iy = j * ny;
+        if (!a.static) {
+          a.vx = (a.vx || 0) + ix * invA;
+          a.vy = (a.vy || 0) + iy * invA;
+        }
+        if (!b.static) {
+          b.vx = (b.vx || 0) - ix * invB;
+          b.vy = (b.vy || 0) - iy * invB;
+        }
+      }
     }
   }
 
@@ -2758,6 +2944,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // integración de movimiento centralizada
     MovementSystem.step(dt);
+    resolvePinballCollisions(dt);
     runtimePushableSafety(dt);
 
     // ascensores

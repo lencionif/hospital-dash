@@ -12,16 +12,16 @@
   };
 
   const PHYS = {
-    restitution: 0.18,
-    friction: 0.045,
-    slideFriction: 0.018,
-    cartRestitution: 0.85,
-    cartSlideMu: 0.012,
-    cartPushBoost: 1.6,
-    cartPushMassFactor: 0.28,
-    cartMinSpeed: 260,
-    cartMaxSpeed: 720,
-    crushImpulse: 110,
+    restitution: 0.32,
+    friction: 0.028,
+    slideFriction: 0.012,
+    cartRestitution: 0.94,
+    cartSlideMu: 0.006,
+    cartPushBoost: 2.4,
+    cartPushMassFactor: 0.18,
+    cartMinSpeed: 380,
+    cartMaxSpeed: 1080,
+    crushImpulse: 420,
     hurtImpulse: 45,
     explodeImpulse: 170,
     fireImpulse: 240,
@@ -43,9 +43,9 @@
     ragdollDuration: 1.1,
     ragdollCooldown: 0.65,
     cartProfiles: {
-      er:   { mass: 1.1,  restitution: 0.96, mu: 0.004, slideFriction: 0.0045, drag: 0.012, vmax: 15 },
-      med:  { mass: 1.6,  restitution: 0.8,  mu: 0.012, slideFriction: 0.011,  drag: 0.018, vmax: 11.5 },
-      food: { mass: 2.6,  restitution: 0.6,  mu: 0.02,  slideFriction: 0.02,   drag: 0.026, vmax: 9 }
+      er:   { mass: 1.0, restitution: 0.98, mu: 0.003,  slideFriction: 0.0035, drag: 0.010, vmax: 24 },
+      med:  { mass: 1.4, restitution: 0.9,  mu: 0.008,  slideFriction: 0.0085, drag: 0.014, vmax: 19 },
+      food: { mass: 1.9, restitution: 0.78, mu: 0.014, slideFriction: 0.015,  drag: 0.020, vmax: 16 }
     },
     bedProfiles: {
       bed:         { mass: 2.0, restitution: 0.45, friction: 0.88, vmax: 7 },
@@ -67,8 +67,17 @@
     let G = null;
     let TILE = window.TILE_SIZE || 32;
     let lastFireSpawn = -Infinity;
+    let loggedSummary = false;
 
     const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
+    const isDebugPhysics = () => {
+      try {
+        if (window.DEBUG_PUSH || window.DEBUG_FORCE_ASCII) return true;
+        return typeof window.location?.search === 'string' && window.location.search.includes('map=debug');
+      } catch (_) {
+        return false;
+      }
+    };
 
     const nowSeconds = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? (performance.now() / 1000)
@@ -545,8 +554,8 @@
         if (!e || e.dead || e.static) continue;
         if (!(e.solid || e.pushable || e.dynamic) && Math.abs(e.vx || 0) + Math.abs(e.vy || 0) <= 0) continue;
         collideWithTiles(e);
-        e.vx = clamp(e.vx || 0, -1200, 1200);
-        e.vy = clamp(e.vy || 0, -1200, 1200);
+        e.vx = clamp(e.vx || 0, -2000, 2000);
+        e.vy = clamp(e.vy || 0, -2000, 2000);
         resolveAgainstSolids(e);
         if (typeof e._wetSlipTimer === 'number'){
           e._wetSlipTimer = Math.max(0, e._wetSlipTimer - dt);
@@ -573,6 +582,20 @@
         });
       } catch (err){
         if (window.DEBUG_FORCE_ASCII) console.warn('[Physics] CineFX configure', err);
+      }
+      if (!loggedSummary && isDebugPhysics()){
+        const carts = Array.isArray(G?.entities) ? G.entities.filter((it) => isCartEntity(it)).length : 0;
+        const pushables = Array.isArray(G?.entities) ? G.entities.filter((it) => it?.pushable).length : 0;
+        console.debug('[PHYSICS_CHECK] carts', { count: carts, profile: CFG.cartProfiles });
+        console.debug('[PHYSICS_CHECK] collisionLayers', {
+          totalEntities: Array.isArray(G?.entities) ? G.entities.length : 0,
+          pushable: pushables,
+          restitution: CFG.restitution,
+          cartRestitution: CFG.cartRestitution,
+          cartMinSpeed: CFG.cartMinSpeed,
+          cartMaxSpeed: CFG.cartMaxSpeed
+        });
+        loggedSummary = true;
       }
       return api;
     }

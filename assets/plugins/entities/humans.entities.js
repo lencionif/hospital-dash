@@ -171,6 +171,8 @@
       dynamic: true,
       pushable: true,
       mass: 1.1,
+      rest: opts.rest ?? 0.42,
+      restitution: opts.rest ?? 0.42,
       skin: opts.skin || preset.skin,
       color: opts.color || '#cbd5f5',
       group: 'human'
