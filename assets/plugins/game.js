@@ -915,6 +915,73 @@
     });
   })();
 
+  const JOKES_3D_ACCEL = [
+    "Compilando triángulos en cuatro dimensiones...",
+    "Insertando disquete de texturas de 1993...",
+    "Sacudiendo el monitor CRT para alinear los píxeles mágicos...",
+    "Persuadiendo a la tarjeta Voodoo para que despierte...",
+    "Inflando el shader con aire de fallas...",
+    "Desempolvando la aceleradora Matrox mística...",
+    "Reservando 8 KB extra para la niebla dramática...",
+    "Calibrando el giroscopio imaginario del ratón...",
+    "Pidiendo permiso al jefe de planta para usar ray-tracing...",
+    "Limpiando con alcohol isopropílico las normales invertidas...",
+    "Leyendo el manual secreto del turbo botón...",
+    "Armonizando el ventilador con ópera belcantista...",
+    "Aplicando graxa valenciana a los FPS...",
+    "Convenciendo a los vóxeles de que canten a tres voces...",
+    "Colocando stickers de NOS sobre la GPU...",
+    "Engrasando el eje Z con aceite de oliva virgen extra...",
+    "Sacando brillo al busto de Guybrush para la suerte...",
+    "Cronometrando el dithering con metrónomo de hospital...",
+    "Invocando al shamán de DirectX 3.1...",
+    "Cazando polígonos rebeldes detrás de la cafetería...",
+    "Sintiendo el aura térmica de los condensadores...",
+    "Agitando la coctelera de partículas especulares...",
+    "Prestando gafas de realidad virtual al bedel...",
+    "Cantando serenatas a los fotogramas perdidos...",
+    "Abriendo un portal extra para los sprites tímidos...",
+    "Sobornando al bus PCI con horchata fría...",
+    "Alineando la constelación de píxeles con regla T...",
+    "Dándole vacaciones al clipping frontal...",
+    "Solicitando turno al santo patrón de los polígonos...",
+    "Midiendo a ojo el parallax con cinta de carrocero..."
+  ];
+
+  let accelJokesPool = [];
+
+  function shuffleAccelJokes(){
+    const pool = [...JOKES_3D_ACCEL];
+    for (let i = pool.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool;
+  }
+
+  function showRandom3DAccelerationJoke(){
+    if (typeof document === 'undefined' || !JOKES_3D_ACCEL.length) return '';
+    if (!accelJokesPool.length) {
+      accelJokesPool = shuffleAccelJokes();
+    }
+    const next = accelJokesPool.shift() || '';
+    const out = document.getElementById('accel-joke');
+    if (out && next){
+      out.textContent = next;
+      out.classList.add('visible');
+    }
+    return next;
+  }
+  window.showRandom3DAccelerationJoke = showRandom3DAccelerationJoke;
+
+  (function setup3DAccelerationButton(){
+    const btn = document.getElementById('btn-3dacc');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      showRandom3DAccelerationJoke();
+    });
+  })();
+
   function ensureHeroSelected(){
     let key = (window.selectedHeroKey || '').toLowerCase();
     if (!key){
