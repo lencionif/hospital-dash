@@ -35,6 +35,14 @@
     return api.PHYS || api.DEFAULTS || null;
   }
 
+  const CART_WEIGHT_MAP = {
+    food: 'light',
+    med: 'medium',
+    medicine: 'medium',
+    er: 'heavy',
+    urgencias: 'heavy'
+  };
+
   function resolveCartProfile(type){
     const phys = physicsProfiles();
     if (!phys || !phys.cartProfiles) return null;
@@ -96,6 +104,58 @@
       drag: entity._frictionOverride
     };
     return entity._physProfile;
+  }
+
+  function resolveCartTier(type){
+    const key = (type || '').toString().toLowerCase();
+    return CART_WEIGHT_MAP[key] || key || 'medium';
+  }
+
+  function assignCartPhysicsMetadata(entity){
+    if (!entity) return null;
+    const tier = resolveCartTier(entity.cartType || entity.type || '');
+    entity.cartTier = tier;
+    entity.cartClass = tier;
+    entity.cartWeight = tier;
+    const physApi = window.Physics;
+    let meta = null;
+    if (physApi?.assignCartPhysicsMetadata){
+      meta = physApi.assignCartPhysicsMetadata(entity, tier) || null;
+    }
+    if (!meta){
+      const tierCfg = physApi?.PHYS?.cartTypeProfiles?.[tier] || null;
+      if (!tierCfg) return null;
+      const tile = TILE || 32;
+      const maxSpeed = Number.isFinite(tierCfg.maxSpeedPx)
+        ? tierCfg.maxSpeedPx
+        : (Number.isFinite(tierCfg.vmax) ? tierCfg.vmax * tile : null);
+      meta = {
+        type: tier,
+        mass: tierCfg.mass,
+        maxSpeed,
+        restitution: tierCfg.restitution,
+        damagePerHit: tierCfg.damagePerHit,
+        damageThreshold: tierCfg.damageThreshold,
+        fireThreshold: tierCfg.fireThreshold,
+        fireBounces: tierCfg.fireBounces,
+        squashThreshold: tierCfg.squashThreshold,
+        squashBounces: tierCfg.squashBounces,
+        pushImpulse: tierCfg.pushImpulse,
+        hitImpulse: tierCfg.hitImpulse
+      };
+    }
+    entity.cartPhysics = Object.assign({}, meta);
+    entity.physics = Object.assign({}, entity.physics || {}, meta);
+    if (Number.isFinite(meta.mass)){
+      entity.mass = meta.mass;
+      entity.invMass = meta.mass > 0 ? 1 / meta.mass : 0;
+    }
+    if (Number.isFinite(meta.maxSpeed)) entity.maxSpeed = meta.maxSpeed;
+    if (Number.isFinite(meta.restitution)){
+      entity.restitution = Math.max(entity.restitution || 0, meta.restitution);
+      entity.rest = Math.max(entity.rest || 0, meta.restitution);
+    }
+    return entity.cartPhysics;
   }
 
   // ---------- Fallbacks de motor ----------
@@ -208,6 +268,7 @@
           slip: slideMu
         };
       }
+      assignCartPhysicsMetadata(e);
       e.slide = opts.slide != null ? !!opts.slide : true;
       e._tag = e._tag || 'cart';
       e.canExplode = (e.cartType!==this.TYPES.ER);
