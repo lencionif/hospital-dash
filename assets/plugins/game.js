@@ -707,8 +707,6 @@
   const fogCtx      = fogCanvas ? fogCanvas.getContext('2d') : null;
   const guideCanvas = document.getElementById('guideCanvas');
   const guideCtx    = guideCanvas ? guideCanvas.getContext('2d') : null;
-  const hudCanvas   = document.getElementById('hudCanvas');
-  const hudCtx      = hudCanvas.getContext('2d');
 
   window.DEBUG_POPULATE = window.DEBUG_POPULATE || { LOG:false, VERBOSE:false };
   // SkyFX listo desde el menú (antes de startGame)
@@ -723,7 +721,6 @@
   });
   if (fogCanvas){ fogCanvas.width = VIEW_W; fogCanvas.height = VIEW_H; }
   if (guideCanvas){ guideCanvas.width = VIEW_W; guideCanvas.height = VIEW_H; }
-  if (hudCanvas){ hudCanvas.width = VIEW_W; hudCanvas.height = VIEW_H; }
 
   // === Sprites (plugin unificado) ===
   Sprites.init({ basePath: './assets/images/', tile: TILE });
@@ -810,7 +807,6 @@
     clearCanvasContext(ctx, canvas?.width, canvas?.height);
     clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
     clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-    clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
 
     try { window.FogAPI?.reset?.(); } catch (_) {}
     try { window.FogAPI?.clear?.(); } catch (_) {}
@@ -912,6 +908,73 @@
         window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
       }
       window.G.selectedHero = window.selectedHeroKey || 'francesco';
+    });
+  })();
+
+  const JOKES_3D_ACCEL = [
+    "Compilando triángulos en cuatro dimensiones...",
+    "Insertando disquete de texturas de 1993...",
+    "Sacudiendo el monitor CRT para alinear los píxeles mágicos...",
+    "Persuadiendo a la tarjeta Voodoo para que despierte...",
+    "Inflando el shader con aire de fallas...",
+    "Desempolvando la aceleradora Matrox mística...",
+    "Reservando 8 KB extra para la niebla dramática...",
+    "Calibrando el giroscopio imaginario del ratón...",
+    "Pidiendo permiso al jefe de planta para usar ray-tracing...",
+    "Limpiando con alcohol isopropílico las normales invertidas...",
+    "Leyendo el manual secreto del turbo botón...",
+    "Armonizando el ventilador con ópera belcantista...",
+    "Aplicando graxa valenciana a los FPS...",
+    "Convenciendo a los vóxeles de que canten a tres voces...",
+    "Colocando stickers de NOS sobre la GPU...",
+    "Engrasando el eje Z con aceite de oliva virgen extra...",
+    "Sacando brillo al busto de Guybrush para la suerte...",
+    "Cronometrando el dithering con metrónomo de hospital...",
+    "Invocando al shamán de DirectX 3.1...",
+    "Cazando polígonos rebeldes detrás de la cafetería...",
+    "Sintiendo el aura térmica de los condensadores...",
+    "Agitando la coctelera de partículas especulares...",
+    "Prestando gafas de realidad virtual al bedel...",
+    "Cantando serenatas a los fotogramas perdidos...",
+    "Abriendo un portal extra para los sprites tímidos...",
+    "Sobornando al bus PCI con horchata fría...",
+    "Alineando la constelación de píxeles con regla T...",
+    "Dándole vacaciones al clipping frontal...",
+    "Solicitando turno al santo patrón de los polígonos...",
+    "Midiendo a ojo el parallax con cinta de carrocero..."
+  ];
+
+  let accelJokesPool = [];
+
+  function shuffleAccelJokes(){
+    const pool = [...JOKES_3D_ACCEL];
+    for (let i = pool.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool;
+  }
+
+  function showRandom3DAccelerationJoke(){
+    if (typeof document === 'undefined' || !JOKES_3D_ACCEL.length) return '';
+    if (!accelJokesPool.length) {
+      accelJokesPool = shuffleAccelJokes();
+    }
+    const next = accelJokesPool.shift() || '';
+    const out = document.getElementById('accel-joke');
+    if (out && next){
+      out.textContent = next;
+      out.classList.add('visible');
+    }
+    return next;
+  }
+  window.showRandom3DAccelerationJoke = showRandom3DAccelerationJoke;
+
+  (function setup3DAccelerationButton(){
+    const btn = document.getElementById('btn-3dacc');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      showRandom3DAccelerationJoke();
     });
   })();
 
@@ -2349,7 +2412,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (isCart || isBed){
       const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.6;
       const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.28;
-      impulse = totalForce * boost / Math.max(0.25, mass * massFactor);
+      const meta = isCart ? (window.Physics?.assignCartPhysicsMetadata?.(target) || target.cartPhysics || null) : null;
+      const pushMul = meta?.pushImpulse ?? 1;
+      impulse = totalForce * boost * pushMul / Math.max(0.25, mass * massFactor);
     } else {
       impulse = totalForce / Math.max(1, mass * 0.5);
     }
@@ -3245,7 +3310,6 @@ function drawEntities(c2){
       clearCanvasContext(ctx, canvas?.width, canvas?.height);
       clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
       clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-      clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
       return;
     }
     // actualizar cámara centrada en jugador
@@ -3278,15 +3342,16 @@ function drawEntities(c2){
       try { window.ArrowGuide?.draw(guideCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     }
 
-    // 1) Dibuja el HUD (esta función hace clearRect del HUD canvas)
-    try { window.HUD && HUD.render(hudCtx, camera, G); } catch(e){ console.warn('HUD.render', e); }
-    if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
+    // 1) Dibuja el HUD DOM + overlays finales
+    try { window.HUD && HUD.render(null, camera, G); } catch(e){ console.warn('HUD.render', e); }
 
-    // 2) Flecha (si no hay canvas dedicado) + overlays finales
-    if (!guideCtx){
-      try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
+    const overlayCtx = guideCtx || ctx;
+    if (!guideCtx && overlayCtx){
+      try { window.ArrowGuide?.draw(overlayCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     }
-    if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
+    if (overlayCtx && window.Sprites?.renderOverlay) {
+      Sprites.renderOverlay(overlayCtx);
+    }
   }
 
   // Fixed timestep

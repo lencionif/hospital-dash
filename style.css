@@ -763,7 +763,11 @@ button:active { transform: translateY(1px); }
 
 /* === START SCREEN como foto + pines sobre cabezas ======================= */
 #start-screen{
-  background: var(--sprite-main) center 8% / cover no-repeat;
+  background-color: #050608;
+  background-image: var(--sprite-main);
+  background-repeat: no-repeat;
+  background-position: center 65%;
+  background-size: contain;
 }
 
 /* Desnudamos la caja para que no tape la foto */
@@ -773,6 +777,8 @@ button:active { transform: translateY(1px); }
   box-shadow: none;
   /* subimos un poco para que el texto “Objetivo…” no quede fuera */
   padding: 236px 0 0 56px;
+  position: relative;
+  z-index: 2;
 }
 
 /* La grilla ocupa la pantalla y sirve de capa de pines */
@@ -783,6 +789,7 @@ button:active { transform: translateY(1px); }
   top: 0;
   height: 52%;
   pointer-events: auto;
+  z-index: 2;
   /* pines clicables sin tapar los botones */
 }
 
@@ -803,6 +810,7 @@ button:active { transform: translateY(1px); }
   pointer-events: auto;
   /* clicable de nuevo */
   transition: transform .12s, border-color .12s, box-shadow .12s;
+  overflow: visible;
 }
 
 #start-screen .char-card:hover{
@@ -813,7 +821,34 @@ button:active { transform: translateY(1px); }
 
 #start-screen .char-card.selected{
   border-color: var(--accent);
-  box-shadow: 0 0 2px rgba(47,129,247,0.55) inset;
+  box-shadow: 0 0 6px rgba(47,129,247,0.55), 0 0 2px rgba(47,129,247,0.65) inset;
+  transform: translate(-50%, -120%) scale(1.02);
+}
+
+#start-screen .char-card::after{
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  opacity: 0;
+  transform: scale(0.75);
+  transition: opacity .3s ease, transform .3s ease;
+  pointer-events: none;
+}
+
+#start-screen .char-card.selected::after{
+  border-color: rgba(47,129,247,0.8);
+  opacity: 1;
+  transform: scale(1);
+  animation: heroSelectorPulse 2.4s ease-in-out infinite;
+  box-shadow: 0 0 25px rgba(47,129,247,0.45);
+}
+
+@keyframes heroSelectorPulse{
+  0% { transform: scale(0.9); opacity: .6; }
+  45% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(0.95); opacity: .6; }
 }
 
 #start-screen .char-card .char-info{
@@ -879,6 +914,46 @@ button:active { transform: translateY(1px); }
   z-index: 1;
 }
 
+#start-screen .objective-tip{
+  position: absolute;
+  right: clamp(16px, 4vw, 32px);
+  bottom: clamp(12px, 4vh, 32px);
+  width: min(340px, 48vw);
+  background: rgba(5,8,12,0.78);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 18px 38px rgba(0,0,0,0.45);
+  padding: 14px 16px;
+  line-height: 1.5;
+  text-align: left;
+  z-index: 3;
+  display: block;
+}
+
+#start-screen .objective-tip b{
+  color: #fff7b5;
+}
+
+#start-screen .joke-output{
+  min-height: 18px;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #f8faff;
+  background: rgba(11,14,20,0.7);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 6px 10px;
+  max-width: min(420px, 60vw);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+
+#start-screen .joke-output.visible{
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* pop-ups del botón-broma + modal de intro */
 .sys-pop{
   position: fixed; left: 50%; top: 18px; transform: translateX(-50%);
@@ -901,7 +976,7 @@ button:active { transform: translateY(1px); }
 #game-container .overlay         { z-index: 50 !important; }
 
 /* Capas de rendering */
-#gameCanvas, #fogCanvas, #guideCanvas, #hudCanvas {
+#gameCanvas, #fogCanvas, #guideCanvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -918,8 +993,7 @@ button:active { transform: translateY(1px); }
 /* Los 3 canvas ocupan exactamente el contenedor */
 #gameCanvas,
 #fogCanvas,
-#guideCanvas,
-#hudCanvas{
+#guideCanvas{
   position: absolute;
   inset: 0;              /* top:0; right:0; bottom:0; left:0 */
   width: 100%;
@@ -938,12 +1012,6 @@ button:active { transform: translateY(1px); }
 #guideCanvas {
   z-index: 40;
   pointer-events: none;
-}
-
-/* HUD SIEMPRE por encima de todo */
-#hudCanvas {
-  z-index: 50;
-  pointer-events: none;  /* que no intercepte clics */
 }
 
 /* === visor de sprites (overlay) === */
