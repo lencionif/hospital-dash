@@ -370,10 +370,9 @@
 
   // ---------------- Timbrado / asistencia ----------------
   function calmBell(patient){
-    // Integra con tu sistema: marcamos attended/stop ring y damos “bonus tiempo”
+    // Integra con tu sistema: detiene el timbre y da “bonus tiempo”
     if (!patient) return;
     patient.ringing = false;
-    patient.attended = true;
     patient.ringDeadline = Math.max(patient.ringDeadline||0, Date.now()+12000);
     // SFX opcional
     try{ W.AudioAPI?.play?.('bell_off',{vol:0.8}); }catch(_){}

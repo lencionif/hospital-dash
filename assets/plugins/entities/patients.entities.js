@@ -340,21 +340,26 @@
   }
 
   function getCarry(hero) {
+    if (hero?.currentPill) return hero.currentPill;
     if (hero?.inventory?.medicine) return hero.inventory.medicine;
     if (hero?.carry) return hero.carry;
     if (hero && !hero.carry && G.carry && hero === (G.player || null)) return G.carry;
-    return G.carry;
+    return G.carry || null;
+  }
+
+  function resolveCarryTargetId(hero) {
+    const carry = getCarry(hero);
+    if (!carry) return null;
+    return carry.targetPatientId || carry.forPatientId || carry.patientId || null;
   }
 
   function canDeliver(hero, patient) {
-    if (!patient || patient.attended) return false;
+    if (!patient || patient.attended || !patient.id) return false;
     const carry = getCarry(hero);
     if (!carry || (carry.type && carry.type !== 'PILL')) return false;
-    if (carry?.forPatientId && patient.id) return carry.forPatientId === patient.id;
-    if (carry?.patientId && patient.id) return carry.patientId === patient.id;
-    if (carry?.pairName && patient.keyName) return carry.pairName === patient.keyName;
-    if (carry?.patientName && patient.name) return carry.patientName === patient.name;
-    return false;
+    const targetId = resolveCarryTargetId(hero);
+    if (!targetId) return false;
+    return patient.id === targetId;
   }
 
   function clearCarry(hero, opts = {}) {
@@ -371,10 +376,37 @@
   }
 
   function deliverPill(hero, patient) {
-    if (!patient || patient.attended) return false;
     const carrier = hero || G.player || null;
-    if (!canDeliver(carrier, patient)) return false;
     const carry = getCarry(carrier);
+    const hx = hero ? hero.x + hero.w * 0.5 : (carrier ? carrier.x + carrier.w * 0.5 : null);
+    const hy = hero ? hero.y + hero.h * 0.5 : (carrier ? carrier.y + carrier.h * 0.5 : null);
+    const px = patient ? patient.x + (patient.w || 0) * 0.5 : null;
+    const py = patient ? patient.y + (patient.h || 0) * 0.5 : null;
+    const distance = (Number.isFinite(hx) && Number.isFinite(hy) && Number.isFinite(px) && Number.isFinite(py))
+      ? Math.hypot(px - hx, py - hy)
+      : null;
+    console.debug('[PILL_DELIVERY_ENTER]', {
+      heroId: hero?.id || carrier?.id || null,
+      heroPos: hero ? { x: hero.x, y: hero.y } : (carrier ? { x: carrier.x, y: carrier.y } : null),
+      heroCurrentPill: carry || null,
+      patientId: patient?.id || null,
+      patientName: patient?.displayName || patient?.name || null,
+      patientPos: patient ? { x: patient.x, y: patient.y } : null,
+      distance: Number.isFinite(distance) ? Number(distance.toFixed(2)) : null,
+    });
+    const targetId = resolveCarryTargetId(carrier);
+    const hasPill = !!carry;
+    console.debug('[PILL_DELIVERY_CONDITION]', {
+      hasPill,
+      targetId: targetId || null,
+      patientId: patient?.id || null,
+      equalIds: !!patient && !!targetId && patient.id === targetId,
+      patientAttended: !!patient?.attended,
+    });
+    if (!patient || patient.attended) return false;
+    if (!hasPill || !targetId || patient.id !== targetId) return false;
+    if (!canDeliver(carrier, patient)) return false;
+    console.debug('[PILL_DELIVERY_MATCH]', { patientId: patient.id, patientName: patient.displayName || patient.name || null });
     if (carry?.id && Array.isArray(G.pills)) {
       G.pills = G.pills.filter((p) => p && p.id !== carry.id);
     }
@@ -391,6 +423,8 @@
     patient.dead = true;
     patient.attendedAndMatched = true;
     patient.delivered = true;
+    try { W.BellsAPI?.removeBellForPatient?.(patient, { reason: 'patient_cured' }); } catch (_) {}
+    try { W.BellsAPI?.cleanupOrphanBells?.({ reason: 'post_cure' }); } catch (_) {}
       patient.pillSatisfied = true;
       if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
       ensurePatientCounters();
@@ -451,6 +485,8 @@
     if (!patient || patient.furious || patient.attended) return null;
     removePillForKey(patient.keyName);
     dropCarriedPillIfMatches(patient.keyName);
+    try { W.BellsAPI?.removeBellForPatient?.(patient, { reason: 'patient_furious' }); } catch (_) {}
+    try { W.BellsAPI?.cleanupOrphanBells?.({ reason: 'furiosa' }); } catch (_) {}
     patient.furious = true;
     patient.dead = true;
     if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
