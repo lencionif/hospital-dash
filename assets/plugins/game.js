@@ -707,8 +707,6 @@
   const fogCtx      = fogCanvas ? fogCanvas.getContext('2d') : null;
   const guideCanvas = document.getElementById('guideCanvas');
   const guideCtx    = guideCanvas ? guideCanvas.getContext('2d') : null;
-  const hudCanvas   = document.getElementById('hudCanvas');
-  const hudCtx      = hudCanvas.getContext('2d');
 
   window.DEBUG_POPULATE = window.DEBUG_POPULATE || { LOG:false, VERBOSE:false };
   // SkyFX listo desde el menú (antes de startGame)
@@ -723,7 +721,6 @@
   });
   if (fogCanvas){ fogCanvas.width = VIEW_W; fogCanvas.height = VIEW_H; }
   if (guideCanvas){ guideCanvas.width = VIEW_W; guideCanvas.height = VIEW_H; }
-  if (hudCanvas){ hudCanvas.width = VIEW_W; hudCanvas.height = VIEW_H; }
 
   // === Sprites (plugin unificado) ===
   Sprites.init({ basePath: './assets/images/', tile: TILE });
@@ -810,7 +807,6 @@
     clearCanvasContext(ctx, canvas?.width, canvas?.height);
     clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
     clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-    clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
 
     try { window.FogAPI?.reset?.(); } catch (_) {}
     try { window.FogAPI?.clear?.(); } catch (_) {}
@@ -3208,7 +3204,6 @@ function drawEntities(c2){
       clearCanvasContext(ctx, canvas?.width, canvas?.height);
       clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
       clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-      clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
       return;
     }
     // actualizar cámara centrada en jugador
@@ -3241,15 +3236,16 @@ function drawEntities(c2){
       try { window.ArrowGuide?.draw(guideCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     }
 
-    // 1) Dibuja el HUD (esta función hace clearRect del HUD canvas)
-    try { window.HUD && HUD.render(hudCtx, camera, G); } catch(e){ console.warn('HUD.render', e); }
-    if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
+    // 1) Dibuja el HUD DOM + overlays finales
+    try { window.HUD && HUD.render(null, camera, G); } catch(e){ console.warn('HUD.render', e); }
 
-    // 2) Flecha (si no hay canvas dedicado) + overlays finales
-    if (!guideCtx){
-      try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
+    const overlayCtx = guideCtx || ctx;
+    if (!guideCtx && overlayCtx){
+      try { window.ArrowGuide?.draw(overlayCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     }
-    if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
+    if (overlayCtx && window.Sprites?.renderOverlay) {
+      Sprites.renderOverlay(overlayCtx);
+    }
   }
 
   // Fixed timestep
