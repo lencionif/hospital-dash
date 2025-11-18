@@ -976,7 +976,7 @@ button:active { transform: translateY(1px); }
 #game-container .overlay         { z-index: 50 !important; }
 
 /* Capas de rendering */
-#gameCanvas, #fogCanvas, #guideCanvas, #hudCanvas {
+#gameCanvas, #fogCanvas, #guideCanvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -993,8 +993,7 @@ button:active { transform: translateY(1px); }
 /* Los 3 canvas ocupan exactamente el contenedor */
 #gameCanvas,
 #fogCanvas,
-#guideCanvas,
-#hudCanvas{
+#guideCanvas{
   position: absolute;
   inset: 0;              /* top:0; right:0; bottom:0; left:0 */
   width: 100%;
@@ -1013,12 +1012,6 @@ button:active { transform: translateY(1px); }
 #guideCanvas {
   z-index: 40;
   pointer-events: none;
-}
-
-/* HUD SIEMPRE por encima de todo */
-#hudCanvas {
-  z-index: 50;
-  pointer-events: none;  /* que no intercepte clics */
 }
 
 /* === visor de sprites (overlay) === */
