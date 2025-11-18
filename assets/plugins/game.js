@@ -1963,6 +1963,17 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // ------------------------------------------------------------
   // Input + empuje
   // ------------------------------------------------------------
+  const HERO_LOVE_SPEED = 110;
+
+  function findEntityById(id){
+    if (!id || !Array.isArray(G.entities)) return null;
+    for (const ent of G.entities){
+      if (!ent) continue;
+      if (ent.id === id || ent.__id === id) return ent;
+    }
+    return null;
+  }
+
   function softFacingFromKeys(p, dx, dy, dt){
     if (!dx && !dy) return;
     const want = Math.atan2(dy, dx);
@@ -1989,10 +2000,42 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (newCard !== p.facing){ p.facing = newCard; p._facingHold = 0.08; }
     }
   }
-  
+
+  function handleLovePursuit(p, dt){
+    if (!p || !p.loveLock) return false;
+    const target = findEntityById(p.loveLock);
+    if (!target || target.dead || (target.ai && target.ai.state !== 'love')){
+      p.loveLock = null;
+      return false;
+    }
+    const pcx = p.x + p.w * 0.5;
+    const pcy = p.y + p.h * 0.5;
+    const ncx = target.x + target.w * 0.5;
+    const ncy = target.y + target.h * 0.5;
+    const dx = ncx - pcx;
+    const dy = ncy - pcy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const speed = Math.min(p.maxSpeed || HERO_LOVE_SPEED, HERO_LOVE_SPEED);
+    p.vx = (dx / dist) * speed;
+    p.vy = (dy / dist) * speed;
+    softFacingFromKeys(p, dx, dy, dt);
+    if (dist < TILE * 0.6){
+      p.vx *= 0.4;
+      p.vy *= 0.4;
+    }
+    if (dx || dy){
+      G.lastPushDir = { x: Math.sign(dx) || 0, y: Math.sign(dy) || 0 };
+    }
+    return true;
+  }
+
   function handleInput(dt) {
     const p = G.player;
     if (!p) return;
+
+    if (handleLovePursuit(p, dt)) {
+      return;
+    }
 
     const R = !!keys['arrowright'], L = !!keys['arrowleft'];
     const D = !!keys['arrowdown'],  U = !!keys['arrowup'];
