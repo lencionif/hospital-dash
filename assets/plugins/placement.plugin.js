@@ -1581,7 +1581,7 @@
     'tcae.png': 'npc_tcae',
     'celador.png': 'npc_celador',
     'guardia.png': 'npc_guardia',
-    'enfermera_sexy.png': 'npc_enfermera_sexy',
+    'enfermera_sexy.png': 'npc_enfermera_enamoradiza',
     'familiar_molesto.png': 'npc_familiar_molesto',
     'chica_limpieza.png': 'npc_chica_limpieza',
     'paciente_furiosa.png': 'patient_furiosa'

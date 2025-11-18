@@ -105,6 +105,7 @@
       facing: 'S',
       lookAngle: Math.PI / 2,  // 90º hacia abajo (sur)
       turnSpeed: 6.0,          // radianes/segundo (~143º/s) -> ajustable
+      loveLock: null,
       _facingHold: 0,          // anti-parpadeo de cardinales
       _flashlightId: null,
       flashlightOffsetX: 0,

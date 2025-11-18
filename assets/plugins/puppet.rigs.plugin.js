@@ -2598,43 +2598,239 @@
     }
   });
 
-  registerHumanRig('npc_enfermera_sexy', {
-    totalHeight: 66,
-    entityHeight: 64,
-    torsoWidth: 14,
-    torsoHeight: 34,
-    legLength: 28,
-    armLength: 24,
-    walkCycle: 7.6,
-    walkBob: 3.4,
-    idleBob: 1.2,
-    swayAmp: 1.3,
-    lateralAmp: 0.35,
-    lean: 0.09,
-    shadowRadius: 12,
-    offsetY: -4,
-    colors: {
-      body: '#ff5fa2',
-      accent: '#ffbbdd',
-      head: '#f4c4c0',
-      limbs: '#2a1424',
-      detail: '#210714'
-    },
-    extraUpdate(st){
-      st.hip = Math.sin(st.phase * 1.4) * 0.3;
-      st.headTiltTarget = 0.1 * Math.sin(st.phase * 0.6);
-      st.headTurn += (Math.sin(st.phase * 0.8) * 0.2 - st.headTurn) * 0.12;
-    },
-    extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso'){
-        const { dims } = helper;
+  const nurseLovePalette = {
+    hair: '#74452a',
+    hairShadow: '#4d2a18',
+    skin: '#f6d6c8',
+    blush: '#f6a8a3',
+    uniform: '#ffffff',
+    shadow: '#dfe6ff',
+    shoes: '#ff5a4d',
+    heart: '#ff6da8',
+    hat: '#fdfbfd'
+  };
+
+  function drawHeart(ctx, size, x, y, color, alpha = 1){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(size / 10, size / 10);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-5, -6, -12, -2, 0, 10);
+    ctx.bezierCurveTo(12, -2, 5, -6, 0, 0);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawNurseBody(ctx, st, e){
+    const anim = st.anim || 'idle';
+    const ai = e?.ai || {};
+    if (/^die_/.test(anim)){
+      ctx.save();
+      const rot = anim === 'die_fire' ? -Math.PI / 2.8 : -Math.PI / 2.2;
+      ctx.rotate(rot);
+      if (anim === 'die_crush') ctx.scale(1.2, 0.45);
+      ctx.fillStyle = nurseLovePalette.uniform;
+      ctx.fillRect(-16, -6, 32, 12);
+      ctx.fillStyle = nurseLovePalette.hair;
+      ctx.fillRect(-10, -10, 20, 6);
+      ctx.restore();
+      if (anim === 'die_fire'){
         ctx.save();
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.fillRect(-dims.torsoW * 0.3, dims.torsoTop + dims.torsoH * 0.2, dims.torsoW * 0.6, dims.torsoH * 0.3);
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = '#ff8a3b';
+        ctx.beginPath();
+        ctx.arc(0, -6, 16, 0, TAU);
+        ctx.fill();
         ctx.restore();
       }
+      return;
     }
-  });
+    const isSide = anim === 'walk_side' || anim === 'push_action';
+    const flip = isSide && (ai.dir === 'left');
+    ctx.save();
+    if (flip) ctx.scale(-1, 1);
+    const lean = anim === 'push_action' ? 0.25 : anim === 'attack' ? -0.12 : 0.08 * Math.sin(st.heartPhase || 0);
+    ctx.rotate(lean);
+    ctx.translate(0, -12);
+    // hair back
+    ctx.save();
+    ctx.fillStyle = nurseLovePalette.hair;
+    ctx.beginPath();
+    ctx.moveTo(-12, -6);
+    ctx.quadraticCurveTo(-16, 8, -6, 22);
+    ctx.quadraticCurveTo(0, 30, 6, 22);
+    ctx.quadraticCurveTo(16, 8, 12, -6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // uniform torso
+    ctx.save();
+    ctx.fillStyle = nurseLovePalette.uniform;
+    ctx.beginPath();
+    ctx.moveTo(-7.5, -4);
+    ctx.quadraticCurveTo(-10, 12, -5, 26);
+    ctx.lineTo(5, 26);
+    ctx.quadraticCurveTo(10, 12, 7.5, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = nurseLovePalette.shadow;
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.restore();
+    // legs
+    ctx.save();
+    ctx.fillStyle = nurseLovePalette.uniform;
+    ctx.fillRect(-5.5, 26, 4, 10);
+    ctx.fillRect(1.5, 26, 4, 10);
+    ctx.restore();
+    // shoes
+    ctx.save();
+    ctx.fillStyle = nurseLovePalette.shoes;
+    ctx.beginPath();
+    ctx.ellipse(-4, 37, 4.5, 2, 0, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(4, 37, 4.5, 2, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+    // arms
+    ctx.save();
+    ctx.strokeStyle = nurseLovePalette.uniform;
+    ctx.lineWidth = 3;
+    const handLift = anim === 'eat' ? 4 : 0;
+    ctx.beginPath();
+    ctx.moveTo(-7, 0);
+    ctx.quadraticCurveTo(-10, 10, -8, 18);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.quadraticCurveTo(12, 8 - handLift, 11, 14 - handLift);
+    ctx.stroke();
+    ctx.restore();
+    // face
+    ctx.save();
+    if (anim === 'walk_up'){
+      ctx.fillStyle = nurseLovePalette.hair;
+      ctx.beginPath();
+      ctx.arc(0, -12, 9, 0, TAU);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = nurseLovePalette.skin;
+      ctx.beginPath();
+      ctx.arc(0, -12, 9, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#3c2a29';
+      ctx.beginPath();
+      ctx.arc(-3, -12, 1, 0, TAU);
+      ctx.arc(3, -12, 1, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = nurseLovePalette.blush;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, -8, 3, 0, Math.PI);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // fringe
+    ctx.save();
+    ctx.fillStyle = nurseLovePalette.hair;
+    ctx.beginPath();
+    ctx.ellipse(0, -16, 9, 6, 0, Math.PI, 2 * Math.PI);
+    ctx.fill();
+    ctx.restore();
+    // hat
+    ctx.save();
+    ctx.fillStyle = nurseLovePalette.hat;
+    ctx.beginPath();
+    ctx.ellipse(0, -20, 10, 5, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#ff3a5f';
+    ctx.fillRect(-2, -22, 4, 6);
+    ctx.fillRect(-4, -20.5, 8, 2.5);
+    ctx.restore();
+    // main heart gesture
+    const heartOffsetY = anim === 'attack' ? -32 : (anim === 'extra' ? -18 : -8 - handLift);
+    const heartSize = anim === 'attack' ? 9 : 5;
+    drawHeart(ctx, heartSize, 13, heartOffsetY, nurseLovePalette.heart, 0.9);
+    if (anim === 'extra' || anim === 'powerup'){
+      for (let i = 0; i < 3; i++){
+        const t = (st.heartPhase || 0) + i * 1.5;
+        const hx = Math.cos(t + i) * (6 + i * 2);
+        const hy = -18 - i * 6 - Math.sin(t) * 2;
+        drawHeart(ctx, 3 + i, hx, hy, nurseLovePalette.heart, 0.45);
+      }
+    }
+    ctx.restore();
+  }
+
+  const rigEnfermeraEnamoradiza = {
+    create(){
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        idlePhase: Math.random() * TAU,
+        bob: 0,
+        heartPhase: 0,
+        loveGlow: 0,
+        lastAnim: 'idle'
+      };
+    },
+    update(st, e, dt){
+      const ai = e?.ai || {};
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      let anim = e?.anim || st.anim || 'idle';
+      if (ai.state === 'love') anim = 'extra';
+      else if (ai.state === 'talk') anim = 'talk';
+      else if (ai.state === 'dead') anim = ai.deathAnim || 'die_hit';
+      else if (speed > 5 && !/^walk_/.test(anim)){
+        if (Math.abs(e?.vx || 0) > Math.abs(e?.vy || 0)) anim = 'walk_side';
+        else anim = (e?.vy || 0) < 0 ? 'walk_up' : 'walk_down';
+      } else if (speed <= 3 && /^walk_/.test(anim)){
+        anim = 'idle';
+      }
+      st.lastAnim = st.anim;
+      st.anim = anim;
+      if (/walk/.test(anim)){
+        st.phase = (st.phase || 0) + dt * 6.4;
+        st.bob = Math.sin(st.phase) * 2.4;
+      } else {
+        st.idlePhase = (st.idlePhase || 0) + dt * 1.2;
+        st.bob = Math.sin(st.idlePhase) * 1.2;
+      }
+      st.heartPhase = (st.heartPhase || 0) + dt * 3.1;
+      const targetGlow = (anim === 'extra' || anim === 'powerup') ? 1 : 0;
+      st.loveGlow += (targetGlow - st.loveGlow) * Math.min(1, dt * 4.5);
+    },
+    draw(ctx, cam, e, st){
+      if (!ctx || !e || !st) return;
+      const [cx, cy, sc] = toScreen(cam, e);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+      const scale = applyOneTileScale(sc, { designSize: 64 });
+      ctx.save();
+      ctx.translate(cx, cy + st.bob * scale * 0.2);
+      drawShadow(ctx, 11, scale, 0.34, 0.28);
+      if (st.loveGlow > 0.01){
+        const glow = ctx.createRadialGradient(0, -16 * scale, 6 * scale, 0, -16 * scale, 36 * scale);
+        safeColorStop(glow, 0, `rgba(255,119,164,${0.35 * st.loveGlow})`);
+        safeColorStop(glow, 1, 'rgba(255,119,164,0)');
+        ctx.fillStyle = glow;
+        ctx.globalAlpha = 0.9 * st.loveGlow;
+        ctx.beginPath();
+        ctx.arc(0, -16 * scale, 36 * scale, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.translate(0, -8 * scale);
+      ctx.scale(scale, scale);
+      drawNurseBody(ctx, st, e);
+      ctx.restore();
+    }
+  };
+
+  API.registerRig('npc_enfermera_enamoradiza', rigEnfermeraEnamoradiza);
 
   registerHumanRig('npc_familiar_molesto', {
     totalHeight: 60,
