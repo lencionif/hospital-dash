@@ -17,8 +17,11 @@
     custom: '#f8e825'
   };
   const LERP_SPEED = 0.2;
-  const MIN_LEN_RATIO = 0.58;
-  const MAX_LEN_RATIO = 0.95;
+  const MIN_LEN_FACTOR = 0.7;
+  const MAX_LEN_FACTOR = 2.4;
+  const THICKNESS_FACTOR = 0.35;
+  const HEAD_BASE_MULT = 1.55;
+  const HEAD_WIDTH_RATIO = 0.72;
 
   const ArrowGuide = {
     enabled: true,
@@ -93,6 +96,7 @@
       this._targetEid = null;
       this._targetPoint = null;
       this._mode = 'off';
+      this._hasAngle = false;
       return this;
     },
 
@@ -120,8 +124,10 @@
       const directive = window.ObjectiveSystem?.getArrowTarget?.(G);
       if (directive) return directive;
 
-      const carry = resolveCarry(G);
-      const pending = listPendingPatients(G);
+      const carry = resolveCarry(G, hero);
+      const pendingCount = countPendingPatients(G);
+      const flow = getGameFlowState();
+      const finalPhase = pendingCount <= 0 ? isFinalPhaseActive(flow, G) : false;
 
       if (!carry){
         const pill = closestMedicine(G, heroCenter);
@@ -136,42 +142,28 @@
         }
       }
 
-      if (!carry && pending.length){
-        const nearestPatient = closestPatientFromList(pending, heroCenter);
-        if (nearestPatient) return nearestPatient;
-      }
-
-      const flow = getGameFlowState();
-      const finalPhase = isFinalPhaseActive(flow, G);
-      if (finalPhase){
-        const boss = findBoss(G);
-        if (boss){
-          const c = centerPoint(boss);
-          return { x: c.x, y: c.y, type: 'boss' };
+      if (pendingCount <= 0){
+        if (finalPhase){
+          const boss = findBoss(G);
+          if (boss){
+            const c = centerPoint(boss);
+            return { x: c.x, y: c.y, type: 'boss' };
+          }
         }
-      }
-
-      if (pending.length === 0){
         const cart = findEmergencyCart(G);
         if (cart){
           const c = centerPoint(cart);
           return { x: c.x, y: c.y, type: 'cart' };
         }
-      }
-
-      if (pending.length === 0 && !finalPhase){
-        const door = findBossDoor(G);
-        if (door){
-          const c = centerPoint(door);
-          return { x: c.x, y: c.y, type: 'door' };
-        }
-      }
-
-      if (pending.length === 0 || finalPhase){
         const boss = findBoss(G);
         if (boss){
           const c = centerPoint(boss);
           return { x: c.x, y: c.y, type: 'boss' };
+        }
+        const door = findBossDoor(G);
+        if (door){
+          const c = centerPoint(door);
+          return { x: c.x, y: c.y, type: 'door' };
         }
       }
 
@@ -200,10 +192,9 @@
       const dy = (target.y ?? heroCenter.y) - heroCenter.y;
       const dist = Math.hypot(dx, dy);
       const heroRadius = Math.max(heroRadiusPx(hero), 8);
-      const minLen = heroRadius * MIN_LEN_RATIO;
-      const maxLen = heroRadius * MAX_LEN_RATIO;
-      const clamped = clamp(dist, minLen, maxLen);
-      const worldLength = Math.max(minLen, Math.min(clamped, maxLen));
+      const maxLenWorld = heroRadius * MAX_LEN_FACTOR;
+      const minLenWorld = heroRadius * MIN_LEN_FACTOR;
+      const worldLength = clamp(Math.min(dist, maxLenWorld), minLenWorld, maxLenWorld);
       const angleTarget = (dist > 0.0001) ? Math.atan2(dy, dx) : this._angle;
       const prev = this._hasAngle ? this._angle : angleTarget;
       this._angle = lerpAngle(prev, angleTarget, LERP_SPEED);
@@ -213,14 +204,14 @@
       const screenHero = toScreen(camera, canvas, heroCenter.x, heroCenter.y);
       const scale = resolveHeroScale(hero, camera);
       const lengthPx = worldLength * scale;
-      const thickness = Math.max(4, heroRadius * 0.35 * scale);
-      const headSize = Math.max(thickness * 1.45, 12 * scale);
-      const headWidth = headSize * 0.75;
+      const thickness = Math.max(3, heroRadius * THICKNESS_FACTOR * scale);
+      const headSize = Math.max(HEAD_BASE_MULT * thickness, 12 * scale);
+      const headWidth = headSize * HEAD_WIDTH_RATIO;
       if (!Number.isFinite(lengthPx) || lengthPx <= 0) return;
 
       const color = target.color || colorForType(target.type);
       const alpha = 0.95;
-      const glow = 6 * scale;
+      const glow = Math.max(6, 8 * scale);
 
       ctxRef.save();
       ctxRef.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -231,7 +222,7 @@
       ctxRef.shadowColor = color;
       ctxRef.shadowBlur = glow;
 
-      const bodyLength = Math.max(2, lengthPx - headSize * 0.85);
+      const bodyLength = Math.max(2, lengthPx - headSize);
       ctxRef.fillRect(0, -thickness * 0.5, bodyLength, thickness);
       ctxRef.beginPath();
       ctxRef.moveTo(bodyLength, -headWidth * 0.5);
@@ -246,6 +237,7 @@
   function colorForType(type){
     if (!type) return COLORS.custom;
     const key = String(type).toLowerCase();
+    if (key === 'door') return COLORS.cart;
     return COLORS[key] || COLORS.custom;
   }
 
@@ -259,7 +251,10 @@
     const zoom = Number.isFinite(camera?.zoom) && camera.zoom > 0 ? camera.zoom : 1;
     const puppetScale = (hero?.puppet?.scale ?? 1) * (hero?.puppet?.zscale ?? 1);
     const entScale = hero?.scale ?? 1;
-    return clamp(zoom * puppetScale * entScale, 0.35, 4);
+    const rigScale = Number.isFinite(hero?.puppet?.state?.renderScale)
+      ? hero.puppet.state.renderScale
+      : 1;
+    return clamp(zoom * puppetScale * entScale * rigScale, 0.35, 4);
   }
 
   function lerpAngle(prev, next, t){
@@ -297,79 +292,64 @@
   }
 
   function closestMedicine(G, origin){
-    const pills = Array.isArray(G?.pills) ? G.pills : [];
     let best = null;
     let bestD = Infinity;
-    const consider = (pill) => {
-      if (!pill || pill.dead || pill.collected || pill.disabled || pill.deactivated) return;
+    for (const pill of listActivePills(G)){
       const c = centerPoint(pill);
       const d2 = distanceSq(origin.x, origin.y, c.x, c.y);
       if (d2 < bestD){
         bestD = d2;
         best = { x: c.x, y: c.y, type: 'pill' };
       }
-    };
-    for (const pill of pills) consider(pill);
-    if (!best && Array.isArray(G?.entities)){
-      const kind = window.ENT?.PILL;
-      for (const ent of G.entities){
-        if (!ent || ent.dead) continue;
-        if (kind != null && ent.kind !== kind) continue;
-        consider(ent);
-      }
     }
     return best;
   }
 
-  function resolveCarry(G){
-    const hero = G?.player;
+  function resolveCarry(G, heroRef){
+    const hero = heroRef || G?.player;
+    if (hero?.currentPill) return hero.currentPill;
     if (hero?.inventory?.medicine) return hero.inventory.medicine;
     if (hero?.carry) return hero.carry;
     if (G?.carry) return G.carry;
+    if (G?.currentPill) return G.currentPill;
     return null;
   }
 
   function resolvePatientForCarry(G, carry){
     if (!carry) return null;
-    const patients = Array.isArray(G?.patients) ? G.patients : [];
-    const byId = carry.forPatientId ?? carry.patientId;
+    const byId = carry.targetPatientId ?? carry.forPatientId ?? carry.patientId;
     if (byId != null){
-      const viaId = findEntityById(G, byId) || patients.find(p => p && p.id === byId);
-      if (viaId && !viaId.dead) return viaId;
+      const viaId = findPatientById(G, byId);
+      if (viaId && !viaId.dead && !viaId.delivered) return viaId;
     }
-    if (carry.pairName){
-      const byKey = patients.find(p => p && p.keyName === carry.pairName);
-      if (byKey && !byKey.dead) return byKey;
-      if (G?._patientsByKey instanceof Map){
-        const mapped = G._patientsByKey.get(carry.pairName);
-        if (mapped && !mapped.dead) return mapped;
-      }
+    const key = carry.pairName || carry.patientKey;
+    if (key){
+      const viaKey = findPatientByKey(G, key);
+      if (viaKey && !viaKey.dead && !viaKey.delivered) return viaKey;
     }
     if (carry.patientName){
-      const byName = patients.find(p => p && (p.name === carry.patientName || p.displayName === carry.patientName));
-      if (byName && !byName.dead) return byName;
+      const patient = findPatientByName(G, carry.patientName);
+      if (patient && !patient.dead && !patient.delivered) return patient;
     }
     return null;
   }
 
-  function listPendingPatients(G){
-    const patients = Array.isArray(G?.patients) ? G.patients : [];
-    return patients.filter(p => p && !p.dead && !p.attended && !p.delivered);
+  function countPendingPatients(G){
+    if (!G) return 0;
+    const stats = G.stats || {};
+    if (Number.isFinite(stats.remainingPatients)){
+      const furious = Number.isFinite(stats.activeFuriosas) ? stats.activeFuriosas : 0;
+      return Math.max(0, (stats.remainingPatients | 0) + (furious | 0));
+    }
+    if (Number.isFinite(G.patientsPending)){
+      return Math.max(0, G.patientsPending | 0);
+    }
+    return listPendingPatients(G).length;
   }
 
-  function closestPatientFromList(list, origin){
-    let best = null;
-    let bestD = Infinity;
-    for (const patient of list){
-      if (!patient) continue;
-      const c = centerPoint(patient);
-      const d2 = distanceSq(origin.x, origin.y, c.x, c.y);
-      if (d2 < bestD){
-        bestD = d2;
-        best = { x: c.x, y: c.y, type: 'patient' };
-      }
-    }
-    return best;
+  function listPendingPatients(G){
+    const patients = Array.isArray(G?.patients) ? G.patients : [];
+    return patients.filter(p => p && !p.dead && !p.attended && !p.delivered && !p.hidden);
   }
 
   function findEntityById(G, eid){
@@ -381,6 +361,54 @@
       } catch (_) {}
     }
     return (Array.isArray(G.entities) ? G.entities.find(e => e && e.id === eid) : null) || null;
+  }
+
+  function listActivePills(G){
+    const pool = new Set();
+    if (Array.isArray(G?.pills)){
+      for (const pill of G.pills){
+        if (pillIsActive(pill)) pool.add(pill);
+      }
+    }
+    if (Array.isArray(G?.entities)){
+      const kind = window.ENT?.PILL;
+      for (const ent of G.entities){
+        if (!pillIsActive(ent)) continue;
+        if (kind != null && ent.kind !== kind) continue;
+        pool.add(ent);
+      }
+    }
+    return [...pool];
+  }
+
+  function pillIsActive(pill){
+    if (!pill) return false;
+    if (pill.dead || pill.collected || pill.disabled || pill.deactivated) return false;
+    if (pill.hidden || pill.inactive) return false;
+    return true;
+  }
+
+  function findPatientById(G, id){
+    if (!id) return null;
+    const viaEntity = findEntityById(G, id);
+    if (viaEntity && viaEntity.kind === window.ENT?.PATIENT) return viaEntity;
+    const patients = Array.isArray(G?.patients) ? G.patients : [];
+    return patients.find((p) => p && p.id === id) || null;
+  }
+
+  function findPatientByKey(G, key){
+    if (!key) return null;
+    if (G?._patientsByKey instanceof Map && G._patientsByKey.has(key)){
+      return G._patientsByKey.get(key) || null;
+    }
+    const patients = Array.isArray(G?.patients) ? G.patients : [];
+    return patients.find((p) => p && p.keyName === key) || null;
+  }
+
+  function findPatientByName(G, name){
+    if (!name) return null;
+    const patients = Array.isArray(G?.patients) ? G.patients : [];
+    return patients.find((p) => p && (p.name === name || p.displayName === name)) || null;
   }
 
   function findEmergencyCart(G){
