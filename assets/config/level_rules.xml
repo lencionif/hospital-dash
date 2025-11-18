@@ -135,4 +135,57 @@
 
     <legend enable="true" include="all"/>
   </level>
+
+  <!-- ====== LEVEL 3 (desafío extendido) ====== -->
+  <level id="3"
+         mode="normal"
+         seed="auto"
+         heroes="2"
+         width="96" height="64"
+         visibleTilesRadius="20"
+         rooms="14"
+         roomSizeMin="9x9" roomSizeMax="16x14"
+         corridors="true"
+         difficulty="3"
+         boss="psiquiatrico"
+         bossRoom="big">
+    <spawn hero="true" x="auto" y="auto"/>
+    <minimap startVisible="true" startSmall="false"/>
+
+    <rule type="patient" count="6" perRoom="1-2"
+          names="Dolores,Angustias,Constanza,Raymunda,Flor,Julieta"
+          pillNameMode="autoAnagramOrFunny" pillPickup="touchOrE" bell="true"/>
+
+    <rule type="npc" kind="medico"     perRoom="1-2" count="4" lightAlpha="0.6"/>
+    <rule type="npc" kind="guardia"    perRoom="0-2" count="3" lightAlpha="0.6"/>
+    <rule type="npc" kind="familiar"   perRoom="0-2" count="4" lightAlpha="0.6"/>
+    <rule type="npc" kind="celador"    perRoom="0-2" count="3" lightAlpha="0.6"/>
+    <rule type="npc" kind="limpieza"   perRoom="0-1" count="2" lightAlpha="0.6"/>
+
+    <rule type="npc" kind="jefe"        unique="true" at="room:near_boss"  lightAlpha="0.6"/>
+    <rule type="npc" kind="supervisora" unique="true" at="room:control"    lightAlpha="0.6"/>
+
+    <rule type="enemy" kind="rat"       difficulty="3" perRoom="1-3" count="5"/>
+    <rule type="enemy" kind="mosquito"  difficulty="3" perRoom="1-2" count="4" speedScale="0.8" chaseRadius="180"/>
+    <rule type="enemy" kind="furious"   difficulty="3" perRoom="0-1" count="1"/>
+
+    <rule type="cart"  kind="comida"    perRoom="0-1" count="3"/>
+    <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
+    <rule type="cart"  kind="urgencias" perRoom="0-1" count="2"/>
+
+    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
+
+    <rule type="elevator" count="2"
+          connect="room:entrance->room:control,room:control->room:ICU"
+          forbidIn="bossRoom"
+          forbidTo="bossRoom"/>
+
+    <rule type="phone" count="1" at="room:control"/>
+
+    <rule type="light" kind="normal" perRoom="2-4" alpha="0.6"/>
+    <rule type="light" kind="torre"  perRoom="0-1" alpha="0.6"/>
+    <lighting heroAlpha="0.6" npcAlpha="0.6" brokenLights="0.2"/>
+
+    <legend enable="true" include="all"/>
+  </level>
 </levels>

@@ -1070,37 +1070,213 @@
     return false;
   }
 
-  function moveEntityToTile(entity, tx, ty){
+  function moveEntityToWorld(entity, px, py){
     if (!entity) return;
-    const world = toWorld(tx, ty);
-    const px = world.x;
-    const py = world.y;
+    const targetX = Number.isFinite(px) ? px : 0;
+    const targetY = Number.isFinite(py) ? py : 0;
     try {
-      entity.x = px;
-      entity.y = py;
+      entity.x = targetX;
+      entity.y = targetY;
     } catch (_) {
-      entity.x = px;
-      entity.y = py;
+      entity.x = targetX;
+      entity.y = targetY;
     }
     if (typeof entity.vx === 'number') entity.vx = 0;
     if (typeof entity.vy === 'number') entity.vy = 0;
-    entity._lastSafeX = px;
-    entity._lastSafeY = py;
+    entity._lastSafeX = targetX;
+    entity._lastSafeY = targetY;
     try {
       const st = root.MovementSystem?.getState?.(entity);
       if (st){
-        st.x = px;
-        st.y = py;
+        st.x = targetX;
+        st.y = targetY;
         st.vx = 0;
         st.vy = 0;
-        st.teleportX = px;
-        st.teleportY = py;
+        st.teleportX = targetX;
+        st.teleportY = targetY;
         st.forceTeleport = true;
+        st.pendingTeleportApproved = true;
       }
     } catch (_) {}
     if (entity.body && typeof entity.body.setPosition === 'function'){
-      try { entity.body.setPosition(px, py); } catch (_) {}
+      try { entity.body.setPosition(targetX, targetY); } catch (_) {}
     }
+  }
+
+  function moveEntityToTile(entity, tx, ty){
+    if (!entity) return;
+    const world = toWorld(tx, ty);
+    moveEntityToWorld(entity, world.x, world.y);
+  }
+
+  function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh){
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function rectHitsSolidTiles(G, x, y, w, h){
+    const game = G || root.G;
+    const map = Array.isArray(game?.map) ? game.map : null;
+    if (!map || !map.length) return false;
+    const tile = tileSize();
+    const epsilon = 0.001;
+    const tx1 = Math.floor(x / tile);
+    const ty1 = Math.floor(y / tile);
+    const tx2 = Math.floor((x + w - epsilon) / tile);
+    const ty2 = Math.floor((y + h - epsilon) / tile);
+    for (let ty = ty1; ty <= ty2; ty++){
+      if (ty < 0 || ty >= map.length) return true;
+      const row = map[ty];
+      if (!Array.isArray(row)) return true;
+      for (let tx = tx1; tx <= tx2; tx++){
+        if (tx < 0 || tx >= row.length) return true;
+        if (row[tx] === 1) return true;
+      }
+    }
+    return false;
+  }
+
+  function collidesSolidEntity(G, entity, rect, opts = {}){
+    const game = G || root.G;
+    const ignoreSet = toIgnoreSet(opts.ignore);
+    const entities = Array.isArray(game?.entities) ? game.entities : [];
+    const tile = tileSize();
+    for (const other of entities){
+      if (!other || other === entity) continue;
+      if (other.dead) continue;
+      if (ignoreSet && ignoreSet.has(other)) continue;
+      const solid = other.static === true || other.solid === true || other.pushable === true;
+      if (!solid) continue;
+      const ow = Number.isFinite(other.w) ? other.w : tile;
+      const oh = Number.isFinite(other.h) ? other.h : tile;
+      const ox = Number.isFinite(other.x) ? other.x : 0;
+      const oy = Number.isFinite(other.y) ? other.y : 0;
+      if (rectsOverlap(rect.x, rect.y, rect.w, rect.h, ox, oy, ow, oh)) return true;
+    }
+    return false;
+  }
+
+  function spawnRectFromTile(tx, ty, opts){
+    const tile = tileSize();
+    const width = Number.isFinite(opts.width) ? opts.width : tile * 0.9;
+    const height = Number.isFinite(opts.height) ? opts.height : tile * 0.9;
+    const offsetX = Number.isFinite(opts.offsetX) ? opts.offsetX : (tile - width) * 0.5;
+    const offsetY = Number.isFinite(opts.offsetY) ? opts.offsetY : (tile - height) * 0.5;
+    return {
+      x: tx * tile + offsetX,
+      y: ty * tile + offsetY,
+      w: width,
+      h: height
+    };
+  }
+
+  function isSpawnTileFree(G, entity, tx, ty, opts = {}){
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+    if (!isTileWalkable(G, tx, ty)) return false;
+    const rect = spawnRectFromTile(tx, ty, opts);
+    if (rectHitsSolidTiles(G, rect.x, rect.y, rect.w, rect.h)) return false;
+    return !collidesSolidEntity(G, entity, rect, opts);
+  }
+
+  function spawnSafetyFallbackTile(G){
+    const game = G || root.G;
+    const tile = tileSize();
+    if (game?.safeRect){
+      const cx = Math.round((game.safeRect.x + game.safeRect.w * 0.5) / tile);
+      const cy = Math.round((game.safeRect.y + game.safeRect.h * 0.5) / tile);
+      if (Number.isFinite(cx) && Number.isFinite(cy)) return { tx: cx, ty: cy };
+    }
+    const width = Number.isFinite(game?.mapW) ? game.mapW : (Array.isArray(game?.map?.[0]) ? game.map[0].length : 0);
+    const height = Number.isFinite(game?.mapH) ? game.mapH : (Array.isArray(game?.map) ? game.map.length : 0);
+    return {
+      tx: Math.max(0, Math.floor((width || 1) / 2)),
+      ty: Math.max(0, Math.floor((height || 1) / 2))
+    };
+  }
+
+  function findSafeSpawnTile(G, startTx, startTy, opts = {}){
+    const game = G || root.G;
+    if (!game) return null;
+    const maxRadius = Math.max(0, Math.round(Number.isFinite(opts.maxRadius) ? opts.maxRadius : 8));
+    if (isSpawnTileFree(game, opts.entity, startTx, startTy, opts)) {
+      return { tx: startTx, ty: startTy };
+    }
+    for (let radius = 1; radius <= maxRadius; radius++){
+      for (let dy = -radius; dy <= radius; dy++){
+        for (let dx = -radius; dx <= radius; dx++){
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+          const tx = startTx + dx;
+          const ty = startTy + dy;
+          if (!isSpawnTileFree(game, opts.entity, tx, ty, opts)) continue;
+          return { tx, ty };
+        }
+      }
+    }
+    return null;
+  }
+
+  function describeSpawnTarget(entity){
+    if (!entity) return 'entity';
+    return entity.char || entity.kind || entity.type || entity.name || 'entity';
+  }
+
+  function shouldLogSpawnSafety(opts = {}){
+    if (opts.log === false) return false;
+    if (opts.log === true) return true;
+    return !!(root.DEBUG_FORCE_ASCII || root.__MAP_MODE === 'debug' || root.DEBUG_SPAWN_SAFETY);
+  }
+
+  function placeEntitySafely(entity, G, tx, ty, opts = {}){
+    if (!entity) return null;
+    const game = G || root.G;
+    if (!game) return null;
+    const tile = tileSize();
+    const width = Number.isFinite(opts.width) ? opts.width : (Number.isFinite(entity.w) ? entity.w : tile * 0.9);
+    const height = Number.isFinite(opts.height) ? opts.height : (Number.isFinite(entity.h) ? entity.h : tile * 0.9);
+    const baseOffsetX = Number.isFinite(opts.offsetX)
+      ? opts.offsetX
+      : (Number.isFinite(entity.x) ? entity.x - tx * tile : (tile - width) * 0.5);
+    const baseOffsetY = Number.isFinite(opts.offsetY)
+      ? opts.offsetY
+      : (Number.isFinite(entity.y) ? entity.y - ty * tile : (tile - height) * 0.5);
+    const searchOpts = {
+      ...opts,
+      entity,
+      width,
+      height,
+      offsetX: baseOffsetX,
+      offsetY: baseOffsetY
+    };
+    let target = findSafeSpawnTile(game, tx, ty, searchOpts);
+    if (!target){
+      const fallback = spawnSafetyFallbackTile(game);
+      if (fallback) {
+        target = findSafeSpawnTile(game, fallback.tx, fallback.ty, searchOpts);
+      }
+    }
+    if (!target){
+      const payload = { char: searchOpts.char || describeSpawnTarget(entity), from: { tx, ty } };
+      try { console.error('[SPAWN_SAFETY] No hay casillas libres', payload); } catch (_) {}
+      if (searchOpts.forceFallback !== false){
+        const fallback = spawnSafetyFallbackTile(game);
+        const px = fallback.tx * tile + baseOffsetX;
+        const py = fallback.ty * tile + baseOffsetY;
+        moveEntityToWorld(entity, px, py);
+      }
+      return null;
+    }
+    const px = target.tx * tile + baseOffsetX;
+    const py = target.ty * tile + baseOffsetY;
+    moveEntityToWorld(entity, px, py);
+    if ((target.tx !== tx || target.ty !== ty) && shouldLogSpawnSafety(searchOpts)){
+      try {
+        console.debug('[SPAWN_SAFETY] Recolocado spawn empotrado', {
+          char: searchOpts.char || describeSpawnTarget(entity),
+          from: { tx, ty },
+          to: { tx: target.tx, ty: target.ty }
+        });
+      } catch (_) {}
+    }
+    return target;
   }
 
   function describePushable(ent){
@@ -1200,6 +1376,12 @@
     return isTileOccupiedByPushable(G, tx, ty, options);
   };
   Placement.ensureNoPushableOverlap = ensureNoPushableOverlap;
+  Placement.findSafeSpawnTile = function wrappedFindSafe(G, tx, ty, options){
+    return findSafeSpawnTile(G, tx, ty, options);
+  };
+  Placement.placeEntitySafely = function wrappedPlaceSafely(entity, G, tx, ty, options){
+    return placeEntitySafely(entity, G, tx, ty, options);
+  };
 
   function spawnHero(tx, ty, cfg, G){
     const tile = TILE_SIZE();
@@ -1220,6 +1402,7 @@
         rigOk: false
       };
     if (hero && !hero.rigOk) hero.rigOk = true;
+    placeEntitySafely(hero, G, tx, ty, { char: 'S', maxRadius: 12 });
     return hero;
   }
 
@@ -1245,6 +1428,7 @@
     patient.rigOk = patient.rigOk === true || true;
     ensurePatientCounters(G);
     if (!G.patients.includes(patient)) G.patients.push(patient);
+    placeEntitySafely(patient, G, tx, ty, { char: (opts && opts.char) || 'p', maxRadius: 10 });
     return patient;
   }
 
@@ -1369,6 +1553,7 @@
       npc.rigOk = npc.rigOk === true;
       if (!npc.group) npc.group = 'human';
       ensureNPCVisuals(npc);
+      placeEntitySafely(npc, G, tx, ty, { char: entry?.char || entry?.legacy || type, maxRadius: 10 });
       out.push(npc);
       try { root.EntityGroups?.assign?.(npc); } catch (_) {}
       try { root.EntityGroups?.register?.(npc, G); } catch (_) {}
@@ -1575,6 +1760,7 @@
         }
         if (entity.hostile !== true) entity.hostile = true;
         ensureNPCVisuals(entity);
+        placeEntitySafely(entity, G, tx, ty, { char: entry?.char || subtype || type, maxRadius: 10 });
         out.push(entity);
         try { root.EntityGroups?.assign?.(entity); } catch (_) {}
         try { root.EntityGroups?.register?.(entity, G); } catch (_) {}
@@ -1600,6 +1786,9 @@
           : (sub === 'comida' || sub === 'food' ? 'food' : (sub || 'med')));
         const payload = { ...entry, sub: normalized };
         entity = root.Entities.Cart.spawn(normalized, world.x, world.y, payload);
+        if (entity) {
+          placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 8 });
+        }
       } else if (type === 'door' && root.Entities?.Door?.spawn) {
         entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
       } else if (type === 'boss_door' && root.Entities?.Door?.spawn) {

@@ -390,12 +390,23 @@
     return active;
   }
   const PATH_BLOCK_LOG_INTERVAL_MS = 220;
+  const isPathDebugEnabled = () => {
+    try {
+      const root = typeof window !== 'undefined'
+        ? window
+        : (typeof globalThis !== 'undefined' ? globalThis : null);
+      if (!root) return false;
+      return !!(root.PATH_DEBUG || root.DEBUG_PATHS || root.DEBUG_FORCE_PATHS);
+    } catch (_) {
+      return false;
+    }
+  };
   function describeEntity(ent){
     if (!ent) return 'entity';
     return ent.id || ent.name || ent.kindName || ent.kind || 'entity';
   }
   function logPathBlocked(ent, reason){
-    if (!ent) return;
+    if (!ent || !isPathDebugEnabled()) return;
     const nowTs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now();
@@ -1151,14 +1162,14 @@ document.addEventListener('keydown', (e)=>{
     "##############################",
     "#............................#",
     "#....####............####....#",
-    "#......S#....p.i#....#X.#....#",
-    "#....#..#..~....#....#..D....#",
-    "#....####..U+F#....####....#C#",
-    "#..vk.g..~..#....N...A....c..#",
-    "#...H..t..n..#..m.f...r......#",
-    "#....L....l....E....L....l...#",
+    "#....d..#....p.i#....#X.#....#",
+    "#....#.S#.......#....#..D....#",
+    "#....####..U+.#......####....#",
+    "#...........#....N...A....c..#",
+    "#...H..t..n..#..m............#",
+    "#..............E.....F.......#",
     "#....b.......####.......i....#",
-    "#............#..#............#",
+    "#......k.....#.r#............#",
     "#...............#............#",
     "##############################",
     ];
@@ -1477,6 +1488,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         const ch = line[x] || ' ';
         const wx = x * TILE, wy = y * TILE;
         let recognized = false;
+        const addPlacement = (payload) => {
+          if (!payload) return;
+          asciiPlacements.push({ ...payload, char: ch });
+          recognized = true;
+        };
 
         // pared/espacio (igual que la antigua)
         if (ch === '#') { row.push(1); recognized = true; }
@@ -1484,150 +1500,116 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
         // === MARCAS ASCII ===
         if (ch === 'S' || ch === 's') {
-          asciiPlacements.push({ type:'player', x: wx+4, y: wy+4, _units:'px' });
+          addPlacement({ type:'player', x: wx+4, y: wy+4, _units:'px' });
           // sala segura (5x5 tiles centrados en S)
           G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
           // luz blanca suave en sala de control
           G.roomLights.push({ x: wx + TILE/2, y: wy + TILE/2, r: 5.5*TILE, baseA: 0.28 });
-          recognized = true;
         }
         else if (ch === 'p' || ch === 'P') {
           // Paciente: placement (NO instanciamos aquí)
-          asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
+          addPlacement({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
           // luz clara de sala (igual que antigua)
           G.roomLights.push({ x: wx+TILE/2, y: wy+TILE/2, r: 5.0*TILE, baseA: 0.25 });
-          recognized = true;
         }
         else if (ch === 'f') {
-          asciiPlacements.push({ type:'enemy', sub:'furious', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'enemy', sub:'furious', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'i' || ch === 'I') {
-          asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
         }
         else if (ch === 'b') {
-          asciiPlacements.push({ type:'bell', x: wx+TILE*0.1, y: wy+TILE*0.1, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'bell', x: wx+TILE*0.1, y: wy+TILE*0.1, _units:'px' });
         }
         else if (ch === 'U') {
-          asciiPlacements.push({ type:'cart', sub:'er', x: wx+6, y: wy+8, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'cart', sub:'er', x: wx+6, y: wy+8, _units:'px' });
         }
         else if (ch === '+') {
-          asciiPlacements.push({ type:'cart', sub:'med', x: wx+6, y: wy+8, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'cart', sub:'med', x: wx+6, y: wy+8, _units:'px' });
         }
         else if (ch === 'F') {
-          asciiPlacements.push({ type:'cart', sub:'food', x: wx+6, y: wy+8, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'cart', sub:'food', x: wx+6, y: wy+8, _units:'px' });
         }
         else if (ch === 'C') {
-          asciiPlacements.push({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'V') { // legacy cart spawner
-          asciiPlacements.push({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'V' });
-          recognized = true;
+          addPlacement({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'V' });
         }
         else if (ch === 'N') {
-          asciiPlacements.push({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'B') { // legacy humano spawner
-          asciiPlacements.push({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'B' });
-          recognized = true;
+          addPlacement({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'B' });
         }
         else if (ch === 'A') {
-          asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'M') { // legacy mosquito spawner
-          asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'mosquito', legacy:'M' });
-          recognized = true;
+          addPlacement({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'mosquito', legacy:'M' });
         }
         else if (ch === 'R') { // legacy rat spawner
-          asciiPlacements.push({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'rat', legacy:'R' });
-          recognized = true;
+          addPlacement({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'rat', legacy:'R' });
         }
         else if (ch === 'D' || ch === 'd') {
-          asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
         }
         else if (ch === 'u') {
-          asciiPlacements.push({ type:'boss_door', x: wx, y: wy, locked:true, bossDoor:true, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'boss_door', x: wx, y: wy, locked:true, bossDoor:true, _units:'px' });
         }
         else if (ch === 'X') {
-          asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
-          recognized = true;
+          addPlacement({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
         }
         else if (ch === 'L') {
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'l') {
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, broken:true, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'light', x: wx+TILE/2, y: wy+TILE/2, broken:true, _units:'px' });
         }
         else if (ch === 'm') { // enemigo directo: mosquito
-          asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'r') { // enemigo directo: rata
-          asciiPlacements.push({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'E') { // ascensor activo
-          asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
         }
         else if (ch === 'k' || ch === 'K') { // NPC: médico
-          asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'H') { // NPC: jefa enfermería
-          asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 't' || ch === 'T') { // NPC: tcae
-          asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'c') { // NPC: celador
-          asciiPlacements.push({ type:'npc', sub:'celador', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'celador', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'h') { // NPC: limpieza
-          asciiPlacements.push({ type:'npc', sub:'limpieza', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'limpieza', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'n') { // NPC: enfermera cameo
-          asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'G') { // NPC: guardia
-          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          recognized = true;
+          addPlacement({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'g') { // charco de agua
           const spawnedWet = window.HazardsAPI?.spawnWet?.(x, y);
           if (!spawnedWet) {
-            asciiPlacements.push({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+            addPlacement({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
           }
           recognized = true;
         }
-        else if (ch === 'v') { // fuego
-          const spawnedFire = window.HazardsAPI?.spawnFire?.(x, y);
-          if (!spawnedFire) {
-            asciiPlacements.push({ type:'hazard_fire', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          }
-          recognized = true;
+        else if (ch === 'v') { // visitante molesto
+          addPlacement({ type:'npc', sub:'familiar_molesto', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === '~') {
           const spawned = window.HazardsAPI?.spawnWet?.(x, y);
           if (!spawned) {
-            asciiPlacements.push({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+            addPlacement({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
           }
           recognized = true;
         }
@@ -1641,7 +1623,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
 
     if (!asciiPlacements.some((p) => p && String(p.type).toLowerCase() === 'player')) {
-      asciiPlacements.push({ type: 'player', x: TILE*2, y: TILE*2, _units: 'px' });
+      asciiPlacements.push({ type: 'player', x: TILE*2, y: TILE*2, _units: 'px', char: 'S' });
       if (!G.safeRect) {
         G.safeRect = { x: TILE * 0, y: TILE * 0, w: 5 * TILE, h: 5 * TILE };
       }
