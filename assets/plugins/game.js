@@ -2035,6 +2035,26 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
   }
 
+  function shouldLogPillDeliveryDebug() {
+    return !!(window.DEBUG_PILL_DELIVERY || window.DEBUG_FORCE_ASCII || window.DEBUG_MAP_MODE);
+  }
+
+  function logPillDeliveryDebug(hero, patient, extra = {}) {
+    if (!shouldLogPillDeliveryDebug()) return;
+    const carry = hero?.currentPill || hero?.carry || hero?.inventory?.medicine || G.carry || G.currentPill || null;
+    const payload = {
+      playerHasPill: !!carry,
+      pillId: carry?.id || null,
+      pillTarget: carry?.targetPatientId || carry?.forPatientId || carry?.patientId || null,
+      patientId: patient?.id || null,
+      patientName: patient?.displayName || patient?.name || null,
+      distance: extra.distance ?? null,
+      canDeliver: extra.canDeliver ?? null,
+      reason: extra.reason || null,
+    };
+    console.debug('[PILL_DELIVERY_DEBUG]', payload);
+  }
+
   function tryDeliverPillFromAction(hero) {
     const carrying = hero?.carry || G.carry;
     if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
@@ -2056,7 +2076,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
     if (!target) return false;
-    if (window.PatientsAPI?.canDeliver?.(hero, target)) {
+    const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
+      ? window.PatientsAPI.canDeliver(hero, target)
+      : false;
+    const safeDist = Number.isFinite(bestDist) ? Number(bestDist.toFixed(2)) : null;
+    logPillDeliveryDebug(hero, target, { distance: safeDist, canDeliver, reason: canDeliver ? 'match' : 'target_mismatch' });
+    if (canDeliver) {
       const delivered = window.PatientsAPI?.deliverPill?.(hero, target);
       if (delivered) afterManualDelivery(target);
       return true;
