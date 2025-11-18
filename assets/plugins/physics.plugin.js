@@ -11,6 +11,77 @@
     PILL: 0.1
   };
 
+  const CART_TYPE_PROFILES = {
+    light: {
+      mass: 0.85,
+      restitution: 0.97,
+      mu: 0.003,
+      slideFriction: 0.0035,
+      drag: 0.010,
+      vmax: 26,
+      damagePerHit: 0.75,
+      damageThreshold: 180,
+      fireThreshold: 260,
+      fireBounces: 2,
+      squashThreshold: 340,
+      squashBounces: 4,
+      pushImpulse: 1.35,
+      hitImpulse: 55
+    },
+    medium: {
+      mass: 1.2,
+      restitution: 0.94,
+      mu: 0.006,
+      slideFriction: 0.007,
+      drag: 0.014,
+      vmax: 22,
+      damagePerHit: 1.25,
+      damageThreshold: 200,
+      fireThreshold: 280,
+      fireBounces: 2,
+      squashThreshold: 360,
+      squashBounces: 3,
+      pushImpulse: 1.15,
+      hitImpulse: 65
+    },
+    heavy: {
+      mass: 1.75,
+      restitution: 0.98,
+      mu: 0.008,
+      slideFriction: 0.0095,
+      drag: 0.018,
+      vmax: 19,
+      damagePerHit: 1.85,
+      damageThreshold: 170,
+      fireThreshold: 300,
+      fireBounces: 1,
+      squashThreshold: 300,
+      squashBounces: 2,
+      pushImpulse: 1.05,
+      hitImpulse: 78
+    }
+  };
+
+  const CART_KIND_TO_TIER = {
+    food: 'light',
+    med: 'medium',
+    medicine: 'medium',
+    meds: 'medium',
+    er: 'heavy',
+    urgencias: 'heavy',
+    heavy: 'heavy',
+    medium: 'medium',
+    light: 'light'
+  };
+
+  function buildCartProfiles(){
+    return {
+      er:   { mass: CART_TYPE_PROFILES.heavy.mass,  restitution: CART_TYPE_PROFILES.heavy.restitution,  mu: CART_TYPE_PROFILES.heavy.mu,  slideFriction: CART_TYPE_PROFILES.heavy.slideFriction,  drag: CART_TYPE_PROFILES.heavy.drag,  vmax: CART_TYPE_PROFILES.heavy.vmax },
+      med:  { mass: CART_TYPE_PROFILES.medium.mass, restitution: CART_TYPE_PROFILES.medium.restitution, mu: CART_TYPE_PROFILES.medium.mu, slideFriction: CART_TYPE_PROFILES.medium.slideFriction, drag: CART_TYPE_PROFILES.medium.drag, vmax: CART_TYPE_PROFILES.medium.vmax },
+      food: { mass: CART_TYPE_PROFILES.light.mass,  restitution: CART_TYPE_PROFILES.light.restitution,  mu: CART_TYPE_PROFILES.light.mu,  slideFriction: CART_TYPE_PROFILES.light.slideFriction,  drag: CART_TYPE_PROFILES.light.drag,  vmax: CART_TYPE_PROFILES.light.vmax }
+    };
+  }
+
   const PHYS = {
     restitution: 0.32,
     friction: 0.028,
@@ -42,11 +113,9 @@
     ragdollImpulse: 140,
     ragdollDuration: 1.1,
     ragdollCooldown: 0.65,
-    cartProfiles: {
-      er:   { mass: 1.0, restitution: 0.98, mu: 0.003,  slideFriction: 0.0035, drag: 0.010, vmax: 24 },
-      med:  { mass: 1.4, restitution: 0.9,  mu: 0.008,  slideFriction: 0.0085, drag: 0.014, vmax: 19 },
-      food: { mass: 1.9, restitution: 0.78, mu: 0.014, slideFriction: 0.015,  drag: 0.020, vmax: 16 }
-    },
+    cartProfiles: buildCartProfiles(),
+    cartTypeProfiles: CART_TYPE_PROFILES,
+    cartKindToTier: CART_KIND_TO_TIER,
     bedProfiles: {
       bed:         { mass: 2.0, restitution: 0.45, friction: 0.88, vmax: 7 },
       bed_patient: { mass: 2.0, restitution: 0.35, friction: 0.88, vmax: 7 }
@@ -78,6 +147,7 @@
         return false;
       }
     };
+    const cartDebug = () => Boolean(window.DEBUG_CARTS) || isDebugPhysics();
 
     const nowSeconds = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? (performance.now() / 1000)
@@ -116,6 +186,69 @@
     const updateTileSize = () => {
       TILE = window.TILE_SIZE || TILE;
     };
+
+    const cartKindToTier = Object.assign({}, CFG.cartKindToTier || {});
+
+    function guessCartTier(cart){
+      if (!cart) return 'medium';
+      const explicit = (cart.cartTier || cart.cartWeight || cart.cartClass || cart.cartProfileKey || '').toString().toLowerCase();
+      if (explicit && CFG.cartTypeProfiles?.[explicit]) return explicit;
+      const rig = (cart.rigName || cart.puppet?.rigName || '').toString().toLowerCase();
+      if (rig.includes('urgencias') || rig.includes('emergency')) return 'heavy';
+      const tag = (cart.cartType || cart.type || cart.tag || '').toString().toLowerCase();
+      if (tag && cartKindToTier[tag]) return cartKindToTier[tag];
+      const alt = (cart.kindName || '').toString().toLowerCase();
+      if (alt && cartKindToTier[alt]) return cartKindToTier[alt];
+      return explicit || 'medium';
+    }
+
+    function ensureCartPhysicsMeta(cart, forcedTier){
+      if (!cart || !isCartEntity(cart)) return null;
+      const tier = forcedTier || guessCartTier(cart);
+      const tierCfg = (CFG.cartTypeProfiles && CFG.cartTypeProfiles[tier]) || null;
+      if (!tierCfg) return null;
+      const tile = TILE || window.TILE || 32;
+      const maxSpeedPx = Number.isFinite(tierCfg.maxSpeedPx)
+        ? tierCfg.maxSpeedPx
+        : (Number.isFinite(tierCfg.vmax) ? tierCfg.vmax * tile : null);
+      const physics = Object.assign({
+        type: tier,
+        vmax: tierCfg.vmax,
+        maxSpeedPx,
+        maxSpeed: maxSpeedPx,
+        restitution: tierCfg.restitution,
+        mass: tierCfg.mass,
+        damagePerHit: tierCfg.damagePerHit,
+        damageThreshold: tierCfg.damageThreshold,
+        fireThreshold: tierCfg.fireThreshold,
+        fireBounces: tierCfg.fireBounces,
+        squashThreshold: tierCfg.squashThreshold,
+        squashBounces: tierCfg.squashBounces,
+        pushImpulse: tierCfg.pushImpulse,
+        hitImpulse: tierCfg.hitImpulse
+      }, tierCfg);
+      cart.cartTier = tier;
+      cart.cartClass = tier;
+      cart.cartWeight = tier;
+      cart.cartPhysics = Object.assign({}, physics);
+      cart.physics = Object.assign({}, physics);
+      if (Number.isFinite(physics.mass)){
+        cart.mass = physics.mass;
+        cart.invMass = physics.mass > 0 ? 1 / physics.mass : 0;
+      }
+      if (Number.isFinite(physics.maxSpeed)) cart.maxSpeed = physics.maxSpeed;
+      if (Number.isFinite(physics.restitution)){
+        cart.restitution = Math.max(cart.restitution || 0, physics.restitution);
+        cart.rest = Math.max(cart.rest || 0, physics.restitution);
+      }
+      cart._physProfile = cart._physProfile || {};
+      cart._physProfile.type = 'cart';
+      cart._physProfile.key = tier;
+      if (Number.isFinite(physics.maxSpeedPx)) cart._physProfile.maxSpeedPx = physics.maxSpeedPx;
+      if (Number.isFinite(physics.vmax)) cart._physProfile.vmax = physics.vmax;
+      if (Number.isFinite(physics.restitution)) cart._physProfile.restitution = physics.restitution;
+      return cart.cartPhysics;
+    }
 
     const AABB = (a, b) =>
       a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -188,34 +321,74 @@
     }
 
     function cartImpactDamage(a, b){
-      const cart = (a && a.kind === 5) ? a : (b && b.kind === 5 ? b : null);
+      const cart = (a && isCartEntity(a)) ? a : (b && isCartEntity(b) ? b : null);
       if (!cart) return;
       const other = (cart === a) ? b : a;
-      const spdC = Math.hypot(cart.vx || 0, cart.vy || 0);
+      if (!other || other.dead) return;
+      const behavior = ensureCartPhysicsMeta(cart);
+      const speedCart = Math.hypot(cart.vx || 0, cart.vy || 0);
       const rel = Math.hypot((cart.vx || 0) - (other.vx || 0), (cart.vy || 0) - (other.vy || 0));
-      const nearW = isWall(other.x - 1, other.y - 1, other.w + 2, other.h + 2);
-      const MIN_ENEMY_KILL_SPEED = 6;
-      const MIN_PLAYER_HURT_SPEED = 22;
-      if (spdC <= 0.01 && rel <= 0.01 && !nearW) return;
-      if (G && other === G.player){
-        if (spdC > MIN_PLAYER_HURT_SPEED || rel > MIN_PLAYER_HURT_SPEED){
-          if (rel > 360) { window.damagePlayer?.(cart, 6); return; }
-          if (rel > 240) { window.damagePlayer?.(cart, 2); return; }
-          if (rel > 120) { window.damagePlayer?.(cart, 1); return; }
-        }
-        return;
+      const impact = Math.max(speedCart, rel);
+      const nearWall = isWall(other.x - 1, other.y - 1, other.w + 2, other.h + 2);
+      if (impact <= 0.01 && !nearWall) return;
+      const damageThreshold = behavior?.damageThreshold ?? (CFG.cartMinSpeed ?? 180);
+      const squashThreshold = behavior?.squashThreshold ?? (damageThreshold * 1.6);
+      const squashBounces = behavior?.squashBounces ?? 2;
+      const bounceCount = cart._cartBounceCount || 0;
+      const targetLabel = cartTargetLabel(other);
+      const contactX = (cart.x + cart.w * 0.5 + other.x + other.w * 0.5) * 0.5;
+      const contactY = (cart.y + cart.h * 0.5 + other.y + other.h * 0.5) * 0.5;
+
+      if (!other.static && impact > Math.max(20, damageThreshold * 0.4)){
+        pushEntityFromCart(cart, other, impact);
       }
-      if (other.static) return;
-      if (spdC > MIN_ENEMY_KILL_SPEED || rel > MIN_ENEMY_KILL_SPEED || nearW){
+
+      const shouldCrush = (impact >= squashThreshold || nearWall) && bounceCount >= squashBounces;
+      const shouldDamage = impact >= (damageThreshold * 0.75);
+      let damage = 0;
+      if (shouldDamage){
+        const base = behavior?.damagePerHit ?? 1;
+        const scale = Math.max(0.6, impact / Math.max(damageThreshold, 1));
+        damage = base * scale;
+      }
+
+      const isPlayer = G && other === G.player;
+      if ((isPlayer || isDamageableEntity(other)) && (damage > 0 || shouldCrush)){
         const meta = {
-          via: 'cart',
-          impactSpeed: Math.max(spdC, rel),
+          source: cart,
+          impact,
+          crush: shouldCrush,
+          contact: { x: contactX, y: contactY },
           killerTag: (cart._lastPushedBy || null),
-          killerId:  (cart._lastPushedId || null),
+          killerId: (cart._lastPushedId || null),
           killerRef: (cart._pushedByEnt || cart._grabbedBy || null)
         };
-        window.killEntityGeneric ? window.killEntityGeneric(other, meta) : (other.dead = true);
+        const crushDamage = shouldCrush ? damage + 2.5 : damage;
+        hurtEntity(other, crushDamage, meta);
       }
+
+      if (!isPlayer && shouldCrush && !isDamageableEntity(other) && !other.static){
+        hurtEntity(other, damage, { impact, crush: true, source: cart });
+      }
+
+      const shouldIgnite = behavior && behavior.fireThreshold && behavior.fireBounces &&
+        impact >= behavior.fireThreshold && bounceCount >= behavior.fireBounces;
+      if (shouldIgnite){
+        maybeSpawnImpactFire(contactX, contactY, impact * Math.max(behavior.mass || 1, 1), {
+          type: 'entity',
+          axis: 'cart',
+          entity: cart,
+          target: other
+        });
+      }
+
+      logCartImpact({
+        cartType: (behavior?.type || cart.cartType || 'cart'),
+        speed: Number(impact.toFixed ? impact.toFixed(2) : impact),
+        bounces: bounceCount,
+        targetType: targetLabel,
+        damage: shouldCrush ? 'crush' : Number(damage.toFixed ? damage.toFixed(2) : damage)
+      });
     }
 
     function inverseMass(e){
@@ -272,6 +445,93 @@
         const tick = meta.tick ?? (CFG.fireTick ?? DEFAULTS.fireTick ?? 0.4);
         spawn.call(fireAPI, x, y, Object.assign({}, meta, { ttl, damage, tick, impulse }));
       }
+    }
+
+    function cartTargetLabel(ent){
+      if (!ent) return 'unknown';
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
+      if (ENT){
+        if (ent.kind === ENT.PLAYER) return 'player';
+        if (ent.kind === ENT.ENEMY) return 'enemy';
+        if (ent.kind === ENT.NPC) return 'npc';
+        if (ent.kind === ENT.CART) return 'cart';
+      }
+      const tag = (ent.kindName || ent.type || ent.role || ent.tag || '').toString().toLowerCase();
+      if (tag.includes('dog') || tag.includes('cat') || tag.includes('animal')) return 'animal';
+      if (tag.includes('rat') || tag.includes('rata')) return 'rat';
+      if (tag.includes('cart') || tag.includes('carro')) return 'cart';
+      return tag || 'entity';
+    }
+
+    function isDamageableEntity(ent){
+      if (!ent) return false;
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
+      if (ENT){
+        if (ent.kind === ENT.PLAYER) return true;
+        if (ent.kind === ENT.ENEMY) return true;
+        if (ent.kind === ENT.NPC) return true;
+      }
+      const tag = (ent.kindName || ent.type || ent.role || ent.tag || '').toString().toLowerCase();
+      if (!tag) return false;
+      return tag.includes('npc') || tag.includes('enemy') || tag.includes('guard') || tag.includes('dog') || tag.includes('cat') || tag.includes('animal') || tag.includes('rat');
+    }
+
+    function hurtEntity(ent, dmg, meta){
+      if (!ent || !(dmg > 0)) return;
+      const amount = Math.max(0.25, dmg);
+      if (G && ent === G.player){
+        const payload = Math.max(1, Math.round(amount));
+        try { window.damagePlayer?.(meta?.source || ent, payload); }
+        catch (_) { window.damagePlayer?.(ent, payload); }
+        return;
+      }
+      if (!Number.isFinite(ent.hp)) ent.hp = 3;
+      ent.hp = Math.max(0, ent.hp - amount);
+      if (ent.hp <= 0 || meta?.crush){
+        const killerMeta = Object.assign({ via: 'cart', impactSpeed: meta?.impact }, meta || {});
+        if (typeof window.killEntityGeneric === 'function'){ window.killEntityGeneric(ent, killerMeta); }
+        else ent.dead = true;
+      }
+    }
+
+    function pushEntityFromCart(cart, other, impact){
+      if (!cart || !other || other.static) return;
+      const behavior = ensureCartPhysicsMeta(cart);
+      const dirMag = Math.hypot(cart.vx || 0, cart.vy || 0) || 1;
+      const dirX = (cart.vx || 0) / dirMag;
+      const dirY = (cart.vy || 0) / dirMag;
+      const hitImpulse = behavior?.hitImpulse ?? (CFG.hurtImpulse ?? DEFAULTS.hurtImpulse ?? 45);
+      const scale = Math.min(2.5, Math.max(0.5, impact / Math.max(behavior?.damageThreshold || hitImpulse, 1)));
+      applyImpulse(other, dirX * hitImpulse * scale, dirY * hitImpulse * scale);
+    }
+
+    function registerCartImpact(cart, impulse, mode = 'entity', target = null, contactX, contactY){
+      if (!cart || !isCartEntity(cart) || !(impulse > 0.01)) return;
+      const behavior = ensureCartPhysicsMeta(cart);
+      cart._cartBounceCount = (cart._cartBounceCount || 0) + 1;
+      cart._cartLastImpulse = impulse;
+      cart._cartLastImpactType = mode;
+      cart._cartLastTarget = target ? cartTargetLabel(target) : null;
+      const speed = Math.hypot(cart.vx || 0, cart.vy || 0);
+      if (!behavior) return;
+      const bounces = cart._cartBounceCount || 0;
+      if (behavior.fireThreshold && behavior.fireBounces && speed >= behavior.fireThreshold && bounces >= behavior.fireBounces){
+        const fxX = contactX ?? (cart.x + cart.w * 0.5);
+        const fxY = contactY ?? (cart.y + cart.h * 0.5);
+        maybeSpawnImpactFire(fxX, fxY, impulse * Math.max(behavior.mass || 1, 1), {
+          type: mode,
+          axis: mode,
+          entity: cart,
+          target: target
+        });
+      }
+    }
+
+    function logCartImpact(payload){
+      if (!cartDebug()) return;
+      try {
+        console.debug('[CART_HIT]', payload);
+      } catch (_) {}
     }
 
     function handleSlipImpact(e, axis, speed, contactX, contactY){
@@ -386,6 +646,7 @@
               velocity: { vx: vxStep, vy: vyStep || 0 }
             });
             handleSlipImpact(e, 'x', Math.abs(vxStep), contactX, contactY);
+            if (isCartEntity(e)) registerCartImpact(e, absVx * Math.max(massFactor, 1), 'wall', null, contactX, contactY);
           }
           const v = -(e.vx || 0) * wr;
           e.vx = (Math.abs(v) < 0.001) ? 0 : v;
@@ -420,6 +681,7 @@
               velocity: { vx: vxStep || 0, vy: vyStep }
             });
             handleSlipImpact(e, 'y', Math.abs(vyStep), contactX, contactY);
+            if (isCartEntity(e)) registerCartImpact(e, absVy * Math.max(massFactor, 1), 'wall', null, contactX, contactY);
           }
           const v = -(e.vy || 0) * wr;
           e.vy = (Math.abs(v) < 0.001) ? 0 : v;
@@ -538,6 +800,8 @@
                   by: b.vy || 0
                 }
               });
+              if (isCartEntity(a)) registerCartImpact(a, impact, 'entity', b, contactX, contactY);
+              if (isCartEntity(b)) registerCartImpact(b, impact, 'entity', a, contactX, contactY);
             }
           }
           if (isWall(a.x, a.y, a.w, a.h)) snapInsideMap(a);
@@ -604,6 +868,7 @@
       MASS,
       DEFAULTS,
       bindGame,
+      assignCartPhysicsMetadata: ensureCartPhysicsMeta,
       applyImpulse,
       collideWithTiles,
       moveWithCollisions,
@@ -627,5 +892,5 @@
     return api;
   }
 
-  window.Physics = { MASS, PHYS, DEFAULTS, init };
+  window.Physics = { MASS, PHYS, DEFAULTS, init, assignCartPhysicsMetadata: () => null };
 })();

@@ -2311,7 +2311,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (isCart || isBed){
       const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.6;
       const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.28;
-      impulse = totalForce * boost / Math.max(0.25, mass * massFactor);
+      const meta = isCart ? (window.Physics?.assignCartPhysicsMetadata?.(target) || target.cartPhysics || null) : null;
+      const pushMul = meta?.pushImpulse ?? 1;
+      impulse = totalForce * boost * pushMul / Math.max(0.25, mass * massFactor);
     } else {
       impulse = totalForce / Math.max(1, mass * 0.5);
     }
