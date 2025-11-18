@@ -353,13 +353,54 @@
     return carry.targetPatientId || carry.forPatientId || carry.patientId || null;
   }
 
+  function resolveCarryTargetKey(hero) {
+    const carry = getCarry(hero);
+    if (!carry) return null;
+    return carry.pairName || carry.keyName || null;
+  }
+
+  function resolveCarryTargetName(hero) {
+    const carry = getCarry(hero);
+    if (!carry) return null;
+    return carry.patientName || carry.targetName || carry.displayName || null;
+  }
+
+  function resolveCarryMatch(hero, patient) {
+    if (!patient) {
+      return {
+        targetId: resolveCarryTargetId(hero),
+        targetKey: resolveCarryTargetKey(hero),
+        targetName: resolveCarryTargetName(hero),
+        equalIds: false,
+        equalKeys: false,
+        equalNames: false,
+        matched: false
+      };
+    }
+    const targetId = resolveCarryTargetId(hero);
+    const targetKey = resolveCarryTargetKey(hero);
+    const targetName = resolveCarryTargetName(hero);
+    const equalIds = !!targetId && patient.id === targetId;
+    const equalKeys = !!targetKey && !!patient.keyName && patient.keyName === targetKey;
+    const patientNames = [patient.displayName, patient.name].filter(Boolean);
+    const equalNames = !!targetName && patientNames.some((name) => name === targetName);
+    return {
+      targetId: targetId || null,
+      targetKey: targetKey || null,
+      targetName: targetName || null,
+      equalIds,
+      equalKeys,
+      equalNames,
+      matched: equalIds || equalKeys || equalNames
+    };
+  }
+
   function canDeliver(hero, patient) {
     if (!patient || patient.attended || !patient.id) return false;
     const carry = getCarry(hero);
     if (!carry || (carry.type && carry.type !== 'PILL')) return false;
-    const targetId = resolveCarryTargetId(hero);
-    if (!targetId) return false;
-    return patient.id === targetId;
+    const { matched } = resolveCarryMatch(hero, patient);
+    return matched;
   }
 
   function clearCarry(hero, opts = {}) {
@@ -394,17 +435,21 @@
       patientPos: patient ? { x: patient.x, y: patient.y } : null,
       distance: Number.isFinite(distance) ? Number(distance.toFixed(2)) : null,
     });
-    const targetId = resolveCarryTargetId(carrier);
     const hasPill = !!carry;
+    const carryMatch = resolveCarryMatch(carrier, patient);
     console.debug('[PILL_DELIVERY_CONDITION]', {
       hasPill,
-      targetId: targetId || null,
+      targetId: carryMatch.targetId,
+      targetKey: carryMatch.targetKey,
+      targetName: carryMatch.targetName,
       patientId: patient?.id || null,
-      equalIds: !!patient && !!targetId && patient.id === targetId,
+      equalIds: carryMatch.equalIds,
+      equalKeys: carryMatch.equalKeys,
+      equalNames: carryMatch.equalNames,
       patientAttended: !!patient?.attended,
     });
     if (!patient || patient.attended) return false;
-    if (!hasPill || !targetId || patient.id !== targetId) return false;
+    if (!hasPill || !carryMatch.matched) return false;
     if (!canDeliver(carrier, patient)) return false;
     console.debug('[PILL_DELIVERY_MATCH]', { patientId: patient.id, patientName: patient.displayName || patient.name || null });
     if (carry?.id && Array.isArray(G.pills)) {
