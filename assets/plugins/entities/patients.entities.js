@@ -340,21 +340,26 @@
   }
 
   function getCarry(hero) {
+    if (hero?.currentPill) return hero.currentPill;
     if (hero?.inventory?.medicine) return hero.inventory.medicine;
     if (hero?.carry) return hero.carry;
     if (hero && !hero.carry && G.carry && hero === (G.player || null)) return G.carry;
-    return G.carry;
+    return G.carry || null;
+  }
+
+  function resolveCarryTargetId(hero) {
+    const carry = getCarry(hero);
+    if (!carry) return null;
+    return carry.targetPatientId || carry.forPatientId || carry.patientId || null;
   }
 
   function canDeliver(hero, patient) {
-    if (!patient || patient.attended) return false;
+    if (!patient || patient.attended || !patient.id) return false;
     const carry = getCarry(hero);
     if (!carry || (carry.type && carry.type !== 'PILL')) return false;
-    if (carry?.forPatientId && patient.id) return carry.forPatientId === patient.id;
-    if (carry?.patientId && patient.id) return carry.patientId === patient.id;
-    if (carry?.pairName && patient.keyName) return carry.pairName === patient.keyName;
-    if (carry?.patientName && patient.name) return carry.patientName === patient.name;
-    return false;
+    const targetId = resolveCarryTargetId(hero);
+    if (!targetId) return false;
+    return patient.id === targetId;
   }
 
   function clearCarry(hero, opts = {}) {
@@ -391,6 +396,8 @@
     patient.dead = true;
     patient.attendedAndMatched = true;
     patient.delivered = true;
+    try { W.BellsAPI?.removeBellForPatient?.(patient, { reason: 'patient_cured' }); } catch (_) {}
+    try { W.BellsAPI?.cleanupOrphanBells?.({ reason: 'post_cure' }); } catch (_) {}
       patient.pillSatisfied = true;
       if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);
       ensurePatientCounters();
@@ -451,6 +458,8 @@
     if (!patient || patient.furious || patient.attended) return null;
     removePillForKey(patient.keyName);
     dropCarriedPillIfMatches(patient.keyName);
+    try { W.BellsAPI?.removeBellForPatient?.(patient, { reason: 'patient_furious' }); } catch (_) {}
+    try { W.BellsAPI?.cleanupOrphanBells?.({ reason: 'furiosa' }); } catch (_) {}
     patient.furious = true;
     patient.dead = true;
     if (G._patientsByKey instanceof Map) G._patientsByKey.delete(patient.keyName);

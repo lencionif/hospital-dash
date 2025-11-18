@@ -62,6 +62,15 @@
     };
   }
 
+  function shouldLogBellCleanup() {
+    return !!(window.DEBUG_BELL_CLEANUP || window.DEBUG_FORCE_ASCII || window.DEBUG_MAP_MODE);
+  }
+
+  function debugBellCleanup(message, payload) {
+    if (!shouldLogBellCleanup()) return;
+    console.debug('[BELL_CLEANUP]', message, payload);
+  }
+
   const ADJACENT_OFFSETS = [
     { dx: 1, dy: 0 },
     { dx: -1, dy: 0 },
@@ -332,6 +341,38 @@
       return bell;
     },
 
+    _detachBellEntity(bell) {
+      if (!bell) return;
+      try { window.detachEntityRig?.(bell); } catch (_) {}
+      try { window.PuppetAPI?.detach?.(bell); } catch (_) {}
+      bell.dead = true;
+      const G = this.G || window.G || {};
+      if (Array.isArray(G.entities)) G.entities = G.entities.filter((e) => e !== bell);
+      if (Array.isArray(G.decor)) G.decor = G.decor.filter((e) => e !== bell);
+      if (Array.isArray(G.bells)) G.bells = G.bells.filter((e) => e !== bell);
+    },
+
+    _removeBellEntry(entry, opts = {}) {
+      if (!entry) return false;
+      const bell = entry.e;
+      const patient = entry.patient;
+      const reason = opts.reason || 'cleanup';
+      this._logBellOff(entry, reason);
+      this._applyRingingState(entry, false);
+      if (patient && typeof patient === 'object') {
+        if (bell && patient.bellId === bell.id) patient.bellId = null;
+        if (patient.anchorBell === bell) patient.anchorBell = null;
+        patient.ringing = false;
+        patient.ringingUrgent = false;
+      }
+      this._detachBellEntity(bell);
+      const idx = this.bells.indexOf(entry);
+      if (idx >= 0) this.bells.splice(idx, 1);
+      entry.patient = null;
+      entry.e = null;
+      return true;
+    },
+
     _resolvePatientTarget(opts = {}) {
       if (opts.patient && typeof opts.patient === 'object') return opts.patient;
       const key = opts.link || opts.pairName || opts.keyName || opts.targetName || opts.patientId;
@@ -486,6 +527,60 @@
       return this.spawnPatientBell(patient, opts.tileX ?? null, opts.tileY ?? null, opts);
     },
 
+    removeBellForPatient(patientOrId, opts = {}) {
+      this._ensureInit();
+      if (!patientOrId) return false;
+      const targetId = typeof patientOrId === 'object'
+        ? (patientOrId.id || null)
+        : patientOrId;
+      if (!targetId) return false;
+      let removed = false;
+      for (let i = this.bells.length - 1; i >= 0; i--) {
+        const entry = this.bells[i];
+        if (!entry) continue;
+        const bell = entry.e;
+        const patient = entry.patient;
+        const matchesPatient = patient && patient.id === targetId;
+        const matchesBell = bell && (bell.patientId === targetId || bell.forPatientId === targetId);
+        if (!matchesPatient && !matchesBell) continue;
+        debugBellCleanup('Removing bell for cured patient', {
+          patientId: targetId,
+          bellId: bell?.id || null,
+        });
+        this._removeBellEntry(entry, { reason: opts.reason || 'patient_cured' });
+        removed = true;
+      }
+      return removed;
+    },
+
+    cleanupOrphanBells(opts = {}) {
+      this._ensureInit();
+      let removed = false;
+      for (let i = this.bells.length - 1; i >= 0; i--) {
+        const entry = this.bells[i];
+        if (!entry) { this.bells.splice(i, 1); continue; }
+        const bell = entry.e;
+        if (!bell || bell.dead) { this.bells.splice(i, 1); continue; }
+        const patient = entry.patient;
+        if (this._isPatientActive(patient)) continue;
+        const payload = {
+          patientId: patient?.id || null,
+          bellId: bell?.id || null,
+        };
+        if (patient) {
+          debugBellCleanup('Removing bell for inactive patient', payload);
+        } else {
+          debugBellCleanup('Removing orphan bell', payload);
+        }
+        const reason = patient
+          ? (patient.attended ? 'patient_cured' : (opts.reason || 'patient_inactive'))
+          : 'orphan';
+        this._removeBellEntry(entry, { reason });
+        removed = true;
+      }
+      return removed;
+    },
+
     // Llamar desde parseMap al ver 'T' (timbre): registra la entidad
     registerBellEntity(bellEnt) {
       // bellEnt: entidad con kind ENT.BELL, x,y,w,h
@@ -526,27 +621,22 @@
     update(dt) {
       this._ensureInit();
       this.now += dt;
-      const G = this.G;
+
+      this.cleanupOrphanBells({ reason: 'update' });
 
       for (let i = this.bells.length - 1; i >= 0; i--) {
         const b = this.bells[i];
+        if (!b) { this.bells.splice(i, 1); continue; }
         const bell = b.e;
         if (!bell || bell.dead) { this.bells.splice(i, 1); continue; }
         bell.active = b.state === 'ringing';
 
-        // Si el paciente ya no existe o ya está satisfecho -> desactiva ese timbre
-        if (!b.patient || b.patient.dead || b.patient.satisfied) {
-          if (b.state === 'ringing') {
-            this._logBellOff(b, 'satisfied');
-          }
-          if (b.patient && typeof b.patient === 'object' && b.patient.bellId === bell.id) {
-            b.patient.bellId = null;
-            b.patient.ringingUrgent = false;
-          }
-          b.state = 'idle';
-          b.nextAt = this._nextTime(this.cfg.ringMin, this.cfg.ringMax);
-          this._applyRingingState(b, false);
-          if (bell) bell._warning = false;
+        if (!this._isPatientActive(b.patient)) {
+          debugBellCleanup('Removing bell for inactive patient', {
+            patientId: b.patient?.id || null,
+            bellId: bell?.id || null,
+          });
+          this._removeBellEntry(b, { reason: b.patient ? 'patient_inactive' : 'orphan' });
           continue;
         }
 
