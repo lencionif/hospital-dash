@@ -2084,6 +2084,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     return true;
   }
 
+  function resolveHeroCarry(hero) {
+    if (hero?.currentPill) return hero.currentPill;
+    if (hero?.carry) return hero.carry;
+    if (hero?.inventory?.medicine) return hero.inventory.medicine;
+    if (G.currentPill) return G.currentPill;
+    if (G.carry) return G.carry;
+    return null;
+  }
+
   function afterManualDelivery(patient){
     if (patient) {
       try { patient.onCure?.(); } catch (_) {}
@@ -2118,18 +2127,48 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     console.debug('[PILL_DELIVERY_DEBUG]', payload);
   }
 
-  function tryDeliverPillFromAction(hero) {
-    const carrying = hero?.carry || G.carry;
-    if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
-    const patients = Array.isArray(G.patients) ? G.patients : [];
+  function logPillContactCheck(hero, patient, extra = {}) {
+    if (!hero && !patient) return;
+    const carry = resolveHeroCarry(hero);
+    let dist = extra.distance ?? null;
+    if (!Number.isFinite(dist) && hero && patient) {
+      const hx = hero.x + hero.w * 0.5;
+      const hy = hero.y + hero.h * 0.5;
+      const px = patient.x + (patient.w || 0) * 0.5;
+      const py = patient.y + (patient.h || 0) * 0.5;
+      dist = Math.hypot(px - hx, py - hy);
+    }
+    const safeDist = Number.isFinite(dist) ? Number(dist.toFixed(2)) : null;
+    console.debug('[PILL_CONTACT_CHECK]', {
+      heroId: hero?.id || hero?.heroId || 'player',
+      heroHasPill: !!carry,
+      heroPill: carry || null,
+      patientId: patient?.id || null,
+      patientName: patient?.displayName || patient?.name || null,
+      patientTags: patient?.tags || null,
+      distance: safeDist,
+      reason: extra.reason || null,
+    });
+  }
+
+  function findPatientContact(hero, opts = {}) {
+    if (!hero || !Array.isArray(G.patients)) return null;
+    const patients = G.patients;
+    const maxRange = Number.isFinite(opts.maxRange)
+      ? opts.maxRange
+      : (window.TILE_SIZE || window.TILE || 32) * (opts.rangeMultiplier || 1.2);
+    const padding = Number.isFinite(opts.nearPadding) ? opts.nearPadding : 12;
     const hx = hero.x + hero.w * 0.5;
     const hy = hero.y + hero.h * 0.5;
-    const maxRange = (window.TILE_SIZE || window.TILE || 32) * 1.2;
     let target = null;
     let bestDist = Infinity;
     for (const pac of patients) {
-      if (!pac || pac.dead || pac.attended) continue;
-      if (!nearAABB(hero, pac, 12)) continue;
+      if (!pac || pac.dead || pac.hidden || pac.attended) continue;
+      if (opts.requireOverlap) {
+        if (!AABB(hero, pac)) continue;
+      } else if (!nearAABB(hero, pac, padding)) {
+        continue;
+      }
       const px = pac.x + (pac.w || 0) * 0.5;
       const py = pac.y + (pac.h || 0) * 0.5;
       const dist = Math.hypot(px - hx, py - hy);
@@ -2138,7 +2177,23 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         target = pac;
       }
     }
-    if (!target) return false;
+    if (!target) return null;
+    return { patient: target, distance: bestDist };
+  }
+
+  function tryDeliverPillFromAction(hero, opts = {}) {
+    const carrying = hero?.carry || G.carry;
+    if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
+    const contact = findPatientContact(hero, {
+      maxRange: opts.maxRange,
+      rangeMultiplier: opts.rangeMultiplier || 1.2,
+      nearPadding: opts.nearPadding ?? 12,
+      requireOverlap: opts.requireOverlap || false,
+    });
+    if (!contact) return false;
+    const target = contact.patient;
+    const bestDist = contact.distance;
+    logPillContactCheck(hero, target, { distance: bestDist, reason: opts.reason || 'action_button' });
     const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
       ? window.PatientsAPI.canDeliver(hero, target)
       : false;
@@ -2149,8 +2204,54 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (delivered) afterManualDelivery(target);
       return true;
     }
-    window.PatientsAPI?.wrongDelivery?.(target);
+    if (!opts?.silentOnMismatch) {
+      window.PatientsAPI?.wrongDelivery?.(target);
+    }
     return true;
+  }
+
+  function autoDeliverPillIfTouching(hero) {
+    const carry = resolveHeroCarry(hero);
+    if (!carry || (carry.kind !== 'PILL' && carry.type !== 'PILL')) return false;
+    const contact = findPatientContact(hero, {
+      requireOverlap: true,
+      nearPadding: 4,
+      rangeMultiplier: 0.9,
+    });
+    if (!contact) return false;
+    const patient = contact.patient;
+    const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
+      ? window.PatientsAPI.canDeliver(hero, patient)
+      : false;
+    const safeDist = Number.isFinite(contact.distance) ? Number(contact.distance.toFixed(2)) : null;
+    logPillDeliveryDebug(hero, patient, { distance: safeDist, canDeliver, reason: canDeliver ? 'auto_match' : 'auto_target_mismatch' });
+    if (!canDeliver) return false;
+    const delivered = window.PatientsAPI?.deliverPill?.(hero, patient);
+    if (delivered) afterManualDelivery(patient);
+    return delivered;
+  }
+
+  function trackHeroPatientContact(hero) {
+    if (!hero) return;
+    const contact = findPatientContact(hero, {
+      requireOverlap: true,
+      nearPadding: 2,
+      rangeMultiplier: 0.8,
+    });
+    if (!contact) {
+      G._lastPillContactPatientId = null;
+      G._lastPillContactHasPill = null;
+      return;
+    }
+    const carry = resolveHeroCarry(hero);
+    const hasPill = !!carry;
+    const patientId = contact.patient?.id || null;
+    if (G._lastPillContactPatientId === patientId && G._lastPillContactHasPill === hasPill) {
+      return;
+    }
+    G._lastPillContactPatientId = patientId;
+    G._lastPillContactHasPill = hasPill;
+    logPillContactCheck(hero, contact.patient, { distance: contact.distance, reason: 'contact_track' });
   }
 
   function isCartEntity(ent){
@@ -2868,6 +2969,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         G.door.solid = true;
       }
     }
+
+    trackHeroPatientContact(hero);
+    autoDeliverPillIfTouching(hero);
 
   }
 

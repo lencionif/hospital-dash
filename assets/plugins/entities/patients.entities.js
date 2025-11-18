@@ -376,10 +376,37 @@
   }
 
   function deliverPill(hero, patient) {
-    if (!patient || patient.attended) return false;
     const carrier = hero || G.player || null;
-    if (!canDeliver(carrier, patient)) return false;
     const carry = getCarry(carrier);
+    const hx = hero ? hero.x + hero.w * 0.5 : (carrier ? carrier.x + carrier.w * 0.5 : null);
+    const hy = hero ? hero.y + hero.h * 0.5 : (carrier ? carrier.y + carrier.h * 0.5 : null);
+    const px = patient ? patient.x + (patient.w || 0) * 0.5 : null;
+    const py = patient ? patient.y + (patient.h || 0) * 0.5 : null;
+    const distance = (Number.isFinite(hx) && Number.isFinite(hy) && Number.isFinite(px) && Number.isFinite(py))
+      ? Math.hypot(px - hx, py - hy)
+      : null;
+    console.debug('[PILL_DELIVERY_ENTER]', {
+      heroId: hero?.id || carrier?.id || null,
+      heroPos: hero ? { x: hero.x, y: hero.y } : (carrier ? { x: carrier.x, y: carrier.y } : null),
+      heroCurrentPill: carry || null,
+      patientId: patient?.id || null,
+      patientName: patient?.displayName || patient?.name || null,
+      patientPos: patient ? { x: patient.x, y: patient.y } : null,
+      distance: Number.isFinite(distance) ? Number(distance.toFixed(2)) : null,
+    });
+    const targetId = resolveCarryTargetId(carrier);
+    const hasPill = !!carry;
+    console.debug('[PILL_DELIVERY_CONDITION]', {
+      hasPill,
+      targetId: targetId || null,
+      patientId: patient?.id || null,
+      equalIds: !!patient && !!targetId && patient.id === targetId,
+      patientAttended: !!patient?.attended,
+    });
+    if (!patient || patient.attended) return false;
+    if (!hasPill || !targetId || patient.id !== targetId) return false;
+    if (!canDeliver(carrier, patient)) return false;
+    console.debug('[PILL_DELIVERY_MATCH]', { patientId: patient.id, patientName: patient.displayName || patient.name || null });
     if (carry?.id && Array.isArray(G.pills)) {
       G.pills = G.pills.filter((p) => p && p.id !== carry.id);
     }
