@@ -2296,6 +2296,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const target = contact.patient;
     const bestDist = contact.distance;
     logPillContactCheck(hero, target, { distance: bestDist, reason: opts.reason || 'action_button' });
+    if (target?.isHematologic) {
+      return window.HematologicPatientAPI?.tryDeliver?.(hero, target) || false;
+    }
     const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
       ? window.PatientsAPI.canDeliver(hero, target)
       : false;
@@ -2322,6 +2325,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     });
     if (!contact) return false;
     const patient = contact.patient;
+    if (patient?.isHematologic) {
+      return window.HematologicPatientAPI?.tryDeliver?.(hero, patient) || false;
+    }
     const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
       ? window.PatientsAPI.canDeliver(hero, patient)
       : false;
@@ -3937,6 +3943,10 @@ function drawEntities(c2){
     const payload = await resolveAsciiMapForLevel(level);
     if (payload?.levelRules) {
       G.levelRules = payload.levelRules;
+      const hemaSeconds = Number(payload.levelRules?.level?.hematologicTimerSeconds ?? payload.levelRules?.globals?.hematologicTimerSeconds);
+      if (Number.isFinite(hemaSeconds) && hemaSeconds > 0) {
+        G.hematologicTimerSeconds = hemaSeconds;
+      }
     }
     const asciiLines = Array.isArray(payload.lines) && payload.lines.length
       ? payload.lines.slice()

@@ -4381,6 +4381,91 @@
     }
   });
 
+  const rig_patient_hematologic_lvl1 = {
+    create(){
+      return { anim: 'idle', phase: Math.random() * TAU, bob: 0, pulse: 0 };
+    },
+    update(st, _e, dt){
+      st.phase += dt * 1.5;
+      st.bob = Math.sin(st.phase) * 0.5;
+      st.pulse += dt * 2.0;
+    },
+    draw(ctx, cam, e, st){
+      const [cx, cy, sc] = toScreen(cam, e);
+      const s = applyOneTileScale(sc, { inner: 0.95 });
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+      ctx.scale(s, s);
+
+      ctx.fillStyle = '#f4f4f4';
+      ctx.strokeStyle = st.anim === 'critical' ? '#ff6b6b' : '#888';
+      ctx.lineWidth = 1.5 / s;
+      ctx.beginPath();
+      ctx.roundRect(-8, -8, 16, 16, 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(0, -2);
+      ctx.fillStyle = '#fdfdfd';
+      ctx.strokeStyle = '#d9e2ef';
+      ctx.lineWidth = 0.8 / s;
+      ctx.beginPath();
+      ctx.ellipse(0, -4, 3.2, 3.4, 0, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#3d2b1f';
+      ctx.beginPath();
+      ctx.ellipse(0, -4.3, 4.2, 3.0, 0, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#f1f5ff';
+      ctx.beginPath();
+      ctx.roundRect(-4, -1.5, 8, 9, 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#f1f3f5';
+      ctx.fillRect(-5, 5.2, 10, 2.4);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = '#d2d2ff';
+      ctx.lineWidth = 0.5 / s;
+      ctx.beginPath();
+      ctx.moveTo(-7.2, -6);
+      ctx.lineTo(-6.5, 8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-7.8, -6);
+      ctx.lineTo(-7.8, -12);
+      ctx.stroke();
+      ctx.fillStyle = '#1e90ff';
+      ctx.fillRect(-9.5, -13.2, 4, 5.4);
+      ctx.fillStyle = '#e63946';
+      ctx.fillRect(-6, -13.2, 4, 5.4);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = '#c6d3e6';
+      ctx.lineWidth = 0.6 / s;
+      ctx.beginPath();
+      if (st.anim === 'call_help' || st.anim === 'critical') {
+        ctx.moveTo(4.5, -1);
+        ctx.quadraticCurveTo(6, -6, 5, -10);
+      } else {
+        ctx.moveTo(4.5, 1.5);
+        ctx.quadraticCurveTo(6, -2, 5, -6);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.restore();
+    }
+  };
+  API.registerRig('patient_hematologic_lvl1', rig_patient_hematologic_lvl1);
+
   // ───────────────────────────── INFRA ──────────────────────────────
   function doorProgress(e){
     const st = e?.state || {};

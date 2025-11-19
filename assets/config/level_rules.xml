@@ -21,6 +21,7 @@
     npcLightGuardia="#b9ff6b"
     npcLightFamiliar="#ff6b9a"
     firstBellDelayMinutes="5"
+    hematologicTimerSeconds="90"
   />
 
   <!-- ====== LEVEL 1 ====== -->

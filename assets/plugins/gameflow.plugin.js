@@ -651,6 +651,8 @@
     const patient = S.boss;
     if (!cart || !patient) return;
 
+    if (patient.isHematologic && !patient.cured) return;
+
     const cartCenter = centerOf(cart);
     const patientCenter = centerOf(patient);
     const tiles = Math.sqrt(dist2(cartCenter.x, cartCenter.y, patientCenter.x, patientCenter.y)) / TILE;

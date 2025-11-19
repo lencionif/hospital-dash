@@ -1813,6 +1813,20 @@
         if (entity) {
           placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 8 });
         }
+      } else if (type === 'boss') {
+        const payload = { ...(entry || {}) };
+        const bossHint = String(entry?.sub || entry?.boss || '').toLowerCase();
+        const prefersHema = bossHint.includes('hema') || (!bossHint && (!payload.tier || payload.tier === 1));
+        if (prefersHema && root.Entities?.PatientHematologic?.spawn) {
+          entity = root.Entities.PatientHematologic.spawn(world.x, world.y, payload);
+        }
+        if (!entity && root.Entities?.BossRush?.spawnHematologico) {
+          entity = root.Entities.BossRush.spawnHematologico(world.x, world.y, payload);
+        }
+        if (entity) {
+          if (!G.boss) G.boss = entity;
+          placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 4 });
+        }
       } else if (type === 'door' && root.Entities?.Door?.spawn) {
         entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
       } else if (type === 'boss_door' && root.Entities?.Door?.spawn) {
