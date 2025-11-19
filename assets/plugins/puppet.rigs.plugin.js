@@ -2469,53 +2469,139 @@
     }
   });
 
-  registerHumanRig('npc_medico', {
-    totalHeight: 62,
-    entityHeight: 60,
-    torsoWidth: 18,
-    torsoHeight: 30,
-    legLength: 22,
-    armLength: 21,
-    walkCycle: 6.4,
-    walkBob: 2.8,
-    idleBob: 1.0,
-    swayAmp: 0.5,
-    lean: 0.05,
-    shadowRadius: 12,
-    offsetY: -4,
-    colors: {
-      body: '#f8feff',
-      accent: '#8adffc',
-      head: '#f4cfba',
-      limbs: '#1d3342',
-      detail: '#0a1117'
+  const rig_medico = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        bob: 0,
+        idlePhase: Math.random() * TAU,
+        extraPhase: 0
+      };
     },
-    extraUpdate(st){
-      const tilt = st.moving ? 0.02 * Math.sin(st.phase * 0.6) : 0.14 * Math.sin(st.time * 0.45);
-      st.headTiltTarget = tilt;
-      if (!st.moving){
-        const look = Math.sin(st.time * 0.6) * 0.15;
-        st.headTurn += (look - st.headTurn) * 0.18;
+    update(st, e, dt) {
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      if (speed > 0 && (e?.ai?.state === 'patrol' || e?.ai?.state === 'cooldown')) {
+        st.phase += dt * 6.3;
+        st.bob = Math.sin(st.phase) * 2.2;
+      } else {
+        st.idlePhase += dt * 1.4;
+        st.bob = Math.sin(st.idlePhase) * 1.0;
+      }
+      st.anim = e?.anim || st.anim || 'idle';
+      if (st.anim === 'extra' || st.anim === 'powerup') {
+        st.extraPhase += dt * 4.0;
+      } else {
+        st.extraPhase = 0;
       }
     },
-    extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso'){
-        const { dims, scale } = helper;
-        ctx.save();
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.fillRect(-dims.torsoW * 0.15, dims.torsoTop + dims.torsoH * 0.1, dims.torsoW * 0.3, dims.torsoH * 0.25);
-        ctx.strokeStyle = '#6bb0c8';
-        ctx.lineWidth = 1.2 * scale;
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen) return;
+      const [cx, cy, sc] = screen;
+      const flip = (e?.flipX && e.flipX < 0) ? -1 : 1;
+      const s = sc * 0.9;
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+      ctx.scale(s * flip, s);
+      // Todas las coordenadas siguientes se mantienen dentro de [-0.5, 0.5] en X/Y.
+      const roundRect = (x, y, w, h, r) => {
+        const rad = Math.max(0, Math.min(Math.abs(r), Math.abs(w) * 0.5, Math.abs(h) * 0.5));
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, w, h, rad);
+          return;
+        }
+        ctx.moveTo(x + rad, y);
+        ctx.lineTo(x + w - rad, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+        ctx.lineTo(x + w, y + h - rad);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+        ctx.lineTo(x + rad, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+        ctx.lineTo(x, y + rad);
+        ctx.quadraticCurveTo(x, y, x + rad, y);
+      };
+
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.45, 0.24, 0.10, 0, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#f7f7f7';
+      ctx.beginPath();
+      roundRect(-0.18, -0.05, 0.36, 0.40, 0.12);
+      ctx.fill();
+
+      ctx.fillRect(-0.10, 0.18, 0.08, 0.18);
+      ctx.fillRect(0.02, 0.18, 0.08, 0.18);
+
+      ctx.fillStyle = '#ff4c8a';
+      ctx.beginPath();
+      roundRect(-0.13, 0.33, 0.12, 0.08, 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      roundRect(0.01, 0.33, 0.12, 0.08, 0.03);
+      ctx.fill();
+
+      ctx.fillStyle = '#f4c98a';
+      ctx.beginPath();
+      ctx.arc(0, -0.20, 0.16, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#7b4a2b';
+      ctx.beginPath();
+      ctx.arc(0, -0.21, 0.18, 0.2, 2.94);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-0.18, -0.08, 0.12, 0.18, -0.4, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#4c2a1a';
+      ctx.beginPath();
+      ctx.arc(-0.05, -0.215, 0.022, 0, TAU);
+      ctx.arc(0.05, -0.215, 0.022, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#4c2a1a';
+      ctx.lineWidth = 0.02;
+      ctx.beginPath();
+      ctx.arc(0, -0.14, 0.06, 0.1, 3.04);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 0.02;
+      ctx.beginPath();
+      ctx.moveTo(-0.06, -0.12);
+      ctx.quadraticCurveTo(-0.12, -0.04, -0.10, 0.0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0.06, -0.12);
+      ctx.quadraticCurveTo(0.12, -0.04, 0.10, 0.0);
+      ctx.stroke();
+      ctx.fillStyle = '#ff4c8a';
+      ctx.beginPath();
+      ctx.arc(0.0, -0.02, 0.03, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#8b5a2b';
+      ctx.save();
+      ctx.translate(0.14, 0.0);
+      ctx.rotate(-0.15);
+      ctx.fillRect(-0.09, -0.08, 0.16, 0.18);
+      ctx.restore();
+
+      if (st.anim === 'powerup' || st.anim === 'extra') {
+        const a = 0.4 + 0.3 * Math.sin(st.extraPhase);
+        ctx.strokeStyle = `rgba(0, 255, 200, ${a})`;
+        ctx.lineWidth = 0.03;
         ctx.beginPath();
-        ctx.arc(-dims.torsoW * 0.3, dims.torsoTop + dims.torsoH * 0.2, 3.5 * scale, 0, TAU);
+        roundRect(-0.24, -0.32, 0.48, 0.76, 0.20);
         ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(-dims.torsoW * 0.05, dims.torsoTop + dims.torsoH * 0.4, 4 * scale, 0, TAU);
-        ctx.stroke();
-        ctx.restore();
       }
+
+      ctx.restore();
     }
-  });
+  };
+  API.registerRig('npc_medico', rig_medico);
 
   const rig_supervisora = {
     create() {
