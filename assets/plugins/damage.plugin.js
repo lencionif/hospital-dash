@@ -137,6 +137,7 @@
     for (const ent of entities){
       if (!ent || ent.dead) continue;
       if (!isHostile(ent)) continue;
+      if (ent.disableAutoDamage || ent.skipAutoDamage) continue;
       if (!aabb(player, ent)) continue;
 
       const key = getId(ent);

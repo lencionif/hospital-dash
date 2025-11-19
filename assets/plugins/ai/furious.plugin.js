@@ -84,6 +84,17 @@
 
       delete patient.__convertedViaPatientsAPI;
 
+      if (W.Entities?.PatientFuriosa?.spawnFromPatient) {
+        try {
+          const created = W.Entities.PatientFuriosa.spawnFromPatient(patient, { skipCounters });
+          if (created) {
+            return created;
+          }
+        } catch (err) {
+          console.warn('[FuriousAPI] PatientFuriosa.spawnFromPatient', err);
+        }
+      }
+
       const ENT = G.ENT || {};
       const e = {
         kind: ENT.FURIOUS || 'furious',
@@ -140,8 +151,9 @@
     _cleanupPatientArtifacts(patient) {
       if (!patient) return;
       const G = this.G || window.G || {};
+      const keepPills = !!window.Entities?.PatientFuriosa?.supportsPillCures;
       const removeRefs = new Set();
-      if (Array.isArray(G.pills)) {
+      if (!keepPills && Array.isArray(G.pills)) {
         const keep = [];
         for (const pill of G.pills) {
           if (!pill) continue;
@@ -171,8 +183,8 @@
       if (patient.keyName && G._patientsByKey instanceof Map) {
         G._patientsByKey.delete(patient.keyName);
       }
-      if (patient.pillId) patient.pillId = null;
-      if (G.carry && typeof G.carry === 'object') {
+      if (!keepPills && patient.pillId) patient.pillId = null;
+      if (!keepPills && G.carry && typeof G.carry === 'object') {
         const carry = G.carry;
         const samePatient = patient.id && (carry.patientId === patient.id || carry.forPatientId === patient.id);
         const sameKey = patient.keyName && carry.pairName === patient.keyName;

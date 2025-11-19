@@ -1842,6 +1842,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   function killEnemy(e, meta){
       if (e.dead) return;
       e.dead = true;
+      if (typeof e.onKilled === 'function') {
+        try { e.onKilled(meta || {}); } catch (_) {}
+      }
       if (window.ScoreAPI){ try{ ScoreAPI.awardForDeath(e, Object.assign({cause:'killEnemy'}, meta||{})); }catch(_){} }
     // saca de las listas
     G.hostiles = G.hostiles.filter(x => x !== e);
@@ -1860,6 +1863,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   function killEntityGeneric(e, meta){
     if (!e || e.dead) return;
     e.dead = true;
+    if (typeof e.onKilled === 'function') {
+      try { e.onKilled(meta || {}); } catch (_) {}
+    }
     if (window.ScoreAPI){ try{ ScoreAPI.awardForDeath(e, Object.assign({cause:'killEntityGeneric'}, meta||{})); }catch(_){} }
 
     // quítalo de todas las listas donde pueda estar
@@ -2032,6 +2038,20 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   function handleInput(dt) {
     const p = G.player;
     if (!p) return;
+
+    if (p.stunTimer && p.stunTimer > 0) {
+      const stunDt = Math.max(0, Number(dt) || 0);
+      p.stunTimer = Math.max(0, p.stunTimer - stunDt);
+      p.isStunned = p.stunTimer > 0;
+      p.vx *= 0.4;
+      p.vy *= 0.4;
+      if (!p.isStunned) {
+        p.stunSource = null;
+      }
+      return;
+    } else if (p.isStunned) {
+      p.isStunned = false;
+    }
 
     if (handleLovePursuit(p, dt)) {
       return;

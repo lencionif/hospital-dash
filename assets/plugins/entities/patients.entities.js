@@ -483,8 +483,11 @@
 
   function convertToFuriosa(patient) {
     if (!patient || patient.furious || patient.attended) return null;
-    removePillForKey(patient.keyName);
-    dropCarriedPillIfMatches(patient.keyName);
+    const keepCarryForFuriosa = !!W.Entities?.PatientFuriosa?.supportsPillCures;
+    if (!keepCarryForFuriosa) {
+      removePillForKey(patient.keyName);
+      dropCarriedPillIfMatches(patient.keyName);
+    }
     try { W.BellsAPI?.removeBellForPatient?.(patient, { reason: 'patient_furious' }); } catch (_) {}
     try { W.BellsAPI?.cleanupOrphanBells?.({ reason: 'furiosa' }); } catch (_) {}
     patient.furious = true;
@@ -503,6 +506,9 @@
     let furiosa = null;
     if (W.FuriousAPI && typeof W.FuriousAPI.spawnFromPatient === 'function') {
       try { furiosa = W.FuriousAPI.spawnFromPatient(patient); } catch (e) { console.warn('FuriousAPI.spawnFromPatient', e); }
+    }
+    if (!furiosa && W.Entities?.PatientFuriosa?.spawnFromPatient) {
+      try { furiosa = W.Entities.PatientFuriosa.spawnFromPatient(patient); } catch (err) { console.warn('PatientFuriosa.spawnFromPatient', err); }
     }
     if (!furiosa) {
       furiosa = {
@@ -523,13 +529,13 @@
         showNameTag: true
       };
       addEntity(furiosa);
-    }
-    try {
-      const puppet = window.Puppet?.bind?.(furiosa, 'patient_furiosa', { z: 0, scale: 1, data: { skin: furiosa.skin } })
-        || W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: furiosa.skin } });
-      furiosa.rigOk = furiosa.rigOk === true || !!puppet;
-    } catch (_) {
-      furiosa.rigOk = furiosa.rigOk === true;
+      try {
+        const puppet = window.Puppet?.bind?.(furiosa, 'patient_furiosa', { z: 0, scale: 1, data: { skin: furiosa.skin } })
+          || W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: furiosa.skin } });
+        furiosa.rigOk = furiosa.rigOk === true || !!puppet;
+      } catch (_) {
+        furiosa.rigOk = furiosa.rigOk === true;
+      }
     }
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
     return furiosa;
