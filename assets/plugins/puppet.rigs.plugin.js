@@ -3531,56 +3531,191 @@
 
   API.registerRig('npc_enfermera_enamoradiza', rigEnfermeraEnamoradiza);
 
-  registerHumanRig('npc_familiar_molesto', {
-    totalHeight: 60,
-    entityHeight: 58,
-    torsoWidth: 18,
-    torsoHeight: 30,
-    legLength: 20,
-    armLength: 20,
-    walkCycle: 6.8,
-    walkBob: 2.9,
-    idleBob: 1.3,
-    swayAmp: 0.9,
-    shadowRadius: 11,
-    offsetY: -5,
-    colors: {
-      body: '#9b9b85',
-      accent: '#c7c091',
-      head: '#f0d6b9',
-      limbs: '#3b3a2c',
-      detail: '#19160f'
+  const rig_npc_familiar_molesto = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        bob: 0,
+        idlePhase: Math.random() * TAU,
+        bubblePhase: 0,
+        bubbleScale: 0,
+        lastDir: 1,
+      };
     },
-    extraUpdate(st, e, dt){
-      st._errTimer = (st._errTimer || 0) - dt;
-      if (st._errTimer <= 0){
-        st._errTimer = 1.4 + Math.random() * 1.8;
-        st._errCycle = 6.8 + (Math.random() - 0.5) * 1.0;
-      }
-      if (st.moving){
-        st.walkCycleOverride = st._errCycle || 6.8;
-        st.bobOverride = 2.9 * (1 + Math.sin(st.time * 4.2) * 0.1);
-        st.zigzag = Math.sin(st.time * 6.3 + st.phase) * 0.5;
+    update(st, e, dt) {
+      const anim = e?.puppetState?.anim || e?.anim || st.anim || 'idle';
+      st.anim = anim;
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      if (speed > 0.02) {
+        st.phase = (st.phase || 0) + dt * 6.0;
+        st.bob = Math.sin(st.phase) * 1.0;
+        st.lastDir = (e?.vx || 0) >= 0 ? 1 : -1;
       } else {
-        st.walkCycleOverride = null;
-        st.bobOverride = null;
-        st.shakeX = Math.sin(st.time * 9.5) * 0.25;
-        st.shakeY = Math.sin(st.time * 11.2) * 0.18;
-        st.headTurn += (Math.sin(st.time * 3.4) * 0.35 - st.headTurn) * 0.22;
+        st.idlePhase = (st.idlePhase || 0) + dt * 1.5;
+        st.bob = Math.sin(st.idlePhase) * 0.6;
       }
+      st.bubblePhase = (st.bubblePhase || 0) + dt * 2.0;
+      st.bubbleScale = 0.8 + 0.2 * Math.sin(st.bubblePhase);
     },
-    extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso'){
-        const { dims } = helper;
+    draw(ctx, cam, e, st) {
+      if (!ctx || !e || !st) return;
+      const [cx, cy, sc] = toScreen(cam, e);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+      const scale = applyOneTileScale(sc, { inner: 0.95, designSize: 64 });
+      const anim = st.anim || 'idle';
+      const dir = st.lastDir || 1;
+      const isDead = /^die_/.test(anim);
+      const bubbleBoost = anim === 'talk' ? 1.25 : (anim === 'powerup' || anim === 'attack') ? 1.4 : 1;
+      ctx.save();
+      ctx.translate(cx, cy + st.bob * scale * 0.3);
+      drawShadow(ctx, 11, scale, 0.32, 0.26);
+      ctx.translate(0, -6 * scale);
+      if (isDead) ctx.rotate(0.9 * dir);
+      ctx.scale(scale * dir, scale);
+
+      // base palette
+      const jeans = '#2d385c';
+      const jacket = '#c53333';
+      const shoes = '#d8222c';
+      const hair = '#5c341c';
+      const skin = '#f5c8a7';
+      const bag = '#1f1f1f';
+      const phone = '#1c1c25';
+
+      // movimiento simple de piernas y brazos
+      const step = (/walk/.test(anim) ? Math.sin(st.phase || 0) : 0);
+      const sway = (/walk/.test(anim) ? Math.cos(st.phase || 0) * 0.15 : 0);
+      const lean = anim === 'talk' ? 0.06 : anim === 'extra' ? -0.08 : 0;
+      ctx.rotate(lean);
+
+      // piernas + tacones
+      ctx.save();
+      ctx.translate(0, 8);
+      ctx.fillStyle = jeans;
+      ctx.fillRect(-6 + step * 0.8, -4, 12, 24);
+      ctx.fillRect(3 - step * 0.8, -4, 12, 24);
+      ctx.fillStyle = shoes;
+      ctx.beginPath();
+      ctx.ellipse(-3 + step * 0.8, 20, 6, 3, 0, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(6 - step * 0.8, 20, 6, 3, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // bolso cruzado
+      ctx.save();
+      ctx.strokeStyle = bag;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-10, -14);
+      ctx.lineTo(9, 18);
+      ctx.stroke();
+      ctx.fillStyle = bag;
+      ctx.fillRect(6, 14, 12, 12);
+      ctx.restore();
+
+      // torso + chaqueta
+      ctx.save();
+      ctx.translate(0, -10 + sway * 2);
+      ctx.fillStyle = jacket;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(-12, -20, 24, 30, 6);
+      else ctx.rect(-12, -20, 24, 30);
+      ctx.fill();
+      ctx.fillStyle = '#f7f7f7';
+      ctx.fillRect(-6, -18, 12, 24);
+      ctx.restore();
+
+      // brazos / manos
+      ctx.save();
+      ctx.translate(0, -8);
+      ctx.strokeStyle = '#b62c2c';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (anim === 'talk' || anim === 'attack') {
+        ctx.moveTo(-12, -6);
+        ctx.lineTo(-20, -18);
+        ctx.moveTo(10, -6);
+        ctx.lineTo(18, -14);
+      } else if (anim === 'push_action') {
+        ctx.moveTo(-12, -2);
+        ctx.lineTo(-20, -10);
+        ctx.moveTo(10, -2);
+        ctx.lineTo(18, -4);
+      } else {
+        ctx.moveTo(-8, -4);
+        ctx.lineTo(10, -6);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // cabeza + pelo
+      ctx.save();
+      ctx.translate(0, -28);
+      ctx.fillStyle = hair;
+      ctx.beginPath();
+      ctx.ellipse(0, -2, 16, 12, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(0, -6, 12, 11, 0.05, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = hair;
+      ctx.beginPath();
+      ctx.moveTo(-12, -8);
+      ctx.quadraticCurveTo(-18, 2, -10, 12);
+      ctx.quadraticCurveTo(0, 6, 10, 10);
+      ctx.quadraticCurveTo(18, -2, 10, -10);
+      ctx.fill();
+      // gafas y ceño
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(-5, -8, 4, 0, TAU);
+      ctx.arc(5, -8, 4, 0, TAU);
+      ctx.moveTo(-1, -8);
+      ctx.lineTo(1, -8);
+      ctx.stroke();
+      ctx.restore();
+
+      // móvil
+      ctx.save();
+      ctx.translate(-18, -12);
+      ctx.rotate(-0.2);
+      ctx.fillStyle = phone;
+      ctx.fillRect(-2, -6, 6, 14);
+      ctx.fillStyle = '#3a3a48';
+      ctx.fillRect(-1, -5, 4, 12);
+      ctx.restore();
+
+      // burbuja de chicle
+      ctx.save();
+      ctx.translate(10, -28);
+      const bubbleSize = (6 + (anim === 'talk' ? 2 : 0)) * st.bubbleScale * bubbleBoost;
+      ctx.fillStyle = 'rgba(255,153,204,0.75)';
+      ctx.beginPath();
+      ctx.arc(0, 0, bubbleSize, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // brillo de powerup / queja
+      if (anim === 'powerup' || anim === 'extra') {
         ctx.save();
-        ctx.strokeStyle = 'rgba(90,80,60,0.8)';
-        ctx.setLineDash([3, 2]);
-        ctx.strokeRect(-dims.torsoW * 0.35, dims.torsoTop + dims.torsoH * 0.45, dims.torsoW * 0.3, dims.torsoH * 0.18);
-        ctx.setLineDash([]);
+        ctx.globalAlpha = anim === 'powerup' ? 0.3 : 0.18;
+        ctx.fillStyle = 'rgba(255,70,70,0.6)';
+        ctx.beginPath();
+        ctx.arc(0, -18, 20, 0, TAU);
+        ctx.fill();
         ctx.restore();
       }
+
+      ctx.restore();
     }
-  });
+  };
+
+  API.registerRig('npc_familiar_molesto', rig_npc_familiar_molesto);
 
   registerHumanRig('npc_generic_human', {
     totalHeight: 60,

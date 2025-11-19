@@ -2061,6 +2061,25 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const D = !!keys['arrowdown'],  U = !!keys['arrowup'];
     let dx = (R ? 1 : 0) - (L ? 1 : 0);
     let dy = (D ? 1 : 0) - (U ? 1 : 0);
+    const confused = (() => {
+      const checker = window.Entities?.Hero?.isConfused;
+      if (typeof checker === 'function') return checker(p);
+      const status = p.status || {};
+      const now = (performance?.now ? performance.now() : Date.now()) / 1000;
+      if (status.confused && (!status.confusedUntil || status.confusedUntil > now)) return true;
+      if (status.confused && status.confusedUntil <= now) {
+        status.confused = false;
+        status.confusedSource = null;
+      }
+      return false;
+    })();
+    if (confused) {
+      dx = -dx;
+      dy = -dy;
+      const wobble = Math.sin((performance?.now ? performance.now() : Date.now()) / 160);
+      dx += wobble * 0.25;
+      dy -= wobble * 0.25;
+    }
     if (p._doctorInvertControls) {
       dx = -dx;
       dy = -dy;
@@ -2077,11 +2096,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     softFacingFromKeys(p, dx, dy, dt);
 
     // === NUEVO: aceleración y tope de velocidad ===
-    const accel = (p.accel != null) ? p.accel
-                : (p.speed != null) ? p.speed * 60    // compat viejo
-                : 800;                                  // fallback seguro
-    const maxSp = (p.maxSpeed != null) ? p.maxSpeed
-                : (BALANCE?.physics?.maxSpeedPlayer ?? 165);
+    let accel = (p.accel != null) ? p.accel
+              : (p.speed != null) ? p.speed * 60    // compat viejo
+              : 800;                                  // fallback seguro
+    let maxSp = (p.maxSpeed != null) ? p.maxSpeed
+              : (BALANCE?.physics?.maxSpeedPlayer ?? 165);
+    if (confused) {
+      accel *= 0.9;
+      maxSp *= 0.9;
+    }
 
     // aplicar aceleración por dt
     p.vx += dx * accel * dt;
