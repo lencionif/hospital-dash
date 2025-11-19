@@ -562,8 +562,42 @@
 
   function moveEntity(ent, dt = 1/60){
     if (typeof W.moveWithCollisions === 'function'){ W.moveWithCollisions(ent, dt); return; }
-    ent.x += (ent.vx || 0) * dt;
-    ent.y += (ent.vy || 0) * dt;
+    const vx = (ent.vx || 0) * dt;
+    const vy = (ent.vy || 0) * dt;
+    const w = ent.w || TILE;
+    const h = ent.h || TILE;
+
+    const tryMoveAxis = (axis) => {
+      if (axis === 'x'){
+        const nextX = ent.x + vx;
+        if (!hitsWallRect(nextX, ent.y, w, h)){
+          ent.x = nextX;
+        } else {
+          ent.vx = -(ent.vx || 0) * 0.35;
+        }
+      } else {
+        const nextY = ent.y + vy;
+        if (!hitsWallRect(ent.x, nextY, w, h)){
+          ent.y = nextY;
+        } else {
+          ent.vy = -(ent.vy || 0) * 0.35;
+        }
+      }
+    };
+
+    tryMoveAxis('x');
+    tryMoveAxis('y');
+
+    const maxX = Math.max(0, (G.mapW || 0) * TILE - w);
+    const maxY = Math.max(0, (G.mapH || 0) * TILE - h);
+    if (ent.x < 0 || ent.x > maxX){
+      ent.x = Math.min(Math.max(ent.x, 0), maxX);
+      ent.vx = 0;
+    }
+    if (ent.y < 0 || ent.y > maxY){
+      ent.y = Math.min(Math.max(ent.y, 0), maxY);
+      ent.vy = 0;
+    }
   }
 
   function moveTowardsTile(ent, tileX, tileY, speed, dt = 1/60){
