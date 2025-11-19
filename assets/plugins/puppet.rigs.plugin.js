@@ -2603,6 +2603,205 @@
   };
   API.registerRig('npc_medico', rig_medico);
 
+  const rig_limpiadora = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        bob: 0,
+        idlePhase: Math.random() * TAU,
+        mopPhase: 0,
+        sparklePhase: 0
+      };
+    },
+    update(st, e, dt) {
+      const aiState = e?.ai?.state || 'idle';
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      const active = speed > 0.01 && (aiState === 'patrol' || aiState === 'clean');
+      if (active) {
+        st.phase += dt * 6.2;
+        st.bob = Math.sin(st.phase) * 2.1;
+      } else {
+        st.idlePhase += dt * 1.6;
+        st.bob = Math.sin(st.idlePhase) * 1.1;
+      }
+      if (aiState === 'clean' || st.anim === 'extra') st.mopPhase += dt * 7.2;
+      else st.mopPhase += dt * 3.8;
+      st.sparklePhase += dt * 4.0;
+    },
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen || !ctx) return;
+      const [cx, cy, sc] = screen;
+      const flip = (e?.flipX && e.flipX < 0) ? -1 : 1;
+      let rot = 0;
+      if (typeof st.anim === 'string' && st.anim.startsWith('die')) {
+        rot = st.anim === 'die_fire' ? 0.35 : (st.anim === 'die_crush' ? -0.4 : 0.22);
+      } else if (st.anim === 'attack') {
+        rot = 0.08 * flip;
+      }
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+      if (rot) ctx.rotate(rot);
+      const s = applyOneTileScale(sc, { inner: 0.95 });
+      ctx.scale(s * flip, s);
+
+      ctx.save();
+      ctx.scale(1, 0.28);
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(0, 1.45, 0.32, 0.18, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      const drawRoundRect = (x, y, w, h, r) => {
+        const rr = Math.max(0, Math.min(Math.abs(r), Math.abs(w) * 0.5, Math.abs(h) * 0.5));
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, rr);
+        else {
+          ctx.moveTo(x + rr, y);
+          ctx.lineTo(x + w - rr, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+          ctx.lineTo(x + w, y + h - rr);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+          ctx.lineTo(x + rr, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+          ctx.lineTo(x, y + rr);
+          ctx.quadraticCurveTo(x, y, x + rr, y);
+        }
+      };
+
+      // Cubo azul
+      ctx.save();
+      ctx.translate(-0.28, 0.35);
+      ctx.fillStyle = '#4a8edb';
+      ctx.beginPath();
+      drawRoundRect(-0.12, -0.05, 0.24, 0.18, 0.05);
+      ctx.fill();
+      ctx.strokeStyle = '#31649f';
+      ctx.lineWidth = 0.02;
+      ctx.stroke();
+      ctx.restore();
+
+      // Mopa
+      ctx.save();
+      ctx.translate(0.26, -0.05);
+      const mopAngle = (st.anim === 'attack') ? 0.6 * Math.sin(st.mopPhase * 2) : (0.2 * Math.sin(st.mopPhase));
+      ctx.rotate(-0.4 + mopAngle);
+      ctx.fillStyle = '#c58b5c';
+      ctx.fillRect(-0.02, -0.4, 0.04, 0.8);
+      ctx.fillStyle = '#f1f1f1';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.45, 0.18, 0.08, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Piernas y zuecos
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-0.11, 0.05, 0.08, 0.32);
+      ctx.fillRect(0.03, 0.05, 0.08, 0.32);
+      ctx.fillStyle = '#d83232';
+      ctx.beginPath();
+      drawRoundRect(-0.13, 0.35, 0.14, 0.08, 0.04);
+      ctx.fill();
+      ctx.beginPath();
+      drawRoundRect(0.01, 0.35, 0.14, 0.08, 0.04);
+      ctx.fill();
+
+      // Cuerpo
+      ctx.fillStyle = '#f6f6f6';
+      ctx.beginPath();
+      drawRoundRect(-0.2, -0.15, 0.4, 0.42, 0.18);
+      ctx.fill();
+      ctx.strokeStyle = '#cfd5de';
+      ctx.lineWidth = 0.015;
+      ctx.stroke();
+
+      // Brazos
+      ctx.fillStyle = '#f3c49c';
+      ctx.save();
+      ctx.translate(-0.2, -0.02);
+      ctx.rotate(-0.2 + 0.05 * Math.sin(st.mopPhase));
+      ctx.fillRect(-0.02, -0.06, 0.06, 0.18);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(0.22, -0.02);
+      ctx.rotate(0.2 - 0.05 * Math.sin(st.mopPhase));
+      ctx.fillRect(-0.04, -0.08, 0.06, 0.20);
+      ctx.restore();
+
+      // Cabeza
+      ctx.fillStyle = '#f8cfae';
+      ctx.beginPath();
+      ctx.arc(0, -0.28, 0.18, 0, TAU);
+      ctx.fill();
+
+      // Pelo y coleta
+      ctx.fillStyle = '#6b3a1f';
+      ctx.beginPath();
+      ctx.arc(0, -0.30, 0.2, 2.8, 6.1);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(0.12, -0.42);
+      ctx.rotate(0.2);
+      ctx.beginPath();
+      ctx.ellipse(0, -0.06, 0.08, 0.16, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Coleta alta
+      ctx.save();
+      ctx.translate(-0.05, -0.48);
+      ctx.rotate(-0.6 + 0.2 * Math.sin(st.mopPhase));
+      ctx.fillStyle = '#7c4727';
+      ctx.beginPath();
+      ctx.ellipse(0, -0.02, 0.07, 0.15, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Rostro
+      ctx.fillStyle = '#392016';
+      ctx.beginPath();
+      ctx.arc(-0.05, -0.29, 0.018, 0, TAU);
+      ctx.arc(0.05, -0.29, 0.018, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#c97b64';
+      ctx.lineWidth = 0.015;
+      ctx.beginPath();
+      ctx.arc(0, -0.24, 0.06, 0, Math.PI);
+      ctx.stroke();
+
+      if (st.anim === 'talk'){
+        ctx.strokeStyle = '#c97b64';
+        ctx.beginPath();
+        ctx.moveTo(-0.08, -0.20);
+        ctx.lineTo(-0.02, -0.18);
+        ctx.moveTo(0.08, -0.20);
+        ctx.lineTo(0.02, -0.18);
+        ctx.stroke();
+      }
+
+      if (st.anim === 'eat'){
+        ctx.fillStyle = '#f7e6c2';
+        ctx.beginPath();
+        ctx.ellipse(0.12, -0.18, 0.08, 0.04, 0.2, 0, TAU);
+        ctx.fill();
+      }
+
+      if (st.anim === 'powerup' || st.anim === 'extra'){
+        const alpha = 0.35 + 0.2 * Math.sin(st.sparklePhase);
+        ctx.strokeStyle = `rgba(90, 220, 255, ${alpha})`;
+        ctx.lineWidth = 0.02;
+        ctx.beginPath();
+        ctx.arc(0, -0.05, 0.42, 0, TAU);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  };
+  API.registerRig('npc_limpiadora', rig_limpiadora);
+
   const rig_supervisora = {
     create() {
       return {
