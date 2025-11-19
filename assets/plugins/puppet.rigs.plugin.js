@@ -2323,49 +2323,196 @@
   }
 
   // ───────────────────────────── NPCs ──────────────────────────────
-  registerHumanRig('npc_celador', {
-    totalHeight: 66,
-    entityHeight: 64,
-    torsoWidth: 22,
-    torsoHeight: 34,
-    legLength: 20,
-    armLength: 22,
-    armWidth: 4,
-    legWidth: 5.5,
-    walkCycle: 5.4,
-    walkBob: 2.6,
-    idleBob: 1.0,
-    swayAmp: 0.4,
-    lean: 0.05,
-    stepSquash: 0.12,
-    shadowRadius: 13,
-    offsetY: -5,
-    colors: {
-      body: '#7c8596',
-      accent: '#515b6d',
-      head: '#f1cfb6',
-      limbs: '#232933',
-      detail: '#171c23'
+  const rig_npc_celador = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        bob: 0,
+        idlePhase: Math.random() * TAU,
+        powerPulse: 0
+      };
     },
-    extraUpdate(st){
-      st.headTiltTarget = -0.02;
-      const lean = st.moving ? 0.08 : 0.03;
-      st.bodyLean += (lean - st.bodyLean) * 0.12;
-      st.hip = Math.sin(st.phase) * 0.05;
+    update(st, e, dt) {
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      if (speed > 0.01) {
+        st.phase += dt * 5.0;
+        st.bob = Math.sin(st.phase) * 1.5;
+      } else {
+        st.phase += dt * 2.0;
+        st.bob = Math.sin(st.phase) * 0.6;
+      }
+      st.powerPulse += dt * 3.0;
+      st.anim = e?.puppetState?.anim || st.anim || 'idle';
     },
-    extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso'){
-        const { dims } = helper;
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen) return;
+      const [cx, cy, sc] = screen;
+      const flip = (e?.flipX && e.flipX < 0) ? -1 : 1;
+
+      const s = applyOneTileScale ? applyOneTileScale(sc, { inner: 0.95 }) : sc * 0.95;
+      const anim = st.anim || 'idle';
+
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+
+      let rot = 0;
+      let squashY = 1;
+      let leanX = 0;
+      if (anim.startsWith('die')) {
+        rot = anim === 'die_fire' ? -0.2 : anim === 'die_hit' ? 0.25 : 0;
+        squashY = anim === 'die_crush' ? 0.55 : 1;
+      } else if (anim === 'attack') {
+        leanX = 0.14 * flip;
+      } else if (anim === 'push_action') {
+        leanX = 0.18 * flip;
+        squashY = 0.95;
+      } else if (anim === 'powerup' || anim === 'extra') {
+        leanX = 0.05 * flip;
+      }
+
+      ctx.rotate(leanX + rot);
+      ctx.scale(s * flip, s * squashY);
+
+      // sombra
+      ctx.save();
+      ctx.scale(1, 0.22);
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(0, 1.4, 0.32, 0.18, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      const skin = {
+        uniform: '#f2f2f4',
+        outline: '#c8c8ce',
+        skin: '#e4b592',
+        hair: '#3a2d25',
+        shoes: '#d9dbe0'
+      };
+
+      ctx.lineWidth = 0.03;
+      ctx.lineJoin = 'round';
+
+      function drawArm(offsetX, raised) {
         ctx.save();
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        const pocketH = dims.torsoH * 0.25;
-        const pocketW = dims.torsoW * 0.32;
-        ctx.fillRect(-dims.torsoW * 0.45, dims.torsoTop + dims.torsoH * 0.2, pocketW, pocketH);
-        ctx.fillRect(dims.torsoW * 0.13, dims.torsoTop + dims.torsoH * 0.2, pocketW, pocketH);
+        ctx.translate(offsetX, raised ? -0.1 : 0.05);
+        if (anim === 'attack' && offsetX > 0) ctx.rotate(-0.35);
+        else if (anim === 'push_action') ctx.rotate(-0.25);
+        ctx.fillStyle = skin.skin;
+        ctx.strokeStyle = '#c48f6c';
+        ctx.beginPath();
+        ctx.roundRect(-0.09, -0.02, 0.18, 0.32, 0.09);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = skin.uniform;
+        ctx.beginPath();
+        ctx.roundRect(-0.09, 0.18, 0.18, 0.14, 0.06);
+        ctx.fill();
         ctx.restore();
       }
+
+      // torso
+      ctx.save();
+      ctx.fillStyle = skin.uniform;
+      ctx.strokeStyle = skin.outline;
+      ctx.beginPath();
+      ctx.roundRect(-0.18, -0.45, 0.36, 0.45, 0.08);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // brazos
+      drawArm(-0.22, anim === 'talk' || anim === 'attack');
+      drawArm(0.22, anim === 'attack');
+
+      // cinturón/pantalón
+      ctx.save();
+      ctx.fillStyle = skin.uniform;
+      ctx.strokeStyle = skin.outline;
+      ctx.beginPath();
+      ctx.roundRect(-0.18, 0.0, 0.36, 0.45, 0.08);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e9e9ed';
+      ctx.fillRect(-0.18, 0.08, 0.36, 0.06);
+      ctx.restore();
+
+      // piernas
+      ctx.save();
+      const walkSwing = Math.sin(st.phase) * 0.1;
+      const upperSwing = (anim === 'walk_side' || anim === 'walk_up' || anim === 'walk_down') ? walkSwing : 0;
+      ctx.translate(0, 0.12);
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(0.08 * side, 0);
+        ctx.rotate(upperSwing * side);
+        ctx.fillStyle = skin.uniform;
+        ctx.strokeStyle = skin.outline;
+        ctx.beginPath();
+        ctx.roundRect(-0.07, 0, 0.14, 0.44, 0.06);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = skin.shoes;
+        ctx.beginPath();
+        ctx.roundRect(-0.09, 0.36, 0.18, 0.1, 0.05);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // cabeza
+      ctx.save();
+      let headTilt = 0;
+      if (anim === 'talk') headTilt = Math.sin(st.phase * 1.2) * 0.05;
+      ctx.translate(0, -0.55);
+      ctx.rotate(headTilt);
+      ctx.fillStyle = skin.skin;
+      ctx.strokeStyle = '#c48f6c';
+      ctx.beginPath();
+      ctx.roundRect(-0.14, -0.16, 0.28, 0.24, 0.12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = skin.hair;
+      ctx.beginPath();
+      ctx.roundRect(-0.14, -0.18, 0.28, 0.12, 0.12);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-0.06, -0.05, 0.12, 0.05);
+      ctx.fillStyle = '#3b2f2a';
+      ctx.beginPath();
+      ctx.arc(-0.02, -0.03, 0.02, 0, TAU);
+      ctx.arc(0.04, -0.03, 0.02, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // aura y extras
+      if (anim === 'powerup' || anim === 'extra') {
+        const pulse = 0.25 + 0.15 * Math.sin(st.powerPulse);
+        ctx.save();
+        ctx.globalAlpha = 0.35 + pulse;
+        ctx.strokeStyle = 'rgba(160,220,255,0.9)';
+        ctx.lineWidth = 0.04;
+        ctx.beginPath();
+        ctx.roundRect(-0.26, -0.62, 0.52, 1.08, 0.2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (anim === 'die_fire') {
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = 'rgba(255,120,60,0.6)';
+        ctx.fillRect(-0.3, -0.6, 0.6, 1.0);
+        ctx.restore();
+      }
+
+      ctx.restore();
     }
-  });
+  };
+  API.registerRig('npc_celador', rig_npc_celador);
 
   registerHumanRig('npc_chica_limpieza', {
     totalHeight: 64,
