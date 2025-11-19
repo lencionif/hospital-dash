@@ -2616,6 +2616,142 @@
     }
   });
 
+  const rig_npc_guardia_seguridad = {
+    create() {
+      return { anim: 'idle', phase: Math.random() * TAU, bob: 0, idlePhase: Math.random() * TAU, alertGlow: 0 };
+    },
+    update(st, e, dt) {
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      if (speed > 0.02) {
+        st.phase += dt * 6.0;
+        st.bob = Math.sin(st.phase) * 1.5;
+      } else {
+        st.idlePhase += dt * 1.5;
+        st.bob = Math.sin(st.idlePhase) * 0.8;
+      }
+      const ai = e?.ai || {};
+      const isAlert = ai.state === 'alert' || ai.state === 'chase' || ai.state === 'subdue';
+      const targetGlow = isAlert ? 1.0 : 0.0;
+      st.alertGlow += (targetGlow - st.alertGlow) * dt * 4.0;
+      st.anim = e?.puppetState?.anim || 'idle';
+    },
+    draw(ctx, cam, e, st) {
+      const [cx, cy, sc] = toScreen(cam, e);
+      const s = applyOneTileScale(sc, { inner: 0.95 });
+      const flip = (e?.facingX || e?.vx || 0) < 0 ? -1 : 1;
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+      ctx.scale(s * flip, s);
+
+      if (st.alertGlow > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = 0.3 * st.alertGlow;
+        ctx.beginPath();
+        ctx.arc(0, -6, 12, 0, TAU);
+        ctx.fillStyle = '#f6d36a';
+        ctx.fill();
+        ctx.restore();
+      }
+
+      const colors = {
+        uniform: '#111317',
+        accent: '#1c2027',
+        gear: '#222',
+        skin: '#e0b899',
+        belt: '#0b0c0f',
+        metal: '#d8c16b',
+        radio: '#2f3b48',
+        baton: '#0c0c0c',
+      };
+
+      const step = /walk|push/.test(st.anim || '') ? Math.sin(st.phase) * 3.0 : 0;
+      const swing = /walk|push/.test(st.anim || '') ? Math.sin(st.phase + Math.PI * 0.5) * 2.5 : 0;
+      const attackPush = st.anim === 'attack' ? 4 : 0;
+
+      // Legs
+      ctx.save();
+      ctx.fillStyle = colors.uniform;
+      ctx.beginPath();
+      ctx.roundRect(-6, 8 + step, 6, 12, 2);
+      ctx.roundRect(0, 8 - step, 6, 12, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Boots
+      ctx.save();
+      ctx.fillStyle = colors.belt;
+      ctx.fillRect(-7, 19 + step, 8, 3);
+      ctx.fillRect(0, 19 - step, 8, 3);
+      ctx.restore();
+
+      // Torso
+      ctx.save();
+      ctx.fillStyle = colors.uniform;
+      ctx.roundRect(-7, -6, 14, 16, 3);
+      ctx.fill();
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(-7, -6, 14, 3);
+      ctx.restore();
+
+      // Belt and gear
+      ctx.save();
+      ctx.fillStyle = colors.belt;
+      ctx.fillRect(-8, 8, 16, 4);
+      ctx.fillStyle = colors.gear;
+      ctx.fillRect(-6, 7, 4, 6); // pouch
+      ctx.fillRect(4, 7, 4, 6); // pouch
+      ctx.fillStyle = colors.radio;
+      ctx.fillRect(-9, -2, 5, 10); // radio
+      ctx.fillStyle = colors.metal;
+      ctx.fillRect(1, 7, 2, 6); // keys ring base
+      ctx.beginPath();
+      ctx.arc(2, 13, 2, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Arms
+      ctx.save();
+      ctx.fillStyle = colors.uniform;
+      const armOffset = swing + attackPush;
+      ctx.roundRect(-11, -4 + armOffset, 6, 14, 3); // back arm
+      ctx.roundRect(5, -2 - armOffset, 6, 14, 3); // front arm
+      ctx.fill();
+      ctx.restore();
+
+      // Baton (front hand)
+      ctx.save();
+      ctx.translate(10, 6 - armOffset * 0.6 - attackPush * 0.4);
+      ctx.rotate(-0.1 + attackPush * 0.02);
+      ctx.fillStyle = colors.baton;
+      ctx.fillRect(-1, -6, 2, 14);
+      ctx.restore();
+
+      // Head
+      ctx.save();
+      ctx.fillStyle = colors.skin;
+      ctx.beginPath();
+      ctx.arc(0, -12, 6, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Facial hair / short hairline
+      ctx.save();
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(-6, -17, 12, 2);
+      ctx.fillRect(-6, -13, 12, 3);
+      ctx.restore();
+
+      // Badge
+      ctx.save();
+      ctx.fillStyle = '#c8b88a';
+      ctx.fillRect(-2, -3, 4, 8);
+      ctx.restore();
+
+      ctx.restore();
+    }
+  };
+  API.registerRig('npc_guardia_seguridad', rig_npc_guardia_seguridad);
+
   const rig_medico = {
     create() {
       return {
