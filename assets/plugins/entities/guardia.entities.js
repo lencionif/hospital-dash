@@ -364,6 +364,10 @@
     const hero = getHero();
     ai.doorCooldown = Math.max(0, ai.doorCooldown - dt);
     ai.elevatorCooldown = Math.max(0, ai.elevatorCooldown - dt);
+    if (ai.state === 'subdue') {
+      updateGuardiaSubdue(ent, hero, dt);
+      return;
+    }
     updateGuardiaPerception(ent, hero);
     switch (ai.state) {
       case 'patrol':
@@ -374,9 +378,6 @@
         break;
       case 'chase':
         updateGuardiaChase(ent, hero, dt);
-        break;
-      case 'subdue':
-        updateGuardiaSubdue(ent, hero, dt);
         break;
       case 'inspect':
         updateGuardiaInspect(ent, dt);
