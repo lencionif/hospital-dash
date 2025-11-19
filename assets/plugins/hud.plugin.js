@@ -45,6 +45,9 @@
     bellsList: null,
     bellsCount: null,
     bellsEmpty: null,
+    hemaTimer: null,
+    hemaTimerBar: null,
+    hemaTimerText: null,
   };
   let objectiveOverride = null;
 
@@ -104,6 +107,23 @@
     objective.className = 'hud-objective';
     objective.textContent = 'Objetivo: ninguno';
 
+    const hemaTimer = document.createElement('div');
+    hemaTimer.className = 'hud-hema-timer';
+    hemaTimer.hidden = true;
+    const hemaLabel = document.createElement('strong');
+    hemaLabel.textContent = 'Tiempo paciente hematológica';
+    const hemaMeter = document.createElement('div');
+    hemaMeter.className = 'hud-hema-meter';
+    const hemaFill = document.createElement('div');
+    hemaFill.className = 'hud-hema-fill';
+    const hemaText = document.createElement('span');
+    hemaText.className = 'hud-hema-text';
+    hemaText.textContent = '00:00';
+    hemaMeter.appendChild(hemaFill);
+    hemaMeter.appendChild(hemaText);
+    hemaTimer.appendChild(hemaLabel);
+    hemaTimer.appendChild(hemaMeter);
+
     const carryBox = document.createElement('div');
     carryBox.className = 'hud-carry';
     carryBox.hidden = true;
@@ -115,6 +135,7 @@
     carryBox.appendChild(carrySecondary);
 
     center.appendChild(objective);
+    center.appendChild(hemaTimer);
     center.appendChild(carryBox);
 
     const urgenciasStat = createHudStat('Urgencias', 'hud-urgencias');
@@ -159,6 +180,9 @@
     HUD_DOM.urgenciasValue = urgenciasStat.value;
     HUD_DOM.scoreValue = scoreStat.value;
     HUD_DOM.objectiveText = objective;
+    HUD_DOM.hemaTimer = hemaTimer;
+    HUD_DOM.hemaTimerBar = hemaFill;
+    HUD_DOM.hemaTimerText = hemaText;
     HUD_DOM.carryBox = carryBox;
     HUD_DOM.carryPrimary = carryPrimary;
     HUD_DOM.carrySecondary = carrySecondary;
@@ -321,6 +345,38 @@
     }
   }
 
+  function formatHemaTime(sec) {
+    const safe = Math.max(0, Math.floor(sec || 0));
+    const m = Math.floor(safe / 60);
+    const s = safe % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function updateHemaTimer(current = 0, max = 0) {
+    if (!HUD_DOM.hemaTimer) return;
+    const ratio = (max > 0) ? clamp(current / max, 0, 1) : 0;
+    if (HUD_DOM.hemaTimerBar) {
+      HUD_DOM.hemaTimerBar.style.width = `${(ratio * 100).toFixed(1)}%`;
+    }
+    if (HUD_DOM.hemaTimerText) {
+      HUD_DOM.hemaTimerText.textContent = formatHemaTime(current);
+    }
+    HUD_DOM.hemaTimer.classList.toggle('is-critical', ratio < 0.25);
+  }
+
+  function showHemaTimer() {
+    if (HUD_DOM.hemaTimer) HUD_DOM.hemaTimer.hidden = false;
+  }
+
+  function hideHemaTimer() {
+    if (HUD_DOM.hemaTimer) HUD_DOM.hemaTimer.hidden = true;
+  }
+
+  function flashHemaWarning(flag = false) {
+    if (!HUD_DOM.hemaTimer) return;
+    HUD_DOM.hemaTimer.classList.toggle('is-alert', !!flag);
+  }
+
   function updateCarryInfo(carry){
     if (!HUD_DOM.carryBox) return;
     if (carry) {
@@ -412,6 +468,7 @@
     }
 
     // 2) Si llevas una pastilla → entregarla a su paciente
+    const patientList = Array.isArray(G.patients) ? G.patients.filter((p) => !p?.isHematologic) : [];
     const carryingPill = (G.player?.carry?.kind === 'PILL') || (G.carry?.kind === 'PILL');
     if (carryingPill) {
       return 'Objetivo: entrega Pastilla al paciente asignado';
@@ -424,21 +481,21 @@
     }
 
     // 3) Si no llevas → buscar una para un paciente (usa vínculos si existen)
-    const hayPacientes = Array.isArray(G.patients) && G.patients.length > 0;
+    const hayPacientes = patientList.length > 0;
     const hayPills     = Array.isArray(G.pills)     && G.pills.length     > 0;
     if (!carry && hayPacientes) {
       if (hayPills) {
         const linked = G.pills.find(p => p.targetName || p.label) || G.pills[0];
         const pill = linked?.label || 'la pastilla';
-        const who  = linked?.targetName || (G.patients[0]?.name || 'el paciente');
+        const who  = linked?.targetName || (patientList[0]?.name || 'el paciente');
         return `Objetivo: busca ${pill} para ${who}`;
       }
-      const who = G.patients[0]?.name || 'el paciente';
+      const who = patientList[0]?.name || 'el paciente';
       return `Objetivo: busca la pastilla para ${who}`;
     }
 
     // 4) Si ya no quedan pacientes → carro + boss (puerta)
-    const sinPacientes = Array.isArray(G.patients) && G.patients.length === 0;
+    const sinPacientes = patientList.length === 0;
     if (sinPacientes) {
       const puertaAbierta = !!(G.door && (G.door.open === true || G.door.solid === false));
       if (puertaAbierta && G.cart && G.boss) return 'Objetivo: acerca el carro de urgencias al paciente final';
@@ -675,6 +732,11 @@
     drawNameTags(ctx, camera, G);
     drawFloatingMessages(ctx, camera, G);
   };
+
+  HUD.updateHematologicTimer = updateHemaTimer;
+  HUD.showHematologicTimer = showHemaTimer;
+  HUD.hideHematologicTimer = hideHemaTimer;
+  HUD.flashHematologicWarning = flashHemaWarning;
 
   HUD.showFloatingMessage = showFloatingMessage;
   HUD.setObjectiveText = function (text) {

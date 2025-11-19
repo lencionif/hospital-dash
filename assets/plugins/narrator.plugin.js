@@ -295,6 +295,23 @@
       { text: 'Carro en posición: ¡heroísmo completado!', tone: 'bold' },
       { text: 'Misiones médicas: 100%. {patient} está a salvo.', tone: 'all' }
     ],
+    hematologic_timer: [
+      { text: '¡Queda poco personal! Atiende a la paciente hematológica antes de que el reloj llegue a cero.', tone: 'all' },
+      { text: 'La paciente hematológica espera. ¡Cronómetro activo!', tone: 'all' }
+    ],
+    hematologic_cured: [
+      { text: 'Paciente hematológica estabilizada. Ahora lleva el carro de urgencias.', tone: 'all' },
+      { text: 'Respira tranquila: está estable. Falta el carro.', tone: 'all' }
+    ],
+    hematologic_cart_hint: [
+      { text: 'Acerca el carro de urgencias a la cama para completar la misión.', tone: 'all' }
+    ],
+    hematologic_saved: [
+      { text: '¡Paciente hematológica salvada! Victoria asegurada.', tone: 'all' }
+    ],
+    hematologic_fail: [
+      { text: 'El tiempo se agotó para la paciente hematológica...', tone: 'all' }
+    ],
     level_complete: [
       { text: 'Misión cumplida: todos a salvo... por ahora. ¡Victoria épica!', tone: 'all' },
       { text: '¡Turno terminado con matrícula heroica! El hospital aplaude.', tone: 'bold' },
