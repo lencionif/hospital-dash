@@ -1664,42 +1664,66 @@
     const size = tile * 0.9;
     const px = x - size * 0.5;
     const py = y - size * 0.5;
+    const stub = {
+      x: px,
+      y: py,
+      w: size,
+      h: size,
+      vx: 0,
+      vy: 0,
+      dead: false,
+      kind: 'PATIENT'
+    };
+
+    let stubAttached = false;
+    const attachStub = () => {
+      if (stubAttached) return;
+      stubAttached = true;
+      if (Array.isArray(G?.entities)) G.entities.push(stub);
+      if (Array.isArray(G?.patients)) G.patients.push(stub);
+    };
+    const detachStub = () => {
+      if (!stubAttached) return;
+      stubAttached = false;
+      if (Array.isArray(G?.patients)) {
+        const idx = G.patients.indexOf(stub);
+        if (idx >= 0) G.patients.splice(idx, 1);
+      }
+      if (Array.isArray(G?.entities)) {
+        const idx = G.entities.indexOf(stub);
+        if (idx >= 0) {
+          try {
+            if (typeof root.detachEntityRig === 'function') {
+              root.detachEntityRig(stub);
+            } else {
+              root.PuppetAPI?.detach?.(stub);
+            }
+          } catch (_) {}
+          G.entities.splice(idx, 1);
+        }
+      }
+    };
+
     if (root.FuriousAPI?.spawnFromPatient) {
-      const stub = {
-        x: px,
-        y: py,
-        w: size,
-        h: size,
-        vx: 0,
-        vy: 0,
-        dead: false,
-        kind: 'PATIENT'
-      };
       try {
-        if (Array.isArray(G?.entities)) G.entities.push(stub);
-        if (Array.isArray(G?.patients)) G.patients.push(stub);
+        attachStub();
         const spawned = root.FuriousAPI.spawnFromPatient(stub, { skipCounters: true });
         if (spawned) return spawned;
       } catch (err) {
         try { console.warn('[Placement] FuriousAPI.spawnFromPatient', err); } catch (_) {}
       } finally {
-        if (Array.isArray(G?.patients)) {
-          const idx = G.patients.indexOf(stub);
-          if (idx >= 0) G.patients.splice(idx, 1);
-        }
-        if (Array.isArray(G?.entities)) {
-          const idx = G.entities.indexOf(stub);
-          if (idx >= 0) {
-            try {
-              if (typeof root.detachEntityRig === 'function') {
-                root.detachEntityRig(stub);
-              } else {
-                root.PuppetAPI?.detach?.(stub);
-              }
-            } catch (_) {}
-            G.entities.splice(idx, 1);
-          }
-        }
+        detachStub();
+      }
+    }
+    if (root.Entities?.PatientFuriosa?.spawnFromPatient) {
+      try {
+        attachStub();
+        const created = root.Entities.PatientFuriosa.spawnFromPatient(stub, { skipCounters: true });
+        if (created) return created;
+      } catch (err) {
+        console.warn('[Placement] PatientFuriosa.spawnFromPatient', err);
+      } finally {
+        detachStub();
       }
     }
     const furious = {

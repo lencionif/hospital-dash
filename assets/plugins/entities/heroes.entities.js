@@ -99,6 +99,9 @@
       dir: { x: 1, y: 0 },
       pushing: false,
       sprint: 1.0,
+      stunTimer: 0,
+      isStunned: false,
+      stunSource: null,
       // render / sprite
       spriteKey: key,     // sprites.plugin: "enrique.png", "roberto.png", "francesco.png"
       // orientación + giro suave de linterna/FOW
@@ -318,6 +321,21 @@
         st.dirty = true;
       }
       try{ e.onDestroy(); }catch(_){};
+    }
+  }
+
+  function applyStun(e, duration, meta) {
+    if (!e || e.dead) return;
+    const time = Math.max(0, Number(duration) || 0);
+    if (!(time > 0)) return;
+    e.stunTimer = Math.max(e.stunTimer || 0, time);
+    e.stunSource = meta && meta.source ? meta.source : (meta && meta.attacker) || null;
+    e.isStunned = true;
+    const st = ensureAnimState(e);
+    if (st) {
+      const prof = st.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
+      st.hurtTimer = Math.max(st.hurtTimer, meta?.hurtDuration || prof.hurt || 0.45);
+      st.dirty = true;
     }
   }
   function heal(e, amount, opts) {
@@ -642,6 +660,7 @@
 
     // Exponer utilidades (por si otras entidades las usan)
     applyDamage,
+    applyStun,
     heal,
     startAttack,
     setTalking,

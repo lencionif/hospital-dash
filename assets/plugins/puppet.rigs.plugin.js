@@ -3596,71 +3596,160 @@
     showNameTag: true
   });
 
-  registerHumanRig('patient_furiosa', {
-    totalHeight: 62,
-    entityHeight: 60,
-    torsoWidth: 18,
-    torsoHeight: 30,
-    legLength: 22,
-    armLength: 21,
-    walkCycle: 8.0,
-    walkBob: 3.5,
-    idleBob: 1.4,
-    swayAmp: 0.9,
-    lean: 0.18,
-    shadowRadius: 12,
-    offsetY: -5,
-    showNameTag: true,
-    colors: {
-      body: '#e0372f',
-      accent: '#ff7c68',
-      head: '#f0b4a6',
-      limbs: '#4a0f12',
-      detail: '#1a0406'
+  const rig_patient_furiosa = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        idlePhase: Math.random() * TAU,
+        bob: 0,
+        ragePulse: Math.random() * TAU,
+        shake: 0
+      };
     },
-    extraUpdate(st){
-      const enraged = st.speed > 45;
-      if (enraged){
-        st.colorPulse = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(st.time * 6));
+    update(st, e, dt) {
+      const anim = (e?.puppetState?.anim || e?.anim || st.anim || 'idle');
+      const aiState = e?.ai?.state;
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      const moving = speed > 4;
+      if (moving && (aiState === 'chase' || aiState === 'wander' || /^walk/.test(anim))) {
+        st.phase = (st.phase + dt * 8.0) % TAU;
+        st.bob = Math.sin(st.phase) * 2.0;
+      } else {
+        st.phase = (st.phase + dt * 2.5) % TAU;
+        st.bob = Math.sin(st.phase) * 1.0;
       }
-      if (!st.moving){
-        st.shakeX = Math.sin(st.time * 13) * 0.22;
-        st.shakeY = Math.sin(st.time * 17) * 0.18;
-      }
-      st.headTiltTarget = st.moving ? 0.05 * Math.sin(st.phase * 0.8) : 0.02 * Math.sin(st.time * 5);
+      st.anim = anim;
+      st.ragePulse = (st.ragePulse + dt * 5.0) % TAU;
+      st.shake = aiState === 'chase' ? 1.5 : 0.4;
     },
-    extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso' && st.colorPulse > 0){
-        const { dims } = helper;
-        ctx.save();
-        ctx.globalAlpha = Math.min(0.75, st.colorPulse);
-        ctx.fillStyle = 'rgba(255,64,64,1)';
-        ctx.fillRect(-dims.torsoW * 0.5, dims.torsoTop, dims.torsoW, dims.torsoH);
-        ctx.restore();
-      }
-    },
-    onHeadDraw(ctx, st, helper){
-      const { dims, colors } = helper;
+    draw(ctx, cam, e, st) {
+      if (!ctx || isEntityCulled(e)) return;
+      const screen = toScreen(cam, e);
+      if (!screen) return;
+      const [cx, cy, sc] = screen;
+      const scale = applyOneTileScale(sc, { inner: 0.95 });
       ctx.save();
-      ctx.strokeStyle = colors.detail;
-      ctx.lineWidth = dims.headR * 0.18;
-      const browY = -dims.headR * 0.25;
-      ctx.beginPath();
-      ctx.moveTo(-dims.eyeSpacing, browY + dims.headR * 0.05);
-      ctx.lineTo(-dims.eyeSpacing * 0.2, browY - dims.headR * 0.1);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(dims.eyeSpacing, browY + dims.headR * 0.05);
-      ctx.lineTo(dims.eyeSpacing * 0.2, browY - dims.headR * 0.1);
-      ctx.stroke();
-      const mouthY = dims.headR * 0.45;
-      ctx.beginPath();
-      ctx.moveTo(-dims.headR * 0.35, mouthY + dims.headR * 0.15);
-      ctx.lineTo(dims.headR * 0.35, mouthY - dims.headR * 0.05);
-      ctx.stroke();
+      ctx.translate(cx, cy + st.bob);
+      if (st.shake > 0) {
+        ctx.translate(Math.sin(st.ragePulse) * st.shake, Math.cos(st.ragePulse) * st.shake * 0.6);
+      }
+      ctx.scale(scale, scale);
+      drawShadow(ctx, 12, 1, 0.3, 0.2);
+      const anim = (st.anim || 'idle').toLowerCase();
+      if (anim.startsWith('die')) {
+        drawFuriosaDeath(ctx, anim);
+        ctx.restore();
+        return;
+      }
+      const lean = anim === 'attack' ? 0.25 : anim === 'push_action' ? 0.18 : anim === 'walk_up' ? -0.1 : 0.05;
+      ctx.translate(0, -6);
+      ctx.save();
+      ctx.rotate(lean);
+      drawFuriosaBody(ctx, anim, st);
+      ctx.restore();
       ctx.restore();
     }
-  });
+  };
+
+  function drawFuriosaBody(ctx, anim, st) {
+    const dressColor = '#fef9ff';
+    const outline = '#1f0f13';
+    const shoe = '#f05a87';
+    const hair = '#3a2216';
+    const skin = '#f1c1a5';
+    const angryFace = '#911b1f';
+    const mouthOpen = anim === 'attack' ? 1 : anim === 'talk' ? 0.5 : anim === 'eat' ? 0.35 : 0.7 + 0.2 * Math.sin(st.ragePulse * 2);
+    // Arms
+    ctx.fillStyle = skin;
+    ctx.fillRect(-13, -6, 4, 10);
+    ctx.fillRect(9, -6, 4, 10);
+    // Dress
+    ctx.fillStyle = dressColor;
+    ctx.beginPath();
+    ctx.moveTo(-10, -2);
+    ctx.lineTo(10, -2);
+    ctx.lineTo(13, 18);
+    ctx.lineTo(-13, 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // Belt detail for powerup/attack
+    if (anim === 'attack' || anim === 'extra') {
+      ctx.fillStyle = 'rgba(255,80,80,0.4)';
+      ctx.fillRect(-11, 4, 22, 4);
+    }
+    // Shoes
+    ctx.fillStyle = shoe;
+    ctx.beginPath(); if (safeEllipse(ctx, -6, 20, 6, 3, 0.15, 0, TAU)) ctx.fill();
+    ctx.beginPath(); if (safeEllipse(ctx, 6, 20, 6, 3, -0.15, 0, TAU)) ctx.fill();
+    // Head
+    ctx.save();
+    ctx.translate(0, -12);
+    ctx.fillStyle = hair;
+    ctx.beginPath(); if (safeEllipse(ctx, 0, -2, 11, 10, 0, 0, TAU)) ctx.fill();
+    ctx.fillStyle = skin;
+    ctx.beginPath(); if (safeEllipse(ctx, 0, 0, 9, 9, 0, 0, TAU)) ctx.fill();
+    // Eyes
+    ctx.fillStyle = outline;
+    ctx.fillRect(-5, -1.5, 3, 1.5);
+    ctx.fillRect(2, -1.5, 3, 1.5);
+    // Mouth
+    ctx.fillStyle = angryFace;
+    ctx.beginPath();
+    ctx.moveTo(-5, 4);
+    ctx.quadraticCurveTo(0, 4 + mouthOpen * 6, 5, 4);
+    ctx.quadraticCurveTo(0, 4 - mouthOpen * 2, -5, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#2d0006';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Aura for powerup
+    if (anim === 'powerup') {
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = '#ffcc7a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, -2, 13 + Math.sin(st.ragePulse) * 1.5, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    if (anim === 'extra') {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = 'rgba(255,64,64,0.5)';
+      ctx.beginPath();
+      if (safeEllipse(ctx, 0, 8, 18, 6, 0, 0, TAU)) ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawFuriosaDeath(ctx, anim) {
+    ctx.save();
+    const flatten = anim === 'die_crush' ? 0.4 : 1;
+    ctx.rotate(anim === 'die_fire' ? 0.2 : -Math.PI / 2.4);
+    ctx.scale(1, flatten);
+    ctx.fillStyle = '#fef9ff';
+    ctx.fillRect(-16, -4, 32, 8);
+    ctx.fillStyle = '#f05a87';
+    ctx.fillRect(-12, -6, 8, 4);
+    ctx.fillRect(4, -6, 8, 4);
+    ctx.restore();
+    if (anim === 'die_fire') {
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = '#ff8a3b';
+      ctx.beginPath();
+      ctx.arc(0, -4, 16, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  API.registerRig('patient_furiosa', rig_patient_furiosa);
 
   // ───────────────────────────── ENEMIGOS ───────────────────────────
   function makeRatRig(){
