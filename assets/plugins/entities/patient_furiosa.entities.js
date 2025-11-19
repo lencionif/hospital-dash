@@ -529,7 +529,12 @@
   W.Entities.PatientFuriosa = PatientFuriosaAPI;
   W.PatientFuriosaAPI = PatientFuriosaAPI;
 
-  if (W.AI && typeof W.AI.register === 'function') {
-    W.AI.register('PATIENT_FURIOSA', (ent, world, dt) => updatePatientFuriosa(ent, dt || 0, world || G));
-  }
+  (function ensureAIRegistration(name, handler) {
+    if (W.AI && typeof W.AI.register === 'function') {
+      W.AI.register(name, handler);
+      return;
+    }
+    const queue = (W.__PENDING_AI_REGISTRATIONS = W.__PENDING_AI_REGISTRATIONS || []);
+    queue.push({ type: 'entity', name, handler });
+  })('PATIENT_FURIOSA', (ent, world, dt) => updatePatientFuriosa(ent, dt || 0, world || G));
 })(typeof window !== 'undefined' ? window : this);

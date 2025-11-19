@@ -82,4 +82,19 @@
   };
 
   W.AI = AI;
+
+  const pending = Array.isArray(W.__PENDING_AI_REGISTRATIONS)
+    ? W.__PENDING_AI_REGISTRATIONS.splice(0)
+    : [];
+  for (const entry of pending) {
+    try {
+      if (entry?.type === 'system') {
+        AI.registerSystem(entry.name, entry.handler);
+      } else {
+        AI.register(entry?.name, entry?.handler);
+      }
+    } catch (err) {
+      LOG()?.warn?.('[AI] deferred registration failed', { entry, err });
+    }
+  }
 })(window);
