@@ -1,33 +1,34 @@
-// filename: assets/entities/jefe_servicio.entities.js
-// “Jefe de Servicio”: NPC único con acertijos (recompensas/castigos),
-// patrulla ligera y utilidades de compatibilidad con tu motor.
-// Integra con: Dialog, ScoreAPI, Physics, DoorsAPI, G.effects.
+// filename: assets/plugins/entities/jefe_servicio.entities.js
+// "Il Divo: Hospital Dash!" – NPC "Jefe de Servicio"
+// • IA estratégica que patrulla, busca comida/power-ups, empuja carros, abre puertas
+//   y usa ascensores.
+// • Al tocar al jugador lanza acertijos médicos muy difíciles con premios/castigos potentes.
+// • Usa un rig procedural en canvas (npc_jefe_servicio) y todas las animaciones encajan
+//   dentro de 1 TILE.
 
-/* global Physics, DoorsAPI */
+/* global Physics */
 (function (W) {
   'use strict';
 
   const G = W.G || (W.G = {});
   const TILE = (typeof W.TILE_SIZE !== 'undefined') ? W.TILE_SIZE : (W.TILE || 32);
+  const MAX_DISTANCE = TILE * 22;
+  const THINK_INTERVAL = 2.0;
+  const EAT_DURATION = 2.0;
+  const PUSH_DURATION = 3.0;
+  const PATROL_REPATH = 4.0;
 
-  // ---------------------------------------------------------------------------
-  // CONFIGURACIÓN
-  // ---------------------------------------------------------------------------
-  const CFG = {
-    speed: 1.45,                // px/s cap en update
-    mass: 1.0,
-    friction: 0.15,
-    restitution: 0.05,
-    interactRadius: TILE * 1.2, // distancia para lanzar acertijo
-    cooldownRiddleSec: 18,      // enfriamiento entre acertijos por jugador
-    pauseAfterDialogSec: 1.0,   // pausa de IA tras abrir diálogo
-    patrolJitter: 0.35,         // cuánto “serpentea” al patrullar
-    sprite: 'jefe_servicio.png' // opcional si tu renderer lo usa
+  const BASE_STATS = {
+    kind: 'npc_jefe_servicio',
+    name: 'Jefe de Servicio',
+    hp: 999,
+    maxHp: 999,
+    speed: 0.8,
+    strength: 5.0,
+    intelligence: 10,
+    isHostile: true
   };
 
-  // Banco de acertijos. Cada uno tiene recompensa y penalización.
-  // Las recompensas/penalizaciones usan el mismo formato que los médicos para
-  // que compartan el gestor de efectos.
   const RIDDLES = [
     {
       id: 'triaje',
@@ -35,22 +36,22 @@
       text: 'Paciente con dolor torácico súbito + diaforesis. ¿Prioridad?',
       options: ['Baja', 'Diferida', 'Alta', 'No urgente'],
       correctIndex: 2,
-      reward:  { healHalves: 4, secs: 16, speedMul: 1.18, pushMul: 1.20, visionDelta: +1, points: 150 },
-      penalty: { dmgHalves: 3, secs: 14, speedMul: 0.75, pushMul: 0.85, visionDelta: -1 }
+      reward: { healHalves: 4, secs: 18, speedMul: 1.22, pushMul: 1.30, visionDelta: +1, points: 200 },
+      penalty: { dmgHalves: 4, secs: 14, speedMul: 0.65, pushMul: 0.80, visionDelta: -1 }
     },
     {
       id: 'asepsia',
-      title: 'Asepsia',
+      title: 'Asepsia quirúrgica',
       text: '¿Qué medida NO es una técnica de barrera?',
       options: ['Guantes estériles', 'Mascarilla', 'Lavado de manos', 'Antitérmico oral'],
       correctIndex: 3,
-      reward:  { healHalves: 4, secs: 17, speedMul: 1.15, pushMul: 1.25, visionDelta: +1, points: 120 },
-      penalty: { dmgHalves: 3, secs: 12, speedMul: 0.78, pushMul: 0.82, visionDelta: -1 }
+      reward: { healHalves: 4, secs: 16, speedMul: 1.18, pushMul: 1.25, visionDelta: +1, points: 150 },
+      penalty: { dmgHalves: 3, secs: 12, speedMul: 0.7, pushMul: 0.8, visionDelta: -1 }
     },
     {
       id: 'electrolitos',
       title: 'Electrolitos',
-      text: 'Hiponatremia severa sintomática. ¿La estrategia más adecuada?',
+      text: 'Hiponatremia severa sintomática. ¿Tratamiento inicial adecuado?',
       options: [
         'Restringir agua y observar',
         'Bolo de salino hipertónico controlado',
@@ -58,22 +59,17 @@
         'Diurético de asa + más agua libre'
       ],
       correctIndex: 1,
-      reward:  { healHalves: 4, secs: 18, speedMul: 1.18, pushMul: 1.22, visionDelta: +1, points: 180 },
-      penalty: { dmgHalves: 3, secs: 14, speedMul: 0.75, pushMul: 0.80, visionDelta: -1 }
+      reward: { healHalves: 4, secs: 20, speedMul: 1.24, pushMul: 1.32, visionDelta: +1, points: 220 },
+      penalty: { dmgHalves: 4, secs: 14, speedMul: 0.66, pushMul: 0.78, visionDelta: -1 }
     },
     {
       id: 'antibioticos',
       title: 'Antibióticos',
-      text: '¿Cuándo desescalar antibiótico en infección nosocomial?',
-      options: [
-        'Nunca se desescala',
-        'Siempre a las 24h',
-        'Tras cultivo y estabilidad clínica',
-        'Cuando se termina el suero'
-      ],
+      text: '¿Cuándo se recomienda desescalar en infección nosocomial?',
+      options: ['Nunca se desescala', 'Siempre a las 24h', 'Tras cultivo y estabilidad clínica', 'Al terminar el suero'],
       correctIndex: 2,
-      reward:  { healHalves: 2, secs: 14, speedMul: 1.12, pushMul: 1.15, visionDelta: +0, points: 100 },
-      penalty: { dmgHalves: 2, secs: 10, speedMul: 0.82, pushMul: 0.86, visionDelta: -0 }
+      reward: { healHalves: 2, secs: 14, speedMul: 1.12, pushMul: 1.15, visionDelta: 0, points: 120 },
+      penalty: { dmgHalves: 2, secs: 10, speedMul: 0.82, pushMul: 0.88, visionDelta: 0 }
     },
     {
       id: 'trombo',
@@ -81,36 +77,47 @@
       text: 'Paciente con TVP masiva + disnea. ¿Actuación inicial?',
       options: ['Analgesia y reposo', 'Anticoagulación inmediata', 'Alta y revisión', 'Sólo medias compresivas'],
       correctIndex: 1,
-      reward:  { healHalves: 3, secs: 15, speedMul: 1.10, pushMul: 1.12, visionDelta: +1, points: 130 },
-      penalty: { dmgHalves: 2, secs: 12, speedMul: 0.84, pushMul: 0.88, visionDelta: -1 }
+      reward: { healHalves: 3, secs: 16, speedMul: 1.15, pushMul: 1.18, visionDelta: +1, points: 160 },
+      penalty: { dmgHalves: 3, secs: 12, speedMul: 0.8, pushMul: 0.84, visionDelta: -1 }
     }
   ];
 
-  // ---------------------------------------------------------------------------
-  // EFECTOS (compartidos con Médicos). Guardamos en G.effects[playerId]
-  // ---------------------------------------------------------------------------
   if (!G.effects) G.effects = Object.create(null);
 
-  function applyTimedEffect(player, fx) {
-    // Estructura: { until, speedMul, pushMul, visionDelta, healHalves/dmgHalves }
-    const now = (G.timeSec || 0);
-    const key = player.id || 'player';
-    const list = (G.effects[key] = G.effects[key] || []);
-    const until = now + (fx.secs || 10);
+  function nowSec() {
+    return (G.timeSec || 0);
+  }
 
-    const eff = {
-      until,
-      speedMul: fx.speedMul || 1.0,
-      pushMul:  fx.pushMul  || 1.0,
+  function clamp(v, a, b) {
+    return v < a ? a : (v > b ? b : v);
+  }
+
+  function entityCenter(ent) {
+    return {
+      x: (ent.x || 0) + (ent.w || TILE) * 0.5,
+      y: (ent.y || 0) + (ent.h || TILE) * 0.5
+    };
+  }
+
+  function rectsOverlap(a, b) {
+    return a && b && (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
+  }
+
+  function applyTimedEffect(player, fx) {
+    if (!player) return;
+    const listKey = player.id || 'player';
+    const list = (G.effects[listKey] = G.effects[listKey] || []);
+    const effect = {
+      until: nowSec() + (fx.secs || 10),
+      speedMul: fx.speedMul || 1,
+      pushMul: fx.pushMul || 1,
       visionDelta: fx.visionDelta || 0,
       healHalves: fx.healHalves || 0,
-      dmgHalves:  fx.dmgHalves  || 0
+      dmgHalves: fx.dmgHalves || 0
     };
-    list.push(eff);
-
-    // efectos inmediatos de vida y puntos
+    list.push(effect);
     if (fx.healHalves && player.hp != null) {
-      player.hp = Math.min(player.maxHp || player.hp, player.hp + fx.healHalves);
+      player.hp = Math.min(player.maxHp || player.hp + fx.healHalves, player.hp + fx.healHalves);
     }
     if (fx.dmgHalves && player.hp != null) {
       player.hp = Math.max(0, player.hp - fx.dmgHalves);
@@ -120,238 +127,663 @@
     }
   }
 
-  function getCompositeMultipliersFor(player) {
-    const now = (G.timeSec || 0);
-    const key = player.id || 'player';
-    const list = G.effects[key] || [];
-    // Limpia expirados
-    for (let i = list.length - 1; i >= 0; --i) {
-      if (list[i].until <= now) list.splice(i, 1);
-    }
-    // Calcula acumulados
-    let speedMul = 1.0, pushMul = 1.0, visionDelta = 0;
-    for (const e of list) {
-      speedMul *= e.speedMul || 1.0;
-      pushMul  *= e.pushMul || 1.0;
-      visionDelta += e.visionDelta || 0;
-    }
-    return { speedMul, pushMul, visionDelta };
-  }
-
-  // Exponer utilidades (opcional)
   W.EffectsAPI = W.EffectsAPI || {};
   W.EffectsAPI.applyTimedEffect = applyTimedEffect;
-  W.EffectsAPI.getCompositeMultipliersFor = getCompositeMultipliersFor;
 
-  // ---------------------------------------------------------------------------
-  // LÓGICA DE NPC: JEFE DE SERVICIO
-  // ---------------------------------------------------------------------------
-  const Chief = {
+  const ChiefSystem = {
     list: [],
-    lastRiddleForPlayer: Object.create(null), // idJugador -> timeSec
-
-    create(x, y, p = {}) {
+    spawn(x, y, opts = {}) {
       const e = {
-        kind: 'chief',
-        x, y, w: TILE * 0.95, h: TILE * 0.95,
-        vx: 0, vy: 0,
-        mass: CFG.mass,
-        friction: CFG.friction,
-        restitution: CFG.restitution,
+        id: opts.id || `npc_jefe_servicio_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
+        kind: BASE_STATS.kind,
+        name: BASE_STATS.name,
+        x: x || 0,
+        y: y || 0,
+        w: TILE * 0.9,
+        h: TILE * 0.9,
+        vx: 0,
+        vy: 0,
+        hp: BASE_STATS.hp,
+        maxHp: BASE_STATS.maxHp,
+        speed: opts.speed || BASE_STATS.speed,
+        strength: opts.strength || BASE_STATS.strength,
+        intelligence: opts.intelligence || BASE_STATS.intelligence,
+        isHostile: true,
         solid: true,
         dynamic: true,
-        pushable: true,
-        color: '#ffb347',
-        sprite: CFG.sprite,
-        skin: 'jefe_servicio.png',
+        pushable: false,
         ai: {
           state: 'patrol',
-          pause: 0,
-          dirX: 0, dirY: 0,
-          target: null
-        },
-        // tag por si tu renderer necesita distinguir
-        npc: 'jefe_servicio',
-        aiId: 'JEFESERVICIO'
+          dir: 'down',
+          patrolTimer: 0,
+          riddleIndex: 0,
+          energy: 100,
+          searchTarget: null,
+          path: null,
+          pathIndex: 0,
+          pathGoal: null,
+          thinkTimer: THINK_INTERVAL,
+          talkCooldown: 0,
+          stateTimer: 0,
+          pushTarget: null,
+          pushTimer: 0,
+          extraTimer: 0,
+          logTimer: 0
+        }
       };
 
-      // Registro global
-      G.entities = G.entities || [];
-      G.entities.push(e);
-      e.group = 'human';
-      try { W.EntityGroups?.assign?.(e); } catch (_) {}
-      try { W.EntityGroups?.register?.(e, G); } catch (_) {}
-      try { W.AI?.attach?.(e, 'JEFESERVICIO'); } catch (_) {}
-      try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } });
-      e.rigOk = true;
-    } catch (_) {
-      e.rigOk = true;
-    }
+      Object.assign(e, opts || {});
 
-      // Registrar en física si existe
-      if (W.Physics && Physics.registerEntity) Physics.registerEntity(e);
-
-      Chief.list.push(e);
+      bindRig(e);
+      ensureCollections(e);
+      ChiefSystem.list.push(e);
       return e;
     },
-
-    spawn(x, y, p = {}) {
-      return Chief.create(x, y, p);
-    },
-
-    ensureOneIfMissing() {
-      if (Chief.list.length) return;
-      // Cerca del último paciente si existe
-      const ps = (G.patients || []).filter(p => !p.dead);
-      const base = ps[ps.length - 1];
-      const x = base ? base.x - 2 * TILE : 6 * TILE;
-      const y = base ? base.y            : 6 * TILE;
-      Chief.spawn(x, y, {});
-    },
-
     update(dt) {
-      // avanza reloj global si lo usas
       G.timeSec = (G.timeSec || 0) + dt;
-
-      for (const e of Chief.list) {
+      for (let i = ChiefSystem.list.length - 1; i >= 0; i--) {
+        const e = ChiefSystem.list[i];
         if (!e || e.dead) continue;
-
-        // pausa temporal (p. ej., tras dialog)
-        if (e.ai.pause > 0) {
-          e.ai.pause -= dt;
-          e.vx *= 0.9; e.vy *= 0.9;
-        } else {
-          this._patrol(e, dt);
-        }
-
-        // limitador de velocidad
-        const spd = Math.hypot(e.vx, e.vy);
-        if (spd > CFG.speed) {
-          const s = CFG.speed / spd;
-          e.vx *= s; e.vy *= s;
-        }
-
-        // Auto-abrir puertas cercanas para no atascarse (si tu DoorsAPI lo soporta)
-        if (W.DoorsAPI && DoorsAPI.autoOpenNear) {
-          DoorsAPI.autoOpenNear(e, TILE * 0.9);
-        }
-
-        // Interacción con jugadores cercanos
-        this._maybeOfferRiddle(e);
-      }
-    },
-
-    // Patrulla “perezosa”: busca el pasillo más cercano (si tu mapa lo indica),
-    // o se desplaza con jitter dentro del área actual.
-    _patrol(e, dt) {
-      // Genera una dirección pseudoaleatoria persistente
-      if (!e.ai.target || Math.random() < 0.01) {
-        const jitter = CFG.patrolJitter;
-        const angle = Math.random() * Math.PI * 2;
-        e.ai.dirX = Math.cos(angle) * (1 + (Math.random() - 0.5) * jitter);
-        e.ai.dirY = Math.sin(angle) * (1 + (Math.random() - 0.5) * jitter);
-      }
-      e.vx += e.ai.dirX * 0.3;
-      e.vy += e.ai.dirY * 0.3;
-    },
-
-    _maybeOfferRiddle(e) {
-      if (!G.player) return;
-      const p = G.player;
-
-      const dx = (p.x + (p.w || TILE) * 0.5) - (e.x + e.w * 0.5);
-      const dy = (p.y + (p.h || TILE) * 0.5) - (e.y + e.h * 0.5);
-      if ((dx * dx + dy * dy) > (CFG.interactRadius * CFG.interactRadius)) return;
-
-      const pid = p.id || 'player';
-      const last = Chief.lastRiddleForPlayer[pid] || -9999;
-      if ((G.timeSec - last) < CFG.cooldownRiddleSec) return;
-
-      Chief.lastRiddleForPlayer[pid] = G.timeSec;
-      e.ai.pause = CFG.pauseAfterDialogSec;
-
-      // Elige acertijo al azar (sin repetir demasiado)
-      const r = RIDDLES[(Math.random() * RIDDLES.length) | 0];
-      Chief._openRiddleDialog(e, p, r);
-    },
-
-    _openRiddleDialog(e, player, riddle) {
-      const setTalking = (active) => {
-        if (e) e.isTalking = !!active;
-        if (player) player.isTalking = !!active;
-      };
-      setTalking(true);
-
-      const onChoice = (index) => {
-        if (index === riddle.correctIndex) {
-          applyTimedEffect(player, riddle.reward || {});
-          if (W.ScoreAPI && typeof ScoreAPI.add === 'function') {
-            ScoreAPI.add(riddle.reward?.points || 100);
-          }
-        } else {
-          applyTimedEffect(player, riddle.penalty || {});
-        }
-      };
-
-      const finish = (idx) => {
-        setTalking(false);
-        onChoice(idx);
-      };
-
-      // Si hay sistema de diálogos, úsalo; si no, aplica directos
-      if (W.Dialog && typeof Dialog.open === 'function') {
-        Dialog.open({
-          portrait: 'jefe_servicio.png',
-          title: riddle.title,
-          text: riddle.text,
-          options: riddle.options,
-          correctIndex: riddle.correctIndex,
-          onAnswer: (optIndex) => finish(optIndex),
-          onClose: () => setTalking(false)
-        });
-      } else {
-        // Fallback sin UI: 50% acierto
-        const fakeIndex = Math.random() < 0.5 ? riddle.correctIndex : 0;
-        finish(fakeIndex);
+        updateChief(e, dt);
       }
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // INTEGRACIÓN CON EL BUCLE DEL JUEGO
-  // ---------------------------------------------------------------------------
-  // Asegura que se actualiza desde tu game loop si existe G.onTick
+  function bindRig(ent) {
+    try {
+      const puppet = W.Puppet?.bind?.(ent, 'npc_jefe_servicio', { z: 0, scale: 1 })
+        || W.PuppetAPI?.attach?.(ent, { rig: 'npc_jefe_servicio', z: 0, scale: 1 });
+      if (puppet) {
+        ent.puppet = puppet;
+        ent.rigOk = true;
+        if (puppet.state) puppet.state.anim = 'idle';
+      }
+    } catch (err) {
+      try { console.warn('[Chief] rig attach error', err); } catch (_) {}
+    }
+  }
+
+  function ensureCollections(ent) {
+    if (!Array.isArray(G.entities)) G.entities = [];
+    if (!G.entities.includes(ent)) G.entities.push(ent);
+    ent.group = ent.group || 'human';
+    try { W.EntityGroups?.assign?.(ent); } catch (_) {}
+    try { W.EntityGroups?.register?.(ent, G); } catch (_) {}
+    if (Physics?.registerEntity) {
+      try { Physics.registerEntity(ent); } catch (_) {}
+    }
+  }
+
+  function updateChief(e, dt) {
+    const ai = e.ai || (e.ai = {});
+    ai.thinkTimer = Math.max(0, ai.thinkTimer - dt);
+    ai.talkCooldown = Math.max(0, ai.talkCooldown - dt);
+    ai.patrolTimer = Math.max(0, ai.patrolTimer - dt);
+    ai.extraTimer = Math.max(0, ai.extraTimer - dt);
+    ai.logTimer = Math.max(0, ai.logTimer - dt);
+
+    if (ai.state === 'dead') {
+      e.vx = e.vy = 0;
+      setAnim(e, 'die_hit');
+      return;
+    }
+
+    if (ai.thinkTimer <= 0 && ai.state !== 'talk' && ai.state !== 'eat') {
+      ai.thinkTimer = THINK_INTERVAL;
+      ai.searchTarget = findClosestEntity(e, ['food', 'powerup'], MAX_DISTANCE);
+      if (ai.searchTarget) {
+        ai.state = 'smart_move';
+        ai.path = null;
+        ai.pathGoal = null;
+        ai.pathIndex = 0;
+        console.debug('[CHIEF_AI] found food', { id: e.id, target: ai.searchTarget?.id || ai.searchTarget?.kind });
+      }
+    }
+
+    switch (ai.state) {
+      case 'eat':
+        e.vx = e.vy = 0;
+        ai.stateTimer -= dt;
+        if (ai.stateTimer <= 0) {
+          ai.energy = Math.min(100, ai.energy + 20);
+          ai.state = 'patrol';
+          ai.extraTimer = 1.2;
+        }
+        break;
+      case 'talk':
+        e.vx = e.vy = 0;
+        break;
+      case 'push':
+        handlePushState(e, dt);
+        break;
+      case 'smart_move':
+        pursueTarget(e, dt, true);
+        break;
+      case 'patrol':
+      default:
+        if (ai.logTimer <= 0) {
+          console.debug('[CHIEF_AI] patrol step', { id: e.id, state: ai.state });
+          ai.logTimer = 1.0;
+        }
+        pursueTarget(e, dt, false);
+        break;
+    }
+
+    limitSpeed(e);
+    moveEntity(e, dt);
+    updateAnimation(e);
+    tryInteractWithObstacles(e, dt);
+    maybeCollideWithHero(e);
+  }
+
+  function pursueTarget(e, dt, chasingItem) {
+    const ai = e.ai;
+    const target = chasingItem ? ai.searchTarget : ai.pathGoal;
+    const reached = advancePath(e, dt, chasingItem ? target : null);
+    if (!reached && (!ai.path || ai.pathIndex >= (ai.path?.length || 0) || ai.patrolTimer <= 0)) {
+      if (chasingItem && target) {
+        const goal = entityCenter(target);
+        planPathTo(e, goal.x, goal.y);
+      } else {
+        planPatrolPath(e);
+      }
+    }
+    if (chasingItem && ai.searchTarget && ai.searchTarget._remove) {
+      ai.searchTarget = null;
+      ai.state = 'patrol';
+    }
+    if (chasingItem && ai.searchTarget && isTouchingEntity(e, ai.searchTarget)) {
+      consumeTarget(ai.searchTarget);
+      ai.searchTarget = null;
+      ai.state = 'eat';
+      ai.stateTimer = EAT_DURATION;
+      ai.extraTimer = 0.8;
+      console.debug('[CHIEF_AI] eating', { id: e.id });
+      setAnim(e, 'eat');
+    }
+  }
+
+  function planPatrolPath(e) {
+    const ai = e.ai;
+    ai.patrolTimer = PATROL_REPATH;
+    const target = pickRandomTile();
+    if (!target) return;
+    ai.path = bfsPath(entityToTile(e), target);
+    ai.pathIndex = 0;
+    ai.pathGoal = target ? {
+      x: target.x * TILE + TILE * 0.5,
+      y: target.y * TILE + TILE * 0.5
+    } : null;
+  }
+
+  function planPathTo(e, x, y) {
+    const ai = e.ai;
+    const goal = {
+      x: clamp(Math.floor(x / TILE), 0, getGridWidth() - 1),
+      y: clamp(Math.floor(y / TILE), 0, getGridHeight() - 1)
+    };
+    ai.path = bfsPath(entityToTile(e), goal);
+    ai.pathIndex = 0;
+    ai.pathGoal = goal ? {
+      x: goal.x * TILE + TILE * 0.5,
+      y: goal.y * TILE + TILE * 0.5
+    } : null;
+  }
+
+  function advancePath(e, dt, preferEntity) {
+    const ai = e.ai;
+    if (!ai.path || ai.pathIndex >= ai.path.length) return false;
+    const node = ai.path[ai.pathIndex];
+    const targetPx = preferEntity && preferEntity.kind ? entityCenter(preferEntity) : {
+      x: node.x * TILE + TILE * 0.5,
+      y: node.y * TILE + TILE * 0.5
+    };
+    const reached = moveTowards(e, targetPx, dt);
+    if (reached) {
+      ai.pathIndex++;
+      return ai.pathIndex < ai.path.length;
+    }
+    return true;
+  }
+
+  function moveTowards(e, target, dt) {
+    const cx = (e.x || 0) + e.w * 0.5;
+    const cy = (e.y || 0) + e.h * 0.5;
+    const dx = target.x - cx;
+    const dy = target.y - cy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const speedPx = (e.speed || BASE_STATS.speed) * TILE * 0.9;
+    e.vx = dirX * speedPx;
+    e.vy = dirY * speedPx;
+    const ai = e.ai;
+    if (Math.abs(dirX) > Math.abs(dirY)) {
+      ai.dir = dirX > 0 ? 'right' : 'left';
+    } else {
+      ai.dir = dirY > 0 ? 'down' : 'up';
+    }
+    return dist < Math.max(8, TILE * 0.25);
+  }
+
+  function limitSpeed(e) {
+    const speedPx = (e.speed || BASE_STATS.speed) * TILE;
+    const speed = Math.hypot(e.vx, e.vy);
+    if (speed > speedPx) {
+      const s = speedPx / speed;
+      e.vx *= s;
+      e.vy *= s;
+    }
+  }
+
+  function moveEntity(e, dt) {
+    if (typeof W.moveWithCollisions === 'function') {
+      W.moveWithCollisions(e, dt);
+      return;
+    }
+    e.x += (e.vx || 0) * dt;
+    e.y += (e.vy || 0) * dt;
+  }
+
+  function updateAnimation(e) {
+    const ai = e.ai || {};
+    if (ai.state === 'dead') {
+      setAnim(e, 'die_crush');
+      return;
+    }
+    if (ai.state === 'talk') {
+      setAnim(e, 'talk');
+      return;
+    }
+    if (ai.state === 'eat') {
+      setAnim(e, 'eat');
+      return;
+    }
+    if (ai.state === 'push') {
+      setAnim(e, 'push_action');
+      return;
+    }
+    if (ai.extraTimer > 0) {
+      setAnim(e, 'powerup');
+      return;
+    }
+    const speed = Math.hypot(e.vx || 0, e.vy || 0);
+    if (speed > 0.1) {
+      if (Math.abs(e.vx) > Math.abs(e.vy)) {
+        setAnim(e, 'walk_side');
+      } else if (e.vy < 0) {
+        setAnim(e, 'walk_up');
+      } else {
+        setAnim(e, 'walk_down');
+      }
+    } else {
+      setAnim(e, 'idle');
+    }
+  }
+
+  function setAnim(e, anim) {
+    if (!anim || !e) return;
+    e.anim = anim;
+    if (e.puppet?.state) e.puppet.state.anim = anim;
+  }
+
+  function tryInteractWithObstacles(e, dt) {
+    const pushTarget = findPushable(e);
+    if (pushTarget) {
+      const ai = e.ai;
+      ai.state = 'push';
+      ai.pushTarget = pushTarget;
+      ai.pushTimer = PUSH_DURATION;
+      return;
+    }
+    const door = pickDoorBlocking(e);
+    if (door) tryUseDoor(e, door);
+    const elevator = pickElevator(e);
+    if (elevator) tryUseElevator(e, elevator);
+  }
+
+  function handlePushState(e, dt) {
+    const ai = e.ai;
+    ai.pushTimer -= dt;
+    if (!ai.pushTarget || ai.pushTarget.dead || ai.pushTimer <= 0) {
+      ai.state = 'patrol';
+      ai.pushTarget = null;
+      return;
+    }
+    const pushed = pushEntity(e, ai.pushTarget);
+    if (!pushed) {
+      ai.state = 'patrol';
+      ai.pushTarget = null;
+    }
+  }
+
+  function pushEntity(e, target) {
+    if (!target || target.dead) return false;
+    const dir = entityCenter(target);
+    const self = entityCenter(e);
+    const dx = dir.x - self.x;
+    const dy = dir.y - self.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const impulse = (e.strength || BASE_STATS.strength) * 0.6;
+    target.vx = (target.vx || 0) + nx * impulse;
+    target.vy = (target.vy || 0) + ny * impulse;
+    target.pushedBy = e.id;
+    return true;
+  }
+
+  function findPushable(e) {
+    const list = Array.isArray(G.entities) ? G.entities : [];
+    for (const it of list) {
+      if (!it || it === e || it.dead) continue;
+      if (!isPushable(it)) continue;
+      if (distanceSq(e, it) < (TILE * 1.1) ** 2) return it;
+    }
+    return null;
+  }
+
+  function isPushable(ent) {
+    if (!ent) return false;
+    if (ent.pushable) return true;
+    const kind = String(ent.kind || ent.kindName || ent.name || '').toLowerCase();
+    return kind.includes('cart') || kind.includes('carro') || kind.includes('car');
+  }
+
+  function distanceSq(a, b) {
+    const ac = entityCenter(a);
+    const bc = entityCenter(b);
+    const dx = ac.x - bc.x;
+    const dy = ac.y - bc.y;
+    return dx * dx + dy * dy;
+  }
+
+  function pickDoorBlocking(ent) {
+    const doors = Array.isArray(G.doors) ? G.doors : [];
+    return doors.find((door) => door && !door.open && rectsOverlap(expand(ent, 6), expand(door, 6)));
+  }
+
+  function pickElevator(ent) {
+    const elevators = Array.isArray(G.elevators) ? G.elevators : [];
+    return elevators.find((ev) => ev && rectsOverlap(expand(ent, 4), expand(ev, 4)));
+  }
+
+  function expand(ent, pad) {
+    return { x: ent.x - pad, y: ent.y - pad, w: ent.w + pad * 2, h: ent.h + pad * 2 };
+  }
+
+  function tryUseDoor(ent, door) {
+    if (!door) return false;
+    try {
+      const Doors = W.Entities?.Door;
+      if (Doors?.open) { Doors.open(door, { by: ent.name }); return true; }
+      if (Doors?.toggle) { Doors.toggle(door, { by: ent.name }); return true; }
+      door.open = true;
+      door.walkable = true;
+      door.solid = false;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function tryUseElevator(ent, elevator) {
+    if (!elevator) return false;
+    try {
+      if (W.Entities?.Elevator?.travel) {
+        W.Entities.Elevator.travel(elevator, { by: ent.name });
+        return true;
+      }
+      if (W.Entities?.Elevator?.forceActivate && elevator.pairId) {
+        W.Entities.Elevator.forceActivate(elevator.pairId);
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  function findClosestEntity(e, types, maxDist) {
+    const list = getPickupCandidates();
+    let best = null;
+    let bestDist = maxDist * maxDist;
+    for (const item of list) {
+      if (!item || item.dead || item._remove) continue;
+      if (!matchesType(item, types)) continue;
+      const d2 = distanceSq(e, item);
+      if (d2 < bestDist) {
+        best = item;
+        bestDist = d2;
+      }
+    }
+    return best;
+  }
+
+  function getPickupCandidates() {
+    const list = [];
+    const items = (W.Items && Array.isArray(W.Items._list)) ? W.Items._list : null;
+    if (items) list.push(...items);
+    if (Array.isArray(G.objects)) list.push(...G.objects);
+    if (Array.isArray(G.entities)) list.push(...G.entities);
+    return list;
+  }
+
+  function matchesType(item, types) {
+    if (!types || !types.length) return false;
+    const name = String(item.kind || item.kindName || item.itemType || item.type || item.name || '').toLowerCase();
+    return types.some((needle) => name.includes(String(needle).toLowerCase()));
+  }
+
+  function isTouchingEntity(a, b) {
+    if (!a || !b) return false;
+    return rectsOverlap(a, b);
+  }
+
+  function consumeTarget(target) {
+    if (!target) return;
+    target.dead = true;
+    target._remove = true;
+    const itemPool = (W.Items && Array.isArray(W.Items._list)) ? W.Items._list : null;
+    if (itemPool) {
+      const idx = itemPool.indexOf(target);
+      if (idx >= 0) itemPool.splice(idx, 1);
+    }
+    const idxG = Array.isArray(G.entities) ? G.entities.indexOf(target) : -1;
+    if (idxG >= 0) G.entities.splice(idxG, 1);
+  }
+
+  function maybeCollideWithHero(e) {
+    const hero = G.player;
+    const ai = e.ai;
+    if (!hero || hero.dead || ai.state === 'talk' || ai.state === 'dead') return;
+    if (ai.talkCooldown > 0) return;
+    if (!rectsOverlap(e, hero)) return;
+    ai.state = 'talk';
+    ai.talkCooldown = 12;
+    e.vx = e.vy = 0;
+    console.debug('[CHIEF_TALK] start hard riddle', { id: e.id });
+    startChiefRiddleDialog(e, hero);
+  }
+
+  function startChiefRiddleDialog(e, hero) {
+    const ai = e.ai || (e.ai = {});
+    const riddle = RIDDLES[ai.riddleIndex % RIDDLES.length];
+    ai.riddleIndex = (ai.riddleIndex + 1) % RIDDLES.length;
+    setAnim(e, 'talk');
+    let finished = false;
+    const finish = (correct) => {
+      if (finished) return;
+      finished = true;
+      onChiefDialogEnd(e, hero, correct);
+    };
+
+    const buttons = riddle.options.map((label, idx) => ({
+      label,
+      primary: idx === riddle.correctIndex,
+      action: () => finish(idx === riddle.correctIndex)
+    }));
+
+    if (W.DialogAPI?.openRiddle) {
+      W.DialogAPI.openRiddle({
+        title: 'Jefe de Servicio',
+        ask: riddle.text,
+        answers: riddle.options,
+        portraitCssVar: '--sprite-jefe-servicio',
+        allowEsc: false,
+        onSuccess: () => finish(true),
+        onFail: () => finish(false)
+      });
+      return;
+    }
+    if (W.DialogAPI?.open) {
+      W.DialogAPI.open({
+        title: 'Jefe de Servicio',
+        text: riddle.text,
+        portraitCssVar: '--sprite-jefe-servicio',
+        buttons,
+        onClose: () => finish(false)
+      });
+      return;
+    }
+    if (W.Dialog?.open) {
+      W.Dialog.open({
+        portrait: 'jefe_servicio.png',
+        title: riddle.title,
+        text: riddle.text,
+        options: riddle.options,
+        correctIndex: riddle.correctIndex,
+        onAnswer: (idx) => finish(idx === riddle.correctIndex)
+      });
+      return;
+    }
+    const answer = W.prompt(`${riddle.text}\n${riddle.options.map((o, i) => `[${i + 1}] ${o}`).join('\n')}`, '1');
+    finish((Number(answer) | 0) - 1 === riddle.correctIndex);
+  }
+
+  function onChiefDialogEnd(e, hero, correct) {
+    const ai = e.ai || (e.ai = {});
+    ai.state = 'patrol';
+    setAnim(e, 'idle');
+    if (correct) {
+      applyMajorReward(hero);
+    } else {
+      applyMajorPunishment(hero);
+    }
+    console.debug('[CHIEF_TALK] end dialog', { id: e.id });
+  }
+
+  function applyMajorReward(hero) {
+    if (!hero) return;
+    applyTimedEffect(hero, { healHalves: 6, secs: 18, speedMul: 1.35, pushMul: 1.4, visionDelta: 1, points: 250 });
+    try { W.DialogAPI?.system?.('¡Respuesta perfecta! Te ganas el respeto del jefe.', { ms: 2200 }); } catch (_) {}
+  }
+
+  function applyMajorPunishment(hero) {
+    if (!hero) return;
+    applyTimedEffect(hero, { dmgHalves: 6, secs: 14, speedMul: 0.55, pushMul: 0.6, visionDelta: -1 });
+    hero.slowUntil = nowSec() + 6;
+    try { W.DialogAPI?.system?.('El jefe te reprende: pierdes energía.', { ms: 2200 }); } catch (_) {}
+  }
+
+  function entityToTile(e) {
+    const cx = (e.x || 0) + e.w * 0.5;
+    const cy = (e.y || 0) + e.h * 0.5;
+    return { x: clamp(Math.floor(cx / TILE), 0, getGridWidth() - 1), y: clamp(Math.floor(cy / TILE), 0, getGridHeight() - 1) };
+  }
+
+  function pickRandomTile() {
+    const h = getGridHeight();
+    const w = getGridWidth();
+    if (!h || !w) return null;
+    return { x: Math.floor(Math.random() * w), y: Math.floor(Math.random() * h) };
+  }
+
+  function getGrid() {
+    const map = G.map;
+    if (Array.isArray(map) && map.length) return map;
+    return [[0]];
+  }
+
+  function getGridWidth() {
+    const grid = getGrid();
+    return grid[0]?.length || 1;
+  }
+
+  function getGridHeight() {
+    const grid = getGrid();
+    return grid.length || 1;
+  }
+
+  function isWalkable(tx, ty) {
+    const grid = getGrid();
+    const row = grid[ty];
+    if (!row) return true;
+    return row[tx] !== 1;
+  }
+
+  function bfsPath(start, goal) {
+    const grid = getGrid();
+    const height = grid.length;
+    const width = grid[0]?.length || 0;
+    if (!height || !width) return null;
+    const sx = clamp(start.x | 0, 0, width - 1);
+    const sy = clamp(start.y | 0, 0, height - 1);
+    const gx = clamp(goal.x | 0, 0, width - 1);
+    const gy = clamp(goal.y | 0, 0, height - 1);
+    if (sx === gx && sy === gy) return [{ x: sx, y: sy }];
+    const queue = [[sx, sy]];
+    const visited = new Set([`${sx},${sy}`]);
+    const prev = new Map();
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    while (queue.length) {
+      const [cx, cy] = queue.shift();
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        if (!isWalkable(nx, ny)) continue;
+        const key = `${nx},${ny}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        prev.set(key, `${cx},${cy}`);
+        queue.push([nx, ny]);
+        if (nx === gx && ny === gy) {
+          return reconstructPath(prev, sx, sy, gx, gy);
+        }
+      }
+    }
+    return null;
+  }
+
+  function reconstructPath(prev, sx, sy, gx, gy) {
+    const path = [{ x: gx, y: gy }];
+    let key = `${gx},${gy}`;
+    while (key !== `${sx},${sy}`) {
+      const p = prev.get(key);
+      if (!p) break;
+      const [px, py] = p.split(',').map((n) => Number(n));
+      path.push({ x: px, y: py });
+      key = p;
+    }
+    path.reverse();
+    return path;
+  }
+
   (function ensureUpdateHook() {
     G._hooks = G._hooks || {};
     if (!G._hooks.jefeServicioUpdate) {
       G._hooks.jefeServicioUpdate = true;
-      // Si ya tienes un scheduler central, engánchate ahí.
-      const prevTick = G.onTick;
-      G.onTick = function onTickPatched(dt) {
-        if (typeof prevTick === 'function') prevTick(dt);
-        Chief.update(dt || 0.016);
+      const prev = G.onTick;
+      G.onTick = function patchedChiefTick(dt) {
+        if (typeof prev === 'function') prev(dt);
+        ChiefSystem.update(dt || 0.016);
       };
     }
   })();
 
-  // ---------------------------------------------------------------------------
-  // EXPOSICIÓN PÚBLICA (dos nombres para máxima compatibilidad)
-  // ---------------------------------------------------------------------------
-  // Lo que usa el spawner (fallback): W.JefeServicioAPI.spawn(x,y,p)
-  const PublicAPI = {
-    spawn: (x, y, p) => Chief.spawn(x, y, p),
-    ensureOneIfMissing: () => Chief.ensureOneIfMissing(),
-    update: (dt) => Chief.update(dt),
-    _applyTimedEffect: applyTimedEffect,
-    _getCompositeMultipliersFor: getCompositeMultipliersFor
-  };
-
-  W.JefeServicioAPI = PublicAPI;
-
-  // Alias opcional por si algún código busca Entities.JefeServicio
+  W.JefeServicioAPI = ChiefSystem;
   W.Entities = W.Entities || {};
-  W.Entities.JefeServicio = { spawn: PublicAPI.spawn };
+  W.Entities.JefeServicio = { spawn: ChiefSystem.spawn };
+  W.startChiefRiddleDialog = startChiefRiddleDialog;
+  W.onChiefDialogEnd = onChiefDialogEnd;
 
 })(this);

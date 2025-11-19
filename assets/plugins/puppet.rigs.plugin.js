@@ -2636,6 +2636,10 @@
       const s = sc * 0.9; // mantiene la figura dentro del tile base
       ctx.save();
       ctx.translate(cx, cy + st.bob);
+      let rot = 0;
+      if (st.anim === 'push_action') rot = -0.05;
+      if (typeof st.anim === 'string' && st.anim.startsWith('die')) rot = 1.1;
+      if (rot) ctx.rotate(rot);
       ctx.scale(s, s);
       // Todas las coordenadas siguientes se mantienen en x,y ∈ [-0.5, 0.5]
       // y no se dibujan partículas ni efectos fuera de ese rango.
@@ -2728,6 +2732,137 @@
   };
 
   API.registerRig('npc_supervisora', rig_supervisora);
+
+  const rig_jefe_servicio = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        bob: 0,
+        eatPhase: 0,
+        talkPhase: 0
+      };
+    },
+    update(st, e, dt) {
+      const aiState = e?.ai?.state || 'idle';
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      if (speed > 0 && (aiState === 'patrol' || aiState === 'smart_move')) {
+        st.phase += dt * 5.0;
+        st.bob = Math.sin(st.phase) * 1.2;
+      } else {
+        st.bob = Math.sin(nowMs() * 0.002 + st.phase) * 0.6;
+      }
+      st.anim = e?.anim || st.anim || 'idle';
+      if (st.anim === 'eat') st.eatPhase += dt * 6.0;
+      else st.eatPhase = 0;
+      if (st.anim === 'talk') st.talkPhase += dt * 4.0;
+      else st.talkPhase = 0;
+    },
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen) return;
+      const [cx, cy, sc] = screen;
+      const s = sc * 0.95;
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+      let rot = 0;
+      if (st.anim === 'push_action') rot = -0.05;
+      if (typeof st.anim === 'string' && st.anim.startsWith('die')) rot = 1.1;
+      if (rot) ctx.rotate(rot);
+      ctx.scale(s, s);
+
+      const roundRect = (x, y, w, h, r) => {
+        const rad = Math.max(0, Math.min(Math.abs(r), Math.abs(w) * 0.5, Math.abs(h) * 0.5));
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, w, h, rad);
+          return;
+        }
+        ctx.moveTo(x + rad, y);
+        ctx.lineTo(x + w - rad, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+        ctx.lineTo(x + w, y + h - rad);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+        ctx.lineTo(x + rad, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+        ctx.lineTo(x, y + rad);
+        ctx.quadraticCurveTo(x, y, x + rad, y);
+      };
+
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.45, 0.25, 0.10, 0, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#f5f5f5';
+      ctx.beginPath();
+      roundRect(-0.25, -0.15, 0.5, 0.6, 0.15);
+      ctx.fill();
+
+      ctx.fillStyle = '#4a92b7';
+      ctx.fillRect(-0.20, 0.25, 0.4, 0.2);
+
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(-0.22, 0.42, 0.14, 0.07);
+      ctx.fillRect(0.08, 0.42, 0.14, 0.07);
+
+      ctx.fillStyle = '#f0caa5';
+      ctx.beginPath();
+      ctx.arc(0, -0.25, 0.18, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#3a2a1a';
+      ctx.beginPath();
+      ctx.arc(-0.06, -0.26, 0.022, 0, TAU);
+      ctx.arc(0.06, -0.26, 0.022, 0, TAU);
+      ctx.fill();
+
+      ctx.strokeStyle = '#3a2a1a';
+      ctx.beginPath();
+      ctx.arc(0, -0.18, 0.06, 0.2, 2.9);
+      ctx.stroke();
+
+      if (st.anim === 'eat') {
+        ctx.save();
+        ctx.translate(0.08, -0.15 - Math.sin(st.eatPhase) * 0.05);
+        ctx.rotate(-0.4);
+        ctx.fillStyle = '#b66';
+        ctx.fillRect(-0.05, -0.02, 0.1, 0.05);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#b66';
+        ctx.beginPath();
+        ctx.arc(0.1, -0.05, 0.04, 0, TAU);
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 0.025;
+      ctx.beginPath();
+      ctx.moveTo(-0.1, -0.18);
+      ctx.quadraticCurveTo(-0.15, -0.05, -0.10, 0.05);
+      ctx.stroke();
+
+      if (st.anim === 'talk') {
+        ctx.save();
+        ctx.translate(0, -0.25);
+        ctx.scale(1, 1 + Math.sin(st.talkPhase) * 0.05);
+        ctx.restore();
+      }
+
+      if (st.anim === 'powerup' || st.anim === 'extra') {
+        const glow = 0.35 + 0.25 * Math.sin(st.phase * 1.5);
+        ctx.strokeStyle = `rgba(80, 180, 255, ${glow})`;
+        ctx.lineWidth = 0.04;
+        ctx.beginPath();
+        roundRect(-0.30, -0.35, 0.6, 0.78, 0.2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  };
+
+  API.registerRig('npc_jefe_servicio', rig_jefe_servicio);
 
   registerHumanRig('npc_tcae', {
     totalHeight: 60,
