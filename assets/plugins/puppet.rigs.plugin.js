@@ -2865,35 +2865,89 @@
   API.registerRig('npc_jefe_servicio', rig_jefe_servicio);
 
   registerHumanRig('npc_tcae', {
-    totalHeight: 60,
-    entityHeight: 58,
-    torsoWidth: 18,
-    torsoHeight: 28,
-    legLength: 22,
-    armLength: 20,
-    walkCycle: 6.3,
-    walkBob: 2.7,
-    idleBob: 1.1,
-    swayAmp: 0.6,
-    lean: 0.04,
-    shadowRadius: 12,
-    offsetY: -4,
+    totalHeight: 54,
+    entityHeight: 50,
+    torsoWidth: 16,
+    torsoHeight: 24,
+    legLength: 18,
+    armLength: 18,
+    walkCycle: 6.2,
+    walkBob: 2.3,
+    idleBob: 1.0,
+    swayAmp: 0.55,
+    lean: 0.05,
+    shadowRadius: 10,
+    offsetY: -5,
+    scale: 0.92,
     colors: {
-      body: '#cfe6ff',
-      accent: '#5aa4ff',
-      head: '#f4cfb8',
-      limbs: '#25354a',
-      detail: '#101b24'
+      body: '#fdfdfd',
+      accent: '#7ed1d0',
+      head: '#f5c7a3',
+      limbs: '#d45c63',
+      detail: '#1a2233'
     },
     extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso'){
-        const { dims, scale } = helper;
+      const dims = helper?.dims;
+      if (!dims) return;
+      if (stage === 'beforeFigure'){
+        const base = dims.torsoW * 1.4;
+        const cartHeight = dims.legLength * 0.9;
         ctx.save();
-        ctx.strokeStyle = '#7fc0ff';
-        ctx.lineWidth = 1.2 * scale;
-        ctx.strokeRect(-dims.torsoW * 0.4, dims.torsoTop + dims.torsoH * 0.35, dims.torsoW * 0.25, dims.torsoH * 0.2);
+        ctx.translate(-dims.torsoW * 0.8, dims.legOriginY + dims.legLength * 0.1);
+        ctx.fillStyle = '#1a5557';
+        ctx.fillRect(-base * 0.05, -cartHeight - 6, base * 0.1, cartHeight + 8);
+        ctx.fillStyle = '#33a7a3';
+        ctx.fillRect(-base * 0.4, -cartHeight, base, cartHeight);
+        ctx.fillStyle = '#1a2233';
+        ctx.fillRect(-base * 0.4, -cartHeight - 5, base, 5);
+        ctx.fillStyle = '#f5d08a';
+        ctx.fillRect(-base * 0.35, -cartHeight - dims.torsoH * 0.15, base * 0.4, dims.torsoH * 0.2);
+        ctx.fillStyle = '#f9b858';
+        ctx.fillRect(-base * 0.1, -cartHeight - dims.torsoH * 0.28, base * 0.28, dims.torsoH * 0.18);
+        ctx.fillStyle = '#0f1f2e';
+        for (let i = -1; i <= 1; i += 2){
+          ctx.beginPath();
+          ctx.ellipse(i * base * 0.25, 6, base * 0.2, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.restore();
       }
+      if (stage === 'afterHead'){
+        ctx.save();
+        ctx.translate(0, dims.headCenterY - dims.headR * 0.4);
+        ctx.fillStyle = '#2d1a14';
+        const curls = 10;
+        for (let i = 0; i < curls; i++){
+          const ang = (i / curls) * Math.PI * 2;
+          const rad = dims.headR * 1.3;
+          const x = Math.cos(ang) * rad;
+          const y = Math.sin(ang) * rad * 0.6 - dims.headR * 0.1;
+          ctx.beginPath();
+          ctx.ellipse(x, y, dims.headR * 0.45, dims.headR * 0.32, ang * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      if (stage === 'afterFrontLeg'){
+        ctx.save();
+        const footY = dims.legOriginY + dims.legLength + 2;
+        ctx.fillStyle = '#c72635';
+        ctx.beginPath();
+        ctx.ellipse(dims.torsoW * 0.35, footY, dims.torsoW * 0.4, 4, 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(-dims.torsoW * 0.15, footY + 1, dims.torsoW * 0.35, 4, -0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    },
+    onHeadDraw(ctx){
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.arc(0, -2, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   });
 
