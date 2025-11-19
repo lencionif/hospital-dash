@@ -24,6 +24,7 @@
   const TILE = (typeof W.TILE_SIZE !== 'undefined') ? W.TILE_SIZE : (W.TILE || 32);
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  const nowSecs = () => (typeof performance?.now === 'function' ? performance.now() : Date.now()) / 1000;
   function pushUnique(arr, x){ if (!Array.isArray(arr)) return; if (!arr.includes(x)) arr.push(x); }
   function aabb(a,b){ return a.x<a.bx && a.bx>b.x && a.y<a.by && a.by>b.y; }
   function rectFrom(e){ return { x:e.x, y:e.y, bx:e.x+e.w, by:e.y+e.h }; }
@@ -113,6 +114,7 @@
       _flashlightId: null,
       flashlightOffsetX: 0,
       flashlightOffsetY: 0,
+      status: { confused: false, confusedUntil: 0, confusedSource: null },
       _fogRange: null,
       _lastHitAt: 0,
       _destroyCbs: [],
@@ -337,6 +339,28 @@
       st.hurtTimer = Math.max(st.hurtTimer, meta?.hurtDuration || prof.hurt || 0.45);
       st.dirty = true;
     }
+  }
+
+  function applyConfuse(e, duration, meta) {
+    if (!e || e.dead) return;
+    const st = e.status || (e.status = {});
+    const time = Math.max(0, Number(duration) || 0);
+    if (!(time > 0)) return;
+    const now = nowSecs();
+    st.confused = true;
+    st.confusedUntil = Math.max(st.confusedUntil || 0, now + time);
+    st.confusedSource = meta?.source || meta?.attacker || 'npc';
+  }
+
+  function isConfused(e) {
+    if (!e || !e.status) return false;
+    const now = nowSecs();
+    if (e.status.confused && (!e.status.confusedUntil || e.status.confusedUntil > now)) return true;
+    if (e.status.confused && e.status.confusedUntil <= now) {
+      e.status.confused = false;
+      e.status.confusedSource = null;
+    }
+    return false;
   }
   function heal(e, amount, opts) {
     if (!e || e.dead) return;
@@ -661,12 +685,14 @@
     // Exponer utilidades (por si otras entidades las usan)
     applyDamage,
     applyStun,
+    applyConfuse,
     heal,
     startAttack,
     setTalking,
     triggerPush,
     notifyDamage,
     setDeathCause,
+    isConfused,
     getAnimationState,
     updateAnimation: updateHeroAnimation,
   };
