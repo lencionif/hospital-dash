@@ -1,20 +1,18 @@
 // filename: medico.entities.js
-// NPC MÉDICO para “Il Divo: Hospital Dash!”
-//
-// - Patrulla automáticamente por los pacientes.
-// - Interacción (tecla E): lanza acertijo con premio/castigo.
-// - Premios/Castigos: curas/daño + buffs/debuffs temporales (velocidad/empuje/visión).
-// - Integración: DialogAPI (o Dialog), Physics, DoorsAPI, PatientsAPI.
-// - Compatible con Spawner: W.MedicoAPI.spawn(x,y,p) o registerMedicEntity(e).
+// Doctora NPC para “Il Divo: Hospital Dash!”
+//  - Patrulla consultas/pasillos con rig canvas npc_medico (sin sprites y dentro de 1 TILE).
+//  - Al tocar al héroe inicia diálogos con acertijos fáciles de medicina.
+//  - Genera píldoras con buffs positivos o negativos usando el sistema estándar del juego.
+//  - Expone MedicoAPI compatible con spawn/register/update/tryInteract.
 
 (function () {
   'use strict';
 
-  // Utilidades
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (min, max) => min + Math.random() * (max - min);
   const H = Math.hypot;
 
-  function tryAttachFlashlight(e){
+  function tryAttachFlashlight(e) {
     if (!e || e.flashlight === false || e._flashlightAttached) return;
     const attach = window.Entities?.attachFlashlight;
     if (typeof attach !== 'function') return;
@@ -33,371 +31,739 @@
     }
   }
 
-  // ---- Config por defecto ---------------------------------------------------
-  const DEFAULTS = {
-    speed: 62,           // px/s caminando
-    accel: 480,          // aceleración (px/s^2)
-    mass: 95,            // empujable (billar leve)
-    restitution: 0.05,
-    friction: 0.1,
-    pauseAtPatient: 1.2, // segundos parado junto al paciente
+  const PATROL_ROUTE_TILES = [
+    { x: 6, y: 3, label: 'consulta_general' },
+    { x: 12, y: 6, label: 'box_urgencias' },
+    { x: 8, y: 11, label: 'pasillo_norte' },
+    { x: 3, y: 7, label: 'pasillo_sur' }
+  ];
 
-    interactRadius: 44,  // distancia jugador-médico para hablar
-    riddleCooldown: 16,  // s entre acertijos del mismo médico
+  const DOCTOR_RIDDLES = [
+    {
+      key: 'doc_riddle_easy_1',
+      title: 'Signos vitales',
+      text: 'Si tomas mi medida en muñeca o cuello sabrás si late el corazón. ¿Qué soy?',
+      options: ['El pulso radial', 'Un fonendo', 'La glucemia'],
+      correctIndex: 0,
+      hint: 'Cuenta 15 segundos y multiplica por cuatro.',
+      success: '¡Buen pulso! Sigue controlando signos vitales.',
+      fail: 'Revisa siempre el pulso antes de actuar.'
+    },
+    {
+      key: 'doc_riddle_easy_2',
+      title: 'Higiene básica',
+      text: 'Tengo agua y jabón, y todos deberían visitarme antes de tocar a un paciente. ¿Quién soy?',
+      options: ['El lavamanos', 'La camilla', 'El dispensador de guantes'],
+      correctIndex: 0,
+      hint: 'Evita infecciones y reduce contagios.',
+      success: '¡Manos limpias, pacientes felices!',
+      fail: 'Sin lavado de manos no hay seguridad en planta.'
+    },
+    {
+      key: 'doc_riddle_easy_3',
+      title: 'Medicación sencilla',
+      text: 'Me tomas cada 8 horas cuando hay fiebre y dolor. ¿Cuál es mi nombre?',
+      options: ['Paracetamol', 'Insulina', 'Suero oral'],
+      correctIndex: 0,
+      hint: 'Soy un analgésico muy común.',
+      success: '¡Correcto! Controlar la dosis evita sustos.',
+      fail: 'No confundas medicaciones: lee siempre la pauta.'
+    },
+    {
+      key: 'doc_riddle_easy_4',
+      title: 'Respiración',
+      text: 'Si colocas mi campana en el tórax escucharás cómo entra el aire. ¿Qué instrumento soy?',
+      options: ['Fonendoscopio', 'Termómetro', 'Otoscopio'],
+      correctIndex: 0,
+      hint: 'También me llaman estetoscopio.',
+      success: '¡Buen oído clínico!',
+      fail: 'Repasemos la auscultación respiratoria.'
+    }
+  ];
 
-    // Buffs / castigos por defecto
-    rewards: { healHalves: 2, secs: 12, speedMul: 1.12, pushMul: 1.12, visionDelta: +1 },
-    penalties:{ dmgHalves: 2, secs: 10, speedMul: 0.88, pushMul: 0.9,  visionDelta: -1 },
+  const POSITIVE_BUFFS = ['speed_up', 'push_boost', 'shield'];
+  const NEGATIVE_BUFFS = ['slow', 'invert_controls', 'weak_push', 'heart_loss'];
 
-    // Adivinanzas (personaliza libremente)
-    riddles: [
-      {
-        id: 'termometro',
-        title: 'Consulta del Dr.',
-        text: 'Si me pones debajo del brazo, te diré la verdad. ¿Qué soy?',
-        options: ['El fonendo', 'El termómetro', 'El otoscopio'],
-        correctIndex: 1,
-        reward: { healHalves: 2, secs: 12, speedMul: 1.10, pushMul: 1.10, visionDelta: +1 },
-        penalty:{ dmgHalves: 2, secs: 10, speedMul: 0.85, pushMul: 0.90, visionDelta: -1 }
-      },
-      {
-        id: 'lavamanos',
-        title: 'Higiene ante todo',
-        text: 'En quirófano me usan sin parar. No soy guante ni mascarilla. ¿Qué soy?',
-        options: ['Lavamanos', 'Café del turno', 'Gorro de quirófano'],
-        correctIndex: 0,
-        reward: { healHalves: 2, secs: 14, speedMul: 1.12, pushMul: 1.12, visionDelta: +1 },
-        penalty:{ dmgHalves: 2, secs: 12, speedMul: 0.80, pushMul: 0.85, visionDelta: -1 }
-      },
-      {
-        id: 'historias',
-        title: 'Papeles eternos',
-        text: 'Todos me abren y me leen, pero nadie me estudia. ¿Qué soy?',
-        options: ['Historias clínicas', 'Libro de farmacología', 'El BOE'],
-        correctIndex: 0,
-        reward: { healHalves: 2, secs: 16, speedMul: 1.15, pushMul: 1.15, visionDelta: +1 },
-        penalty:{ dmgHalves: 2, secs: 12, speedMul: 0.85, pushMul: 0.85, visionDelta: -1 }
-      }
-    ],
-
-    portraitCssVar: '--sprite-medic-portrait' // si tienes retrato en CSS
+  const BUFF_CONFIG = {
+    speed_up:   { type: 'positive', duration: 12, speedMul: 1.25, accelMul: 1.15 },
+    push_boost: { type: 'positive', duration: 10, pushMul: 1.35 },
+    shield:     { type: 'positive', duration: 14, shield: 1 },
+    slow:       { type: 'negative', duration: 9,  speedMul: 0.6, accelMul: 0.75 },
+    invert_controls: { type: 'negative', duration: 8, invertControls: true },
+    weak_push:  { type: 'negative', duration: 11, pushMul: 0.65 },
+    heart_loss: { type: 'negative', duration: 0, damage: 1 }
   };
 
-  // ---- API principal --------------------------------------------------------
+  const DEFAULTS = {
+    speed: 62,
+    accel: 480,
+    mass: 95,
+    restitution: 0.05,
+    friction: 0.1,
+    talkCooldown: 10,
+    patrolPauseMin: 1,
+    patrolPauseMax: 2,
+    arrivalDistance: 18,
+    spawnPillIntervalMin: 8,
+    spawnPillIntervalMax: 16,
+    interactRadius: 44,
+    portraitCssVar: '--sprite-medic-portrait'
+  };
+
+  const isDebug = () => !!(window.DEBUG_MEDICO || window.DEBUG_FORCE_ASCII);
+
+  function convertRoute(points, tile, fallbackRoute) {
+    const result = [];
+    for (const pt of points || []) {
+      if (!pt) continue;
+      if (Number.isFinite(pt.x) && Number.isFinite(pt.y)) {
+        result.push({ x: pt.x, y: pt.y, label: pt.label || null });
+      } else if (Number.isFinite(pt.tx) && Number.isFinite(pt.ty)) {
+        result.push({ x: pt.tx * tile, y: pt.ty * tile, label: pt.label || null });
+      }
+    }
+    if (result.length) return result;
+    return fallbackRoute ? fallbackRoute.slice() : [];
+  }
+
+  function overlaps(a, b) {
+    if (!a || !b) return false;
+    return (a.x < b.x + b.w) && (a.x + a.w > b.x) && (a.y < b.y + b.h) && (a.y + a.h > b.y);
+  }
+
+  function centerPoint(e) {
+    return { x: e.x + e.w * 0.5, y: e.y + e.h * 0.5 };
+  }
+
+  const NEAR_OFFSETS = [
+    { x: 0, y: 1 }, { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: -1 },
+    { x: 1, y: 1 }, { x: -1, y: 1 }, { x: 1, y: -1 }, { x: -1, y: -1 }
+  ];
+  const PILL_OFFSETS = [{ x: 0, y: 0 }, ...NEAR_OFFSETS];
   const MedicoAPI = {
-    G: null, TILE: 32, cfg: null,
-    medics: [],       // [{ e, tHold }]
-    _targets: null,   // { list:[{x,y}], i, _stamp }
+    G: null,
+    TILE: 32,
+    cfg: null,
+    medics: [],
+    _patrolPoints: [],
 
     init(Gref, opts = {}) {
       this.G = Gref || window.G || (window.G = {});
       this.TILE = (typeof window.TILE_SIZE !== 'undefined') ? window.TILE_SIZE : 32;
       this.cfg = Object.assign({}, DEFAULTS, opts || {});
+      this._patrolPoints = convertRoute(PATROL_ROUTE_TILES, this.TILE);
       if (!Array.isArray(this.G.entities)) this.G.entities = [];
-      try { window.EntityGroups?.ensure?.(this.G); } catch (_) {}
+      if (!Array.isArray(this.G.humans)) this.G.humans = [];
+      if (!Array.isArray(this.G.movers)) this.G.movers = [];
       return this;
     },
 
-    // Crea y registra un médico (para Spawner/placements)
     spawn(x, y, p = {}) {
       this.init(this.G || window.G);
-      const e = {
-        id: 'MED' + Math.random().toString(36).slice(2),
-        x, y, w: this.TILE * 0.9, h: this.TILE * 0.9,
-        vx: 0, vy: 0, color: '#5ac6ff',
-        skin: 'medico.png', dynamic: true, solid: true, pushable: true
+      const tile = this.TILE;
+      const ent = {
+        id: 'DOC_' + Math.random().toString(36).slice(2),
+        x, y,
+        w: tile * 0.9,
+        h: tile * 0.9,
+        vx: 0,
+        vy: 0,
+        solid: true,
+        dynamic: true,
+        pushable: true,
+        color: '#f8ffff'
       };
-      this.registerMedicEntity(e);
-      return e;
+      if (p.patrolPoints) ent.patrolPoints = p.patrolPoints;
+      return this.registerMedicEntity(ent);
     },
 
-    // Registra un objeto ya creado como médico
-    registerMedicEntity(medicEnt) {
-      medicEnt.kind = (this.G.ENT?.MEDIC) || 'medic';
-      medicEnt.mass = this.cfg.mass;
-      medicEnt.restitution = this.cfg.restitution;
-      medicEnt.friction = this.cfg.friction;
-      medicEnt.solid = true; medicEnt.dynamic = true; medicEnt.pushable = true;
-      medicEnt.vx = medicEnt.vx || 0; medicEnt.vy = medicEnt.vy || 0;
-      medicEnt.ai = { i: 0, pause: 0 };
-      medicEnt.lastRiddleAt = -999;
+    registerMedicEntity(ent) {
+      this.init(this.G || window.G);
+      const ENT = this.G.ENT || window.ENT || {};
+      const tile = this.TILE;
+      ent.kind = ENT.MEDICO || ENT.DOCTOR || 'npc_medico';
+      ent.kindName = 'npc_medico';
+      ent.type = 'npc';
+      ent.role = 'npc_medico';
+      ent.name = ent.name || 'Doctora';
+      ent.displayName = ent.displayName || 'Doctora';
+      ent.w = ent.w || tile * 0.9;
+      ent.h = ent.h || tile * 0.9;
+      ent.mass = this.cfg.mass;
+      ent.restitution = this.cfg.restitution;
+      ent.friction = this.cfg.friction;
+      ent.solid = true;
+      ent.dynamic = true;
+      ent.pushable = true;
+      ent.anim = ent.anim || 'idle';
+      ent.ai = Object.assign({
+        state: 'patrol',
+        dir: 'down',
+        patrolIndex: 0,
+        riddleIndex: 0,
+        talkCooldown: 0,
+        cooldownTimer: 0,
+        idleAnim: 'idle',
+        extraNoteTimer: 0,
+        animOverride: null,
+        animOverrideTimer: 0,
+        powerGlowTimer: 0,
+        spawnPillIntervalMin: this.cfg.spawnPillIntervalMin,
+        spawnPillIntervalMax: this.cfg.spawnPillIntervalMax,
+        spawnPillTimer: rand(this.cfg.spawnPillIntervalMin, this.cfg.spawnPillIntervalMax),
+        pushActionCooldown: rand(2, 5)
+      }, ent.ai || {});
+      const fallbackRoute = this._patrolPoints.length ? this._patrolPoints : [centerPoint(ent)];
+      ent.ai.route = convertRoute(ent.patrolPoints || ent.ai.route, tile, fallbackRoute);
+      if (!ent.ai.route.length) {
+        ent.ai.route = this._createFallbackRoute(ent);
+      } else {
+        ent.ai.route = ent.ai.route.map((pt) => ({
+          x: Number.isFinite(pt.x) ? pt.x : (pt.tx || 0) * tile,
+          y: Number.isFinite(pt.y) ? pt.y : (pt.ty || 0) * tile,
+          label: pt.label || null
+        }));
+      }
+      ent.ai.patrolIndex = ent.ai.patrolIndex % Math.max(1, ent.ai.route.length);
 
-      medicEnt.skin = medicEnt.skin || 'medico.png';
-      medicEnt.aiId = 'MEDIC';
-      try { window.AI?.attach?.(medicEnt, 'MEDIC'); } catch (_) {}
-
-      this.G.entities.push(medicEnt);
-      medicEnt.group = 'human';
-      try { window.EntityGroups?.assign?.(medicEnt); } catch (_) {}
-      try { window.EntityGroups?.register?.(medicEnt, this.G); } catch (_) {}
-      this.medics.push({ e: medicEnt, tHold: 0 });
-
-      if (window.Physics?.registerEntity) Physics.registerEntity(medicEnt);
+      this._ensureOnWorld(ent);
+      this.medics.push({ e: ent });
 
       try {
-        const puppet = window.Puppet?.bind?.(medicEnt, 'npc_medico', { z: 0, scale: 1, data: { skin: medicEnt.skin } })
-          || window.PuppetAPI?.attach?.(medicEnt, { rig: 'npc_medico', z: 0, scale: 1, data: { skin: medicEnt.skin } });
-        medicEnt.rigOk = true;
+        const puppet = window.Puppet?.bind?.(ent, 'npc_medico', { z: 0, scale: 1 })
+          || window.PuppetAPI?.attach?.(ent, { rig: 'npc_medico', z: 0, scale: 1 });
+        ent.rigOk = !!puppet;
       } catch (_) {
-        medicEnt.rigOk = true;
+        ent.rigOk = true;
       }
-      tryAttachFlashlight(medicEnt);
+      tryAttachFlashlight(ent);
+      return ent;
     },
 
-    // Garantiza al menos 1 médico (fallback)
     ensureOneIfMissing() {
       if (this.medics.length > 0) return;
-      const p0 = (this.G.patients || [])[0];
-      const x = p0 ? p0.x + this.TILE * 2 : this.TILE * 4;
-      const y = p0 ? p0.y : this.TILE * 4;
-      this.spawn(x, y, {});
+      const fallbackX = this.TILE * 5;
+      const fallbackY = this.TILE * 4;
+      this.spawn(fallbackX, fallbackY, {});
     },
 
-    // Llamar en tu game loop o vía systems
     update(dt) {
-      this._refreshTargetsIfNeeded();
-
-      for (const m of this.medics) {
-        const e = m.e;
-        if (!e || e.dead) continue;
-
-        if (e.ai.pause > 0) {
-          e.ai.pause -= dt;
-          e.vx *= 0.9; e.vy *= 0.9;
-        } else {
-          this._patrolStep(e, dt);
-        }
-
-        // Cap de velocidad
-        const spd = Math.hypot(e.vx || 0, e.vy || 0);
-        if (spd > this.cfg.speed) {
-          const s = this.cfg.speed / spd; e.vx *= s; e.vy *= s;
-        }
-
-        // Abrir puertas cercanas si hay DoorsAPI
-        if (window.DoorsAPI?.autoOpenNear) DoorsAPI.autoOpenNear(e, this.TILE * 0.8);
+      const hero = this.G?.player || null;
+      for (const slot of this.medics) {
+        const ent = slot.e;
+        if (!ent) continue;
+        this._updateDoctor(ent, dt || 0, hero);
       }
-
-      // Gestiona efectos activos aplicados por médicos al jugador
-      this._updateBuffs(dt);
+      this._updateBuffs(dt || 0);
     },
 
-    // Atajo para input: si jugador está cerca de algún médico, abre acertijo
     tryInteract() {
-      const p = this.G.player; if (!p) return false;
-      let target = null, bestD = 1e9;
-      for (const m of this.medics) {
-        const e = m.e; if (!e || e.dead) continue;
-        const d = H(p.x + p.w / 2 - (e.x + e.w / 2), p.y + p.h / 2 - (e.y + e.h / 2));
-        if (d < bestD) { bestD = d; target = e; }
+      const hero = this.G?.player;
+      if (!hero) return false;
+      let best = null;
+      let bestDist = Infinity;
+      for (const slot of this.medics) {
+        const e = slot.e;
+        if (!e || e.dead) continue;
+        const dx = (e.x + e.w * 0.5) - (hero.x + hero.w * 0.5);
+        const dy = (e.y + e.h * 0.5) - (hero.y + hero.h * 0.5);
+        const dist = H(dx, dy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = e;
+        }
       }
-      if (!target || bestD > this.cfg.interactRadius) return false;
-
-      // Cooldown de diálogo
-      const now = (this.G.nowSec ? this.G.nowSec() : performance.now() / 1000);
-      if ((target.lastRiddleAt || -999) + this.cfg.riddleCooldown > now) return false;
-      target.lastRiddleAt = now;
-
-      this._openRiddleDialog(target);
-      return true;
+      if (!best || bestDist > this.cfg.interactRadius) return false;
+      if (best.ai?.state === 'talk' || (best.ai?.talkCooldown || 0) > 0) return false;
+      best.ai.talkCooldown = this.cfg.talkCooldown;
+      best.ai.state = 'talk';
+      return startDoctorEasyRiddleDialog(best, hero);
     },
 
-    // ===== Internos: patrulla / destino =====
-    _refreshTargetsIfNeeded() {
-      const ps = (this.G.patients || []).filter(p => p && !p.dead);
-      if (!this._targets || this._targets._stamp !== ps.length) {
-        this._targets = {
-          list: ps.map(p => ({ x: p.x + p.w / 2, y: p.y + p.h / 2 })),
-          _stamp: ps.length, i: 0
-        };
-      }
+    _ensureOnWorld(ent) {
+      const G = this.G;
+      if (!G.entities.includes(ent)) G.entities.push(ent);
+      if (!G.humans.includes(ent)) G.humans.push(ent);
+      if (!G.movers.includes(ent)) G.movers.push(ent);
+      ent.group = 'human';
+      try { window.EntityGroups?.assign?.(ent); } catch (_) {}
+      try { window.EntityGroups?.register?.(ent, G); } catch (_) {}
+      try { window.MovementSystem?.register?.(ent); } catch (_) {}
     },
 
-    _patrolStep(e, dt) {
-      const list = (this._targets && this._targets.list) || [];
-      if (!list.length) { e.vx *= 0.9; e.vy *= 0.9; return; }
+    _createFallbackRoute(ent) {
+      const { x, y, w, h } = ent;
+      const cx = x + w * 0.5;
+      const cy = y + h * 0.5;
+      const t = this.TILE;
+      return [
+        { x: cx, y: cy },
+        { x: cx + t * 2, y: cy },
+        { x: cx + t * 2, y: cy + t * 2 },
+        { x: cx, y: cy + t * 2 }
+      ];
+    },
 
-      // Siguiente punto
-      const ai = e.ai;
-      if (ai.i >= list.length) ai.i = 0;
-      const tgt = list[ai.i];
-      const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
-      const dx = tgt.x - cx, dy = tgt.y - cy;
-      const dist = Math.hypot(dx, dy);
+    _updateDoctor(ent, dt, hero) {
+      const ai = ent.ai || (ent.ai = {});
+      ai.talkCooldown = Math.max(0, (ai.talkCooldown || 0) - dt);
+      ai.animOverrideTimer = Math.max(0, (ai.animOverrideTimer || 0) - dt);
+      if (ai.animOverrideTimer <= 0) ai.animOverride = null;
+      ai.powerGlowTimer = Math.max(0, (ai.powerGlowTimer || 0) - dt);
+      ent.powerGlow = ai.powerGlowTimer;
+      ai.extraNoteTimer = Math.max(0, (ai.extraNoteTimer || 0) - dt);
+      ai.pushActionCooldown = Math.max(0, (ai.pushActionCooldown || 0) - dt);
 
-      if (dist < this.TILE * 0.6) {
-        ai.i = (ai.i + 1) % list.length;
-        ai.pause = this.cfg.pauseAtPatient;
-        if (window.AudioAPI) AudioAPI.play('medic_step', { volume: 0.4, throttleMs: 200 });
+      if (ent.dead || ai.state === 'dead') {
+        ai.state = 'dead';
+        const cause = (ent.deathCause || '').toLowerCase();
+        ai.deadAnim = ai.deadAnim || (cause.includes('fire') ? 'die_fire' : cause.includes('crush') ? 'die_crush' : 'die_hit');
+        ent.anim = ai.deadAnim;
+        ent.vx = 0; ent.vy = 0;
         return;
       }
 
-      // Dirección con pequeño look-ahead anti-pared
-      let dirx = Math.abs(dx) > Math.abs(dy) ? Math.sign(dx) : 0;
-      let diry = (dirx === 0) ? Math.sign(dy) : 0;
-
-      const la = 14; // px de look-ahead
-      if (this._hitsWall(cx + dirx * la, cy + diry * la, e.w, e.h)) {
-        if (dirx !== 0) { dirx = 0; diry = Math.sign(dy) || 1; }
-        else { diry = 0; dirx = Math.sign(dx) || 1; }
+      if (ai.spawnPillTimer != null) {
+        ai.spawnPillTimer -= dt;
+        if (ai.spawnPillTimer <= 0 && ai.state !== 'dead' && ai.state !== 'talk') {
+          spawnDoctorRandomPill(ent);
+          const min = ai.spawnPillIntervalMin || this.cfg.spawnPillIntervalMin;
+          const max = ai.spawnPillIntervalMax || this.cfg.spawnPillIntervalMax;
+          ai.spawnPillTimer = rand(min, max);
+          ai.animOverride = 'powerup';
+          ai.animOverrideTimer = 0.8;
+          ai.powerGlowTimer = 0.8;
+        }
       }
 
-      const tvx = dirx * this.cfg.speed;
-      const tvy = diry * this.cfg.speed;
-      const ax = clamp(tvx - (e.vx || 0), -this.cfg.accel, this.cfg.accel);
-      const ay = clamp(tvy - (e.vy || 0), -this.cfg.accel, this.cfg.accel);
+      if (ai.state === 'talk') {
+        ent.vx = 0; ent.vy = 0;
+        ent.anim = 'talk';
+        this._lookAtHero(ent, hero);
+        return;
+      }
 
-      if (window.Physics?.applyImpulse) {
-        Physics.applyImpulse(e, ax * dt * e.mass, ay * dt * e.mass);
+      if (ai.state === 'cooldown') {
+        ai.cooldownTimer = Math.max(0, (ai.cooldownTimer || 0) - dt);
+        ent.vx *= 0.8;
+        ent.vy *= 0.8;
+        if (ai.cooldownTimer <= 0) {
+          ai.state = 'patrol';
+          if (ai.route && ai.route.length) {
+            ai.patrolIndex = ai.patrolIndex % ai.route.length;
+            if (isDebug()) console.debug('[DOCTOR] patrol target', { id: ent.id, index: ai.patrolIndex });
+          }
+        }
+      }
+
+      if (ai.state === 'patrol') {
+        this._moveTowardsPatrol(ent, dt);
+        if (ai.pushActionCooldown <= 0 && !ai.animOverride) {
+          ai.animOverride = 'push_action';
+          ai.animOverrideTimer = 0.55;
+          ai.pushActionCooldown = rand(6, 10);
+        }
+      }
+
+      this._mapAnimation(ent, ai);
+      this._maybeStartCollisionDialog(ent, hero);
+    },
+
+    _lookAtHero(ent, hero) {
+      if (!hero) return;
+      const hx = hero.x + hero.w * 0.5;
+      const hy = hero.y + hero.h * 0.5;
+      const cx = ent.x + ent.w * 0.5;
+      const cy = ent.y + ent.h * 0.5;
+      const dx = hx - cx;
+      const dy = hy - cy;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        ent.ai.dir = dx >= 0 ? 'right' : 'left';
       } else {
-        e.vx = (e.vx || 0) + ax * dt;
-        e.vy = (e.vy || 0) + ay * dt;
+        ent.ai.dir = dy >= 0 ? 'down' : 'up';
       }
+      ent.flipX = (ent.ai.dir === 'left') ? -1 : 1;
     },
 
-    _hitsWall(nx, ny, w, h) {
-      if (typeof window.isWallAt === 'function') return !!isWallAt(nx - w / 2, ny - h / 2, w, h);
-      return false;
-    },
-
-    // ===== Adivinanzas / Diálogo =====
-    _openRiddleDialog(medic) {
-      const pool = this.cfg.riddles;
-      const r = pool[(Math.random() * pool.length) | 0];
-      const player = this.G?.player || null;
-
-      const setTalking = (active) => {
-        if (medic) medic.isTalking = !!active;
-        if (player) player.isTalking = !!active;
-      };
-      setTalking(true);
-
-      const closeTalking = () => setTalking(false);
-
-      // Soporte para varios dialog systems
-      const onSelect = (idx) => {
-        closeTalking();
-        this._resolveRiddle(r, idx, medic);
-      };
-      const buttons = r.options.map((label, idx) => ({ label, value: idx }));
-
-      if (window.DialogAPI?.open) {
-        DialogAPI.open({
-          portrait: 'medico',
-          title: r.title,
-          text: r.text,
-          buttons: buttons.map((btn, idx) => ({
-            label: btn.label,
-            primary: idx === r.correctIndex,
-            action: () => onSelect(idx)
-          })),
-          pauseGame: true,
-          onClose: closeTalking
-        });
+    _moveTowardsPatrol(ent, dt) {
+      const ai = ent.ai || (ent.ai = {});
+      const route = ai.route && ai.route.length ? ai.route : (ai.route = this._createFallbackRoute(ent));
+      if (!route.length) return;
+      ai.patrolIndex = ai.patrolIndex % route.length;
+      const target = route[ai.patrolIndex];
+      const cx = ent.x + ent.w * 0.5;
+      const cy = ent.y + ent.h * 0.5;
+      const dx = target.x - cx;
+      const dy = target.y - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < this.cfg.arrivalDistance) {
+        ai.patrolIndex = (ai.patrolIndex + 1) % route.length;
+        ai.state = 'cooldown';
+        ai.cooldownTimer = rand(this.cfg.patrolPauseMin, this.cfg.patrolPauseMax);
+        ai.extraNoteTimer = Math.random() < 0.55 ? ai.cooldownTimer : rand(0.3, 0.8);
+        ai.idleAnim = (ai.extraNoteTimer > 0.4) ? 'extra' : (Math.random() < 0.3 ? 'eat' : 'idle');
+        ent.vx = 0; ent.vy = 0;
+        if (isDebug()) console.debug('[DOCTOR] patrol target', { id: ent.id, index: ai.patrolIndex });
         return;
       }
-      if (window.Dialog?.open) {
-        Dialog.open({
-          portrait: "medico.png",
-          text: r.text,
-          options: r.options,
-          correct: r.correctIndex,
-          onAnswer: (idx) => { onSelect(idx); }
-        });
+      const dirX = dx / Math.max(dist, 0.001);
+      const dirY = dy / Math.max(dist, 0.001);
+      const targetSpeed = this.cfg.speed;
+      const desiredVx = dirX * targetSpeed;
+      const desiredVy = dirY * targetSpeed;
+      ent.vx += clamp(desiredVx - ent.vx, -this.cfg.accel, this.cfg.accel) * dt;
+      ent.vy += clamp(desiredVy - ent.vy, -this.cfg.accel, this.cfg.accel) * dt;
+      const sp = Math.hypot(ent.vx, ent.vy);
+      if (sp > targetSpeed) {
+        const s = targetSpeed / Math.max(sp, 0.001);
+        ent.vx *= s;
+        ent.vy *= s;
+      }
+      if (Math.abs(ent.vx) > Math.abs(ent.vy)) {
+        ai.dir = ent.vx >= 0 ? 'right' : 'left';
+        ent.flipX = (ai.dir === 'left') ? -1 : 1;
+      } else if (ent.vy < 0) {
+        ai.dir = 'up';
+      } else {
+        ai.dir = 'down';
+      }
+    },
+
+    _maybeStartCollisionDialog(ent, hero) {
+      if (!hero) return;
+      if (ent.ai?.state === 'talk' || ent.ai?.state === 'dead') return;
+      if ((ent.ai?.talkCooldown || 0) > 0) return;
+      if (!overlaps(ent, hero)) return;
+      ent.ai.state = 'talk';
+      ent.ai.talkCooldown = this.cfg.talkCooldown;
+      ent.vx = 0; ent.vy = 0;
+      startDoctorEasyRiddleDialog(ent, hero);
+    },
+
+    _mapAnimation(ent, ai) {
+      if (ai.animOverride) {
+        ent.anim = ai.animOverride;
         return;
       }
-
-      // Fallback mínimo
-      const idx = Number(prompt(`${r.title}\n\n${r.text}\n\n${r.options.map((o,i)=>`[${i}] ${o}`).join('\n')}\n\nRespuesta (número):`, '0'))|0;
-      onSelect(idx);
-    },
-
-    _resolveRiddle(r, chosenIdx, medic) {
-      const ok = (chosenIdx === r.correctIndex);
-      this._applyOutcome(ok ? (r.reward || this.cfg.rewards) : (r.penalty || this.cfg.penalties), ok);
-      if (ok && this.G?.sfx?.ok) this.G.sfx.ok(medic);
-      if (!ok && this.G?.sfx?.bad) this.G.sfx.bad(medic);
-    },
-
-    _applyOutcome(cfg, isReward) {
-      const G = this.G, p = G.player; if (!p) return;
-
-      // Vida (usa tu sistema de corazones/vidas si existe)
-      if (isReward && cfg.healHalves) {
-        p.hearts = Math.min((p.heartsMax || 10), (p.hearts || 6) + cfg.healHalves);
+      if (ai.state === 'talk') {
+        ent.anim = 'talk';
+        return;
       }
-      if (!isReward && cfg.dmgHalves) {
-        p.hearts = Math.max(0, (p.hearts || 6) - cfg.dmgHalves);
-        if (typeof G.onPlayerDamaged === 'function') G.onPlayerDamaged(p, cfg.dmgHalves, 'medico_riddle');
+      if (ai.state === 'cooldown') {
+        ent.anim = ai.extraNoteTimer > 0.1 ? 'extra' : (ai.idleAnim || 'idle');
+        return;
       }
-
-      // Efecto temporal
-      const eff = {
-        t: cfg.secs || 10,
-        speedMul: cfg.speedMul || 1,
-        pushMul: cfg.pushMul || 1,
-        visionDelta: cfg.visionDelta || 0
-      };
-      this._addEffect(eff);
+      if (ai.state === 'patrol') {
+        const speed = Math.hypot(ent.vx || 0, ent.vy || 0);
+        if (speed > 4) {
+          if (Math.abs(ent.vx) > Math.abs(ent.vy)) {
+            ent.anim = 'walk_side';
+            ai.dir = ent.vx >= 0 ? 'right' : 'left';
+            ent.flipX = (ai.dir === 'left') ? -1 : 1;
+          } else if (ent.vy < 0) {
+            ent.anim = 'walk_up';
+            ai.dir = 'up';
+          } else {
+            ent.anim = 'walk_down';
+            ai.dir = 'down';
+          }
+        } else {
+          ent.anim = ai.extraNoteTimer > 0.1 ? 'extra' : 'idle';
+        }
+        return;
+      }
+      ent.anim = 'idle';
+    },
+    _updateBuffs(dt) {
+      const G = this.G;
+      const p = G?.player;
+      if (!p || !Array.isArray(G._medicEffects) || !G._medicEffects.length) return;
+      for (let i = G._medicEffects.length - 1; i >= 0; i--) {
+        const eff = G._medicEffects[i];
+        eff.t -= dt;
+        if (eff.t <= 0) {
+          if (eff.shield && p.shield) {
+            p.shield = Math.max(0, p.shield - eff.shield);
+          }
+          G._medicEffects.splice(i, 1);
+        }
+      }
+      this._recomputeStatsFromEffects();
     },
 
-    // ===== Efectos acumulables sobre el jugador =====
     _addEffect(eff) {
-      const G = this.G, p = G.player; if (!p) return;
+      const G = this.G;
+      const p = G?.player;
+      if (!p) return;
       G._medicEffects = G._medicEffects || [];
-
-      // Guarda bases si no existían
       if (p._baseMaxSpeed == null) p._baseMaxSpeed = p.maxSpeed || 160;
-      if (p._basePush == null)     p._basePush     = p.pushForce || 380;
-      if (p._baseVision == null)   p._baseVision   = p.visionTiles || 3;
-
+      if (p._basePush == null) p._basePush = p.pushForce || p.push || 380;
+      if (p._baseVision == null) p._baseVision = p.visionTiles || 3;
+      if (p._baseAccel == null) p._baseAccel = p.accel || 800;
       G._medicEffects.push(eff);
       this._recomputeStatsFromEffects();
     },
 
-    _updateBuffs(dt) {
-      const G = this.G, p = G.player; if (!p) return;
-      if (!G._medicEffects || !G._medicEffects.length) return;
-
-      for (let i = G._medicEffects.length - 1; i >= 0; i--) {
-        const e = G._medicEffects[i];
-        e.t -= dt;
-        if (e.t <= 0) G._medicEffects.splice(i, 1);
-      }
-      this._recomputeStatsFromEffects();
-    },
-
     _recomputeStatsFromEffects() {
-      const G = this.G, p = G.player; if (!p) return;
-      const baseSpeed  = p._baseMaxSpeed || p.maxSpeed || 160;
-      const basePush   = p._basePush     || p.pushForce || 380;
-      const baseVision = p._baseVision   || p.visionTiles || 3;
-
-      let speedMul = 1, pushMul = 1, visionDelta = 0;
-      for (const e of (G._medicEffects || [])) {
-        speedMul *= (e.speedMul || 1);
-        pushMul  *= (e.pushMul || 1);
-        visionDelta += (e.visionDelta || 0);
+      const G = this.G;
+      const p = G?.player;
+      if (!p) return;
+      const effects = G._medicEffects || [];
+      const baseSpeed = p._baseMaxSpeed ?? p.maxSpeed ?? 160;
+      const basePush = p._basePush ?? p.pushForce ?? 380;
+      const baseVision = p._baseVision ?? p.visionTiles ?? 3;
+      const baseAccel = p._baseAccel ?? p.accel ?? 800;
+      let speedMul = 1;
+      let pushMul = 1;
+      let accelMul = 1;
+      let visionDelta = 0;
+      let invert = false;
+      for (const eff of effects) {
+        speedMul *= eff.speedMul || 1;
+        pushMul *= eff.pushMul || 1;
+        accelMul *= eff.accelMul || eff.speedMul || 1;
+        visionDelta += eff.visionDelta || 0;
+        if (eff.invertControls) invert = true;
       }
-
-      p.maxSpeed    = clamp(baseSpeed * speedMul, 80, 320);
-      p.pushForce   = clamp(basePush  * pushMul,  180, 800);
+      p.maxSpeed = clamp(baseSpeed * speedMul, 60, 320);
+      p.accel = clamp(baseAccel * accelMul, 300, 1400);
+      p.pushForce = clamp(basePush * pushMul, 150, 900);
       p.visionTiles = clamp(baseVision + visionDelta, 1, 9);
-      // Fog/linterna se adaptan en tus otros sistemas
+      p._doctorInvertControls = invert;
     }
   };
+  function startDoctorEasyRiddleDialog(e, hero) {
+    if (!e || e.kind !== 'npc_medico') return false;
+    const ai = e.ai || (e.ai = {});
+    const idx = ai.riddleIndex % DOCTOR_RIDDLES.length;
+    const riddle = DOCTOR_RIDDLES[idx];
+    ai.riddleIndex = (ai.riddleIndex + 1) % DOCTOR_RIDDLES.length;
+    ai.state = 'talk';
+    e.vx = 0; e.vy = 0;
+    e.anim = 'talk';
+    e.isTalking = true;
+    if (hero) {
+      hero.vx = 0; hero.vy = 0;
+      hero.isTalking = true;
+      try { window.Entities?.Hero?.setTalking?.(hero, true, 1.4); } catch (_) {}
+    }
+    if (isDebug()) console.debug('[DOCTOR] start easy riddle', { heroId: hero?.id || hero?.heroId || 'player' });
 
-  // ---- Auto-hook: systems / input -----------------------------------------
+    const hint = riddle.hint ? `\n\n${riddle.hint}` : '';
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      onDoctorDialogEnd(e, hero);
+    };
+    const handleAnswer = (answerIndex) => {
+      if (finished) return;
+      finished = true;
+      const correct = answerIndex === riddle.correctIndex;
+      if (correct) {
+        ai.animOverride = 'powerup';
+        ai.animOverrideTimer = 0.8;
+        if (riddle.success) {
+          try { window.HUD?.showFloatingMessage?.(hero || e, riddle.success, 1.6); } catch (_) {}
+        }
+      } else {
+        ai.animOverride = 'attack';
+        ai.animOverrideTimer = 0.8;
+        if (riddle.fail) {
+          try { window.HUD?.showFloatingMessage?.(hero || e, riddle.fail, 1.6); } catch (_) {}
+        }
+      }
+      if (typeof window.DialogAPI?.close === 'function') {
+        try { window.DialogAPI.close(); } catch (_) {}
+      }
+      if (typeof window.Dialog?.close === 'function') {
+        try { window.Dialog.close(); } catch (_) {}
+      }
+      finish();
+    };
+
+    const buttons = riddle.options.map((label, idx) => ({
+      label,
+      primary: idx === riddle.correctIndex,
+      action: () => handleAnswer(idx)
+    }));
+
+    if (window.DialogAPI?.open) {
+      window.DialogAPI.open({
+        portrait: 'medico',
+        portraitCssVar: MedicoAPI.cfg.portraitCssVar,
+        title: riddle.title,
+        text: riddle.text + hint,
+        buttons,
+        pauseGame: true,
+        onClose: finish
+      });
+      return true;
+    }
+    if (window.Dialog?.open) {
+      window.Dialog.open({
+        portrait: 'medico.png',
+        text: riddle.text + hint,
+        options: riddle.options,
+        correct: riddle.correctIndex,
+        onAnswer: (idx) => handleAnswer(idx)
+      });
+      return true;
+    }
+
+    const answer = Number(prompt(`${riddle.title}\n\n${riddle.text}\n\n${riddle.options.map((o, i) => `[${i}] ${o}`).join('\n')}`, '0')) || 0;
+    handleAnswer(answer);
+    return true;
+  }
+
+  function onDoctorDialogEnd(e, hero) {
+    if (!e || e.kind !== 'npc_medico') return;
+    const ai = e.ai || (e.ai = {});
+    ai.state = 'patrol';
+    ai.animOverride = null;
+    ai.animOverrideTimer = 0;
+    ai.extraNoteTimer = 0;
+    e.anim = 'idle';
+    e.isTalking = false;
+    e.vx = 0; e.vy = 0;
+    if (hero) {
+      hero.isTalking = false;
+      try { window.Entities?.Hero?.setTalking?.(hero, false); } catch (_) {}
+    }
+    if (isDebug()) console.debug('[DOCTOR] end riddle, back to patrol');
+  }
+
+  function spawnDoctorRandomPill(doctor) {
+    const api = MedicoAPI;
+    const G = api.G;
+    if (!G || !doctor) return null;
+    const spot = findDoctorPillSpot(api, doctor);
+    if (!spot) return null;
+    const buff = chooseRandomBuff(Math.random() < 0.5 ? 'positive' : 'negative');
+    if (!buff) return null;
+    const pill = {
+      id: 'PILL_DOC_' + Math.random().toString(36).slice(2, 9),
+      kind: 'pill_doctor',
+      kindName: 'pill',
+      type: 'pill',
+      source: 'doctor',
+      buffType: buff.type,
+      buff,
+      x: spot.cx - spot.size * 0.5,
+      y: spot.cy - spot.size * 0.5,
+      w: spot.size,
+      h: spot.size,
+      solid: false,
+      dynamic: false,
+      spriteKey: 'pill.generic',
+      color: buff.type === 'positive' ? '#7cf29a' : '#ff7c7c'
+    };
+    if (!G.entities.includes(pill)) G.entities.push(pill);
+    if (!G.movers.includes(pill)) G.movers.push(pill);
+    if (!G.pills.includes(pill)) G.pills.push(pill);
+    pill.group = 'item';
+    try { window.EntityGroups?.assign?.(pill); } catch (_) {}
+    try {
+      window.Puppet?.bind?.(pill, 'pill', { z: 0, scale: 1, data: { skin: 'pill.generic' } })
+        || window.PuppetAPI?.attach?.(pill, { rig: 'pill', z: 0, scale: 1, data: { skin: 'pill.generic' } });
+    } catch (_) {}
+    if (isDebug()) console.debug('[DOCTOR_PILL] spawn', { doctorId: doctor.id || null, x: pill.x, y: pill.y, buff: pill.buff });
+    return pill;
+  }
+
+  function findDoctorPillSpot(api, doctor) {
+    const tile = api.TILE || 32;
+    const size = tile * 0.4;
+    const base = centerPoint(doctor);
+    for (const off of PILL_OFFSETS) {
+      const cx = base.x + off.x * tile;
+      const cy = base.y + off.y * tile;
+      if (isSpotFree(api, doctor, cx, cy, size)) {
+        return { cx, cy, size };
+      }
+    }
+    return null;
+  }
+
+  function isSpotFree(api, doctor, cx, cy, size) {
+    const half = size * 0.5;
+    const left = cx - half;
+    const top = cy - half;
+    if (typeof window.isWallAt === 'function' && window.isWallAt(left, top, size, size)) return false;
+    const tile = api.TILE || 32;
+    const map = api.G?.map;
+    if (Array.isArray(map) && map.length) {
+      const tx = Math.floor(cx / tile);
+      const ty = Math.floor(cy / tile);
+      if (ty < 0 || ty >= map.length || tx < 0 || tx >= (map[ty]?.length || 0)) return false;
+      if (map[ty][tx]) return false;
+    }
+    const area = { x: left, y: top, w: size, h: size };
+    for (const other of api.G?.entities || []) {
+      if (!other || other === doctor || other.dead) continue;
+      if (overlaps(area, other)) return false;
+    }
+    return true;
+  }
+
+  function chooseRandomBuff(type) {
+    const pool = type === 'positive' ? POSITIVE_BUFFS : type === 'negative' ? NEGATIVE_BUFFS : [...POSITIVE_BUFFS, ...NEGATIVE_BUFFS];
+    if (!pool.length) return null;
+    const effectId = pool[Math.floor(Math.random() * pool.length)];
+    const cfg = BUFF_CONFIG[effectId];
+    if (!cfg) return null;
+    return { type: cfg.type || type, effectId };
+  }
+
+  function applyDoctorBuff(hero, buff) {
+    const api = MedicoAPI;
+    const G = api.G;
+    const carrier = hero || G?.player;
+    if (!carrier || !buff) return false;
+    const config = BUFF_CONFIG[buff.effectId];
+    if (!config) return false;
+    if (config.damage) {
+      try { window.damagePlayer?.({ kind: 'pill_doctor', id: 'doctor_pill' }, config.damage); } catch (_) {}
+    }
+    if (!config.duration || config.duration <= 0) {
+      if (isDebug()) console.debug('[DOCTOR_PILL] apply buff', { heroId: carrier.id || carrier.heroId || 'player', type: config.type || buff.type || 'instant', effectId: buff.effectId });
+      return true;
+    }
+    const effect = {
+      effectId: buff.effectId,
+      type: config.type || buff.type,
+      t: config.duration,
+      speedMul: config.speedMul,
+      pushMul: config.pushMul,
+      accelMul: config.accelMul,
+      visionDelta: config.visionDelta,
+      invertControls: !!config.invertControls,
+      shield: config.shield || 0
+    };
+    if (effect.shield > 0) {
+      carrier.shield = (carrier.shield || 0) + effect.shield;
+    }
+    api._addEffect(effect);
+    if (isDebug()) console.debug('[DOCTOR_PILL] apply buff', { heroId: carrier.id || carrier.heroId || 'player', type: effect.type || buff.type || 'random', effectId: buff.effectId });
+    return true;
+  }
+
+  MedicoAPI.spawnDoctorRandomPill = spawnDoctorRandomPill;
+  MedicoAPI.applyDoctorBuff = applyDoctorBuff;
+
   try {
     const G = window.G || (window.G = {});
     MedicoAPI.init(G);
-    // meter update al sistema si existe
-    if (Array.isArray(G.systems)) G.systems.push({ id: 'medics', update: (dt) => MedicoAPI.update(dt) });
-    // si tu input central expone g.onInteract, nos enganchamos
-    if (!G.onInteract) G.onInteract = [];
+    if (Array.isArray(G.systems)) {
+      G.systems.push({ id: 'medics', update: (dt) => MedicoAPI.update(dt) });
+    } else {
+      G.systems = [{ id: 'medics', update: (dt) => MedicoAPI.update(dt) }];
+    }
+    if (!Array.isArray(G.onInteract)) G.onInteract = [];
     G.onInteract.push(() => MedicoAPI.tryInteract());
-  } catch(_) {}
+  } catch (_) {}
 
-  // Export público
   window.MedicoAPI = MedicoAPI;
+  window.startDoctorEasyRiddleDialog = startDoctorEasyRiddleDialog;
+  window.onDoctorDialogEnd = onDoctorDialogEnd;
 })();

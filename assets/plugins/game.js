@@ -2041,6 +2041,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const D = !!keys['arrowdown'],  U = !!keys['arrowup'];
     let dx = (R ? 1 : 0) - (L ? 1 : 0);
     let dy = (D ? 1 : 0) - (U ? 1 : 0);
+    if (p._doctorInvertControls) {
+      dx = -dx;
+      dy = -dy;
+    }
 
     if (window.DEBUG_FORCE_ASCII) {
       // log discreto solo en debug
@@ -2094,6 +2098,13 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (!pill || pill.dead) return false;
     const carrier = hero || G.player || null;
     if (!carrier) return false;
+    const kindStr = (pill.kind || pill.kindName || '').toString().toLowerCase();
+    const isDoctorPill = kindStr === 'pill_doctor' || pill.source === 'doctor';
+    if (isDoctorPill) {
+      const applied = window.MedicoAPI?.applyDoctorBuff?.(carrier, pill.buff);
+      removePillEntity(pill);
+      return !!applied;
+    }
     if (carrier.carry || G.carry) return false;
     const carry = {
       type: 'PILL',
@@ -2116,15 +2127,20 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     console.debug('[PILL] Player picked pill', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
     try { window.ObjectiveSystem?.onPillPicked?.(carry); } catch (_) {}
     try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
+    removePillEntity(pill);
+    try {
+      window.HUD?.showFloatingMessage?.(carrier, `Has cogido medicina para ${carry.patientName || 'un paciente'}`, 1.6);
+    } catch (_) {}
+    return true;
+  }
+
+  function removePillEntity(pill) {
+    if (!pill) return;
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== pill);
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== pill);
     detachEntityRig(pill);
     pill.dead = true;
-    try {
-      window.HUD?.showFloatingMessage?.(carrier, `Has cogido medicina para ${carry.patientName || 'un paciente'}`, 1.6);
-    } catch (_) {}
-    return true;
   }
 
   function resolveHeroCarry(hero) {
