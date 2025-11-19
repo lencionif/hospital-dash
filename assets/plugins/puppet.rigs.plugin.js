@@ -2517,53 +2517,131 @@
     }
   });
 
-  registerHumanRig('npc_supervisora', {
-    totalHeight: 60,
-    entityHeight: 58,
-    torsoWidth: 18,
-    torsoHeight: 30,
-    legLength: 20,
-    armLength: 20,
-    walkCycle: 6.1,
-    walkBob: 2.0,
-    idleBob: 0.5,
-    swayAmp: 0.7,
-    scale: 0.98,
-    shadowRadius: 11,
-    offsetY: -3,
-    colors: {
-      body: '#c7b9ff',
-      accent: '#8a78d7',
-      head: '#f5d2c4',
-      limbs: '#2a2135',
-      detail: '#120c19'
+  const rig_supervisora = {
+    create() {
+      return {
+        anim: 'idle',
+        phase: Math.random() * TAU,
+        bob: 0,
+        idlePhase: Math.random() * TAU,
+        extraPhase: 0
+      };
     },
-    extraUpdate(st, e, dt){
-      const target = e?.dialogTarget || e?.talkTarget || e?.target;
-      let desired = 0;
-      if (target && typeof target.x === 'number'){
-        const targetX = (target.x || 0) + (target.w || 0) * 0.5;
-        const selfX = (e?.x || 0) + (e?.w || 0) * 0.5;
-        desired = Math.max(-0.35, Math.min(0.35, (targetX - selfX) * 0.0015));
+    update(st, e, dt) {
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      if (speed > 0 && (e?.ai?.state === 'patrol' || e?.ai?.state === 'cooldown')) {
+        st.phase += dt * 6.1;
+        st.bob = Math.sin(st.phase) * 2.0;
+      } else {
+        st.idlePhase += dt * 1.2;
+        st.bob = Math.sin(st.idlePhase) * 1.0;
       }
-      st.headTurn += (desired - st.headTurn) * Math.min(1, dt * 6);
-      st.headTiltTarget = st.moving ? 0.02 : 0.05 * Math.sin(st.time * 0.8);
+      st.anim = e?.anim || st.anim || 'idle';
+      if (st.anim === 'extra' || st.anim === 'powerup') {
+        st.extraPhase += dt * 4.0;
+      } else {
+        st.extraPhase = 0;
+      }
     },
-    extraDraw(ctx, st, helper, stage){
-      if (stage === 'afterTorso'){
-        const { dims } = helper;
-        ctx.save();
-        ctx.fillStyle = '#fefefe';
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen) return;
+      const [cx, cy, sc] = screen;
+      const s = sc * 0.9; // mantiene la figura dentro del tile base
+      ctx.save();
+      ctx.translate(cx, cy + st.bob);
+      ctx.scale(s, s);
+      // Todas las coordenadas siguientes se mantienen en x,y ∈ [-0.5, 0.5]
+      // y no se dibujan partículas ni efectos fuera de ese rango.
+      const drawRoundRect = (x, y, w, h, r) => {
+        const rad = Math.max(0, Math.min(Math.abs(r), Math.abs(w) * 0.5, Math.abs(h) * 0.5));
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, w, h, rad);
+        } else {
+          ctx.moveTo(x + rad, y);
+          ctx.lineTo(x + w - rad, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+          ctx.lineTo(x + w, y + h - rad);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+          ctx.lineTo(x + rad, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+          ctx.lineTo(x, y + rad);
+          ctx.quadraticCurveTo(x, y, x + rad, y);
+        }
+      };
+
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.45, 0.25, 0.12, 0, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#f7f7f7';
+      ctx.beginPath();
+      drawRoundRect(-0.18, -0.05, 0.36, 0.4, 0.12);
+      ctx.fill();
+
+      ctx.fillStyle = '#f7f7f7';
+      ctx.fillRect(-0.11, 0.20, 0.08, 0.18);
+      ctx.fillRect(0.03, 0.20, 0.08, 0.18);
+
+      ctx.fillStyle = '#d93232';
+      ctx.beginPath();
+      drawRoundRect(-0.14, 0.35, 0.12, 0.08, 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      drawRoundRect(0.02, 0.35, 0.12, 0.08, 0.03);
+      ctx.fill();
+
+      ctx.fillStyle = '#f4c98a';
+      ctx.beginPath();
+      ctx.arc(0, -0.18, 0.16, 0, TAU);
+      ctx.fill();
+
+      ctx.fillStyle = '#f6c95a';
+      ctx.beginPath();
+      ctx.arc(0, -0.19, 0.18, 0.2, 2.94);
+      ctx.fill();
+
+      ctx.fillStyle = '#4c2a1a';
+      ctx.beginPath();
+      ctx.arc(0.05, -0.20, 0.022, 0, TAU);
+      ctx.fill();
+
+      ctx.strokeStyle = '#4c2a1a';
+      ctx.lineWidth = 0.02;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-0.06, -0.21);
+      ctx.lineTo(-0.02, -0.205);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, -0.14, 0.06, 0.1, 3.04);
+      ctx.stroke();
+
+      ctx.fillStyle = '#2e6c9f';
+      ctx.fillRect(-0.04, -0.02, 0.08, 0.04);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-0.032, -0.015, 0.064, 0.028);
+
+      if (st.anim === 'extra' || st.anim === 'powerup') {
+        const a = 0.5 + 0.3 * Math.sin(st.extraPhase);
+        ctx.fillStyle = `rgba(255, 215, 0, ${a})`;
         ctx.beginPath();
-        ctx.moveTo(-dims.torsoW * 0.45, dims.torsoTop + 3);
-        ctx.lineTo(0, dims.torsoTop + dims.torsoH * 0.3);
-        ctx.lineTo(dims.torsoW * 0.45, dims.torsoTop + 3);
+        ctx.moveTo(0.28, -0.30);
+        ctx.lineTo(0.32, -0.22);
+        ctx.lineTo(0.40, -0.18);
+        ctx.lineTo(0.32, -0.14);
+        ctx.lineTo(0.28, -0.06);
         ctx.closePath();
         ctx.fill();
-        ctx.restore();
       }
+
+      ctx.restore();
     }
-  });
+  };
+
+  API.registerRig('npc_supervisora', rig_supervisora);
 
   registerHumanRig('npc_tcae', {
     totalHeight: 60,
