@@ -1327,49 +1327,51 @@
     updateHeroFlashAnchor(st, e);
   }
 
-  const HERO_ACTION_CLASS_MAP = (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP)
-    ? window.HERO_ACTION_CLASS_MAP
-    : {
+  const HERO_ACTION_CLASS_MAP = (() => {
+    if (typeof window !== 'undefined' && window.HERO_ACTION_CLASS_MAP){
+      return window.HERO_ACTION_CLASS_MAP;
+    }
+    const map = {
       enrique: {
         idle: 'anim-enrique-idle',
         walk: 'anim-enrique-caminar',
-      push: 'anim-enrique-empujar',
-      attack: 'anim-enrique-atacar',
-      talk: 'anim-enrique-hablar',
-      eat: 'anim-enrique-comer',
-      powerup: 'anim-enrique-comer',
-      hurt: null,
-      dead: null,
-      default: 'anim-enrique-idle'
-    },
-    roberto: {
-      idle: 'anim-roberto-idle',
-      walk: 'anim-roberto-caminar',
-      push: 'anim-roberto-empujar',
-      attack: 'anim-roberto-atacar',
-      talk: 'anim-roberto-hablar',
-      eat: 'anim-roberto-comer',
-      powerup: 'anim-roberto-comer',
-      hurt: null,
-      dead: null,
-      default: 'anim-roberto-idle'
-    },
-    francesco: {
-      idle: 'anim-francesco-idle',
-      walk: 'anim-francesco-caminar',
-      push: 'anim-francesco-empujar',
-      attack: 'anim-francesco-atacar',
-      talk: 'anim-francesco-hablar',
-      eat: 'anim-francesco-comer',
-      powerup: 'anim-francesco-comer',
-      hurt: null,
+        push: 'anim-enrique-empujar',
+        attack: 'anim-enrique-atacar',
+        talk: 'anim-enrique-hablar',
+        eat: 'anim-enrique-comer',
+        powerup: 'anim-enrique-comer',
+        hurt: null,
+        dead: null,
+        default: 'anim-enrique-idle'
+      },
+      roberto: {
+        idle: 'anim-roberto-idle',
+        walk: 'anim-roberto-caminar',
+        push: 'anim-roberto-empujar',
+        attack: 'anim-roberto-atacar',
+        talk: 'anim-roberto-hablar',
+        eat: 'anim-roberto-comer',
+        powerup: 'anim-roberto-comer',
+        hurt: null,
+        dead: null,
+        default: 'anim-roberto-idle'
+      },
+      francesco: {
+        idle: 'anim-francesco-idle',
+        walk: 'anim-francesco-caminar',
+        push: 'anim-francesco-empujar',
+        attack: 'anim-francesco-atacar',
+        talk: 'anim-francesco-hablar',
+        eat: 'anim-francesco-comer',
+        powerup: 'anim-francesco-comer',
+        hurt: null,
         dead: null,
         default: 'anim-francesco-idle'
       }
     };
-  if (typeof window !== 'undefined'){
-    window.HERO_ACTION_CLASS_MAP = HERO_ACTION_CLASS_MAP;
-  }
+    if (typeof window !== 'undefined'){ window.HERO_ACTION_CLASS_MAP = map; }
+    return map;
+  })();
 
   const HERO_DEATH_CLASS_MAP = {
     enrique: {
