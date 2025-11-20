@@ -995,7 +995,7 @@
   // Cámara
   const camera = { x: 0, y: 0, zoom: 0.45 }; // ⬅️ arranca ya alejado
   G.camera = camera;
-
+  
   function getCameraState(){
     const base = G.camera || camera || { x: 0, y: 0, zoom: 1 };
     const zoom = Number.isFinite(base.zoom) && base.zoom > 0 ? base.zoom : 1;
@@ -1006,6 +1006,20 @@
       offsetX: VIEW_W * 0.5 + (shake.x || 0),
       offsetY: VIEW_H * 0.5 + (shake.y || 0)
     };
+  }
+
+  function centerCameraOnPlayer(player = G?.player){
+    if (!player) return;
+    const pw = Number.isFinite(player.w) ? player.w : TILE;
+    const ph = Number.isFinite(player.h) ? player.h : TILE;
+    const baseX = Number(player.x) || 0;
+    const baseY = Number(player.y) || 0;
+    camera.x = baseX + pw * 0.5;
+    camera.y = baseY + ph * 0.5;
+    camera.viewportOffsetX = 0;
+    camera.viewportOffsetY = 0;
+    camera.viewportX = VIEW_W * 0.5;
+    camera.viewportY = VIEW_H * 0.5;
   }
 
   function applyWorldCamera(ctx){
@@ -3981,6 +3995,16 @@ function drawEntities(c2){
     const height = G.mapH || ASCII_MAP.length;
     const asciiString = ASCII_MAP.join('\n');
 
+    G.ascii = () => asciiString;
+    G.asciiString = asciiString;
+    window.MapAPI = window.MapAPI || {};
+    window.MapAPI.ascii = () => asciiString;
+    if (DEBUG_MAP_MODE) {
+      try {
+        console.debug(`[debug-map] ASCII (${width}x${height}):\n${asciiString}`);
+      } catch (_) {}
+    }
+
     const asciiPlacements = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
     if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
       asciiPlacements.push(...G.mapgenPlacements);
@@ -4506,6 +4530,8 @@ function drawEntities(c2){
         window.Minimap?.refresh?.();
       } catch(_){ }
 
+      centerCameraOnPlayer();
+
       document.getElementById('minimapOverlay')?.classList.add('hidden');
       document.getElementById('minimap')?.classList.remove('expanded');
       window.__setMinimapMode?.('small');
@@ -4815,8 +4841,10 @@ function drawEntities(c2){
     if (!minimapVisible) { requestAnimationFrame(drawMinimap); return; }
 
     const w = G.mapW, h = G.mapH;
-    const sx = mm.width  / w;
-    const sy = mm.height / h;
+    const scale = Math.min(mm.width / w, mm.height / h);
+    const offsetX = (mm.width - w * scale) * 0.5;
+    const offsetY = (mm.height - h * scale) * 0.5;
+    const cellSize = scale;
 
     // Mapa base
     mctx.clearRect(0,0,mm.width,mm.height);
@@ -4824,24 +4852,25 @@ function drawEntities(c2){
       for (let tx=0; tx<w; tx++){
         const v = (G.map[ty] && G.map[ty][tx]) ? 1 : 0; // 1=pared, 0=suelo
         mctx.fillStyle = v ? '#1d1f22' : '#6b7280';
-        mctx.fillRect(tx*sx, ty*sy, sx, sy);
+        mctx.fillRect(offsetX + tx*scale, offsetY + ty*scale, cellSize, cellSize);
       }
     }
 
     // Entidades (puntitos)
     const ents = (G.entities || []);
     for (const e of ents){
-      const ex = (e.x || 0) / TILE;
-      const ey = (e.y || 0) / TILE;
+      const ex = ((e.x || 0) + ((e.w || TILE) * 0.5)) / TILE;
+      const ey = ((e.y || 0) + ((e.h || TILE) * 0.5)) / TILE;
       mctx.fillStyle = colorFor(e);
-      mctx.fillRect(ex*sx, ey*sy, Math.max(1,sx*0.85), Math.max(1,sy*0.85));
+      mctx.fillRect(offsetX + ex*scale, offsetY + ey*scale, Math.max(1, cellSize*0.85), Math.max(1, cellSize*0.85));
     }
 
     // Player
     if (G.player){
-      const px = (G.player.x||0)/TILE, py = (G.player.y||0)/TILE;
+      const px = ((G.player.x||0) + ((G.player.w||TILE) * 0.5))/TILE;
+      const py = ((G.player.y||0) + ((G.player.h||TILE) * 0.5))/TILE;
       mctx.fillStyle = '#ffffff';
-      mctx.fillRect(px*sx, py*sy, Math.max(1,sx), Math.max(1,sy));
+      mctx.fillRect(offsetX + px*scale, offsetY + py*scale, Math.max(1, cellSize), Math.max(1, cellSize));
     }
 
     // Frustum de cámara (rectángulo)
@@ -4852,7 +4881,7 @@ function drawEntities(c2){
     const topTiles  = (cam.y/TILE) - vhTiles*0.5;
     mctx.strokeStyle = '#ffffff';
     mctx.lineWidth = 1;
-    mctx.strokeRect(leftTiles*sx, topTiles*sy, vwTiles*sx, vhTiles*sy);
+    mctx.strokeRect(offsetX + leftTiles*scale, offsetY + topTiles*scale, vwTiles*scale, vhTiles*scale);
 
     requestAnimationFrame(drawMinimap);
   }
