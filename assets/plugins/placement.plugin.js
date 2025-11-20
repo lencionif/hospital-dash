@@ -112,18 +112,16 @@
       G.TILE_SIZE = globals.tileSize;
     }
     G.globals = { ...(G.globals || {}), ...globals };
-    const vrRaw = Number(globals.visualRadius);
-    const vrTiles = Number.isFinite(vrRaw) && vrRaw > 0 ? vrRaw : 8;
-    G.visualRadiusTiles = vrTiles;
-    const visibleRaw = Number(globals.visibleTilesRadius);
-    if (Number.isFinite(visibleRaw) && visibleRaw > 0) {
-      G.visibleTilesRadius = visibleRaw;
-    } else if (!Number.isFinite(G.visibleTilesRadius) || G.visibleTilesRadius <= 0) {
-      G.visibleTilesRadius = 8;
-    }
+    const cullingRaw = Number(globals.culling);
+    const fallbackCulling = Number.isFinite(G.cullingRadiusTiles) && G.cullingRadiusTiles > 0
+      ? G.cullingRadiusTiles
+      : 20;
+    const cullingTiles = Number.isFinite(cullingRaw) && cullingRaw > 0 ? cullingRaw : fallbackCulling;
+    G.cullingRadiusTiles = cullingTiles;
+    G.culling = cullingTiles;
     const tile = TILE_SIZE();
     const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
-    G.visualRadiusPx = vrTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
+    G.cullingRadiusPx = cullingTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     if (typeof globals.defaultHero === 'string' && !G.selectedHero) {
       G.selectedHero = globals.defaultHero;
     }
@@ -752,9 +750,13 @@
     }
 
     applyGlobals(globals, G);
-    const levelVisibleRaw = Number(level.visibleTilesRadius);
-    if (Number.isFinite(levelVisibleRaw) && levelVisibleRaw > 0) {
-      G.visibleTilesRadius = levelVisibleRaw;
+    const levelCullingRaw = Number(level.culling);
+    if (Number.isFinite(levelCullingRaw) && levelCullingRaw > 0) {
+      G.cullingRadiusTiles = levelCullingRaw;
+      G.culling = levelCullingRaw;
+      const tile = TILE_SIZE();
+      const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
+      G.cullingRadiusPx = levelCullingRaw * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     }
 
     const rng = (typeof root.MapGen?.createRNG === 'function')

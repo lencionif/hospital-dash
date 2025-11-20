@@ -142,10 +142,14 @@
     const overrideRadiusTiles = (overrides.radiusTiles ?? (Number.isFinite(overrides.radius)
       ? overrides.radius / (TILE || 32)
       : undefined));
-    const radiusTiles = overrideRadiusTiles ?? heroLight.radiusTiles ?? defaults.radiusTiles ?? 6;
-    const innerTiles = overrides.innerTiles
+    const desiredRadiusTiles = overrideRadiusTiles ?? heroLight.radiusTiles ?? defaults.radiusTiles ?? 6;
+    const cullTiles = Number.isFinite(G?.cullingRadiusTiles) && G.cullingRadiusTiles > 0 ? G.cullingRadiusTiles : null;
+    const maxCullingRadius = cullTiles ? Math.max(1, cullTiles - 1) : null;
+    const radiusTiles = maxCullingRadius ? Math.min(desiredRadiusTiles, maxCullingRadius) : desiredRadiusTiles;
+    const desiredInnerTiles = overrides.innerTiles
       ?? heroLight.innerTiles
       ?? ((heroLight.innerRatio ?? defaults.innerRatio ?? 0.5) * radiusTiles);
+    const innerTiles = Math.min(radiusTiles, desiredInnerTiles);
     const color = overrides.color || heroLight.color || defaults.color || '#ffffff';
     const intensity = overrides.intensity ?? heroLight.intensity ?? defaults.intensity ?? 0.6;
     const coneDeg = heroLight.coneDeg ?? defaults.coneDeg ?? 80;
