@@ -609,6 +609,12 @@
     const riddle = RIDDLES[ai.riddleIndex % RIDDLES.length];
     ai.riddleIndex = (ai.riddleIndex + 1) % RIDDLES.length;
     setAnim(e, 'talk');
+    e.isTalking = true;
+    if (hero) {
+      hero.vx = 0; hero.vy = 0;
+      hero.isTalking = true;
+      try { W.Entities?.Hero?.setTalking?.(hero, true); } catch (_) {}
+    }
     let finished = false;
     const finish = (correct) => {
       if (finished) return;
@@ -616,53 +622,34 @@
       onChiefDialogEnd(e, hero, correct);
     };
 
-    const buttons = riddle.options.map((label, idx) => ({
-      label,
-      primary: idx === riddle.correctIndex,
-      action: () => finish(idx === riddle.correctIndex)
-    }));
+    const opened = W.DialogUtils?.openRiddleDialog?.({
+      id: riddle.key || riddle.title,
+      title: 'Jefe de Servicio',
+      ask: riddle.text,
+      options: riddle.options,
+      hint: riddle.hint,
+      correctIndex: riddle.correctIndex,
+      portraitCssVar: '--sprite-jefe-servicio',
+      allowEsc: false,
+      onSuccess: () => finish(true),
+      onFail: () => finish(false),
+      onClose: () => finish(false)
+    });
 
-    if (W.DialogAPI?.openRiddle) {
-      W.DialogAPI.openRiddle({
-        title: 'Jefe de Servicio',
-        ask: riddle.text,
-        answers: riddle.options,
-        portraitCssVar: '--sprite-jefe-servicio',
-        allowEsc: false,
-        onSuccess: () => finish(true),
-        onFail: () => finish(false)
-      });
-      return;
+    if (!opened) {
+      finish(false);
     }
-    if (W.DialogAPI?.open) {
-      W.DialogAPI.open({
-        title: 'Jefe de Servicio',
-        text: riddle.text,
-        portraitCssVar: '--sprite-jefe-servicio',
-        buttons,
-        onClose: () => finish(false)
-      });
-      return;
-    }
-    if (W.Dialog?.open) {
-      W.Dialog.open({
-        portrait: 'jefe_servicio.png',
-        title: riddle.title,
-        text: riddle.text,
-        options: riddle.options,
-        correctIndex: riddle.correctIndex,
-        onAnswer: (idx) => finish(idx === riddle.correctIndex)
-      });
-      return;
-    }
-    const answer = W.prompt(`${riddle.text}\n${riddle.options.map((o, i) => `[${i + 1}] ${o}`).join('\n')}`, '1');
-    finish((Number(answer) | 0) - 1 === riddle.correctIndex);
   }
 
   function onChiefDialogEnd(e, hero, correct) {
     const ai = e.ai || (e.ai = {});
     ai.state = 'patrol';
+    e.isTalking = false;
     setAnim(e, 'idle');
+    if (hero) {
+      hero.isTalking = false;
+      try { W.Entities?.Hero?.setTalking?.(hero, false); } catch (_) {}
+    }
     if (correct) {
       applyMajorReward(hero);
     } else {

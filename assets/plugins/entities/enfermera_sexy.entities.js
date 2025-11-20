@@ -218,27 +218,20 @@
     if (!riddle){ finish(); return; }
     ai.dialogActive = true;
     if (DEBUG()) console.debug('[NURSE_TALK] start riddle', { riddleIndex: ai.riddleIndex });
-    if (W.DialogAPI?.open){
-      W.DialogAPI.open({
-        title: 'Enfermera del Corazón',
-        text: riddle.ask,
-        hint: riddle.hint || '',
-        allowEsc: true,
-        buttons: riddle.options.map((opt, idx) => ({
-          id: `opt_${idx}`,
-          label: opt.label,
-          primary: idx === 0,
-          close: true,
-          action: () => onAnswer(!!opt.correct)
-        })),
-        onClose: finish
-      });
-    } else {
-      const text = riddle.options.map((opt, idx) => `${idx + 1}) ${opt.label}`).join('\n');
-      const answer = W.prompt(`${riddle.ask}\n${text}`, '1');
-      const pick = Number(answer || '0') - 1;
-      const opt = riddle.options[pick];
-      onAnswer(!!opt?.correct);
+    const opened = W.DialogUtils?.openRiddleDialog?.({
+      id: riddle.key,
+      title: 'Enfermera del Corazón',
+      ask: riddle.ask,
+      hint: riddle.hint,
+      options: riddle.options.map((opt) => opt.label),
+      correctIndex: Math.max(0, riddle.options.findIndex((opt) => opt.correct)),
+      portraitCssVar: '--sprite-enfermera-sexy',
+      onSuccess: () => onAnswer(true),
+      onFail: () => onAnswer(false),
+      onClose: finish
+    });
+
+    if (!opened) {
       finish();
     }
   }

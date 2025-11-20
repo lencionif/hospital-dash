@@ -433,36 +433,22 @@
       return;
     }
 
-    if (W.DialogAPI?.open) {
-      W.DialogAPI.open({
-        title: 'Supervisora',
-        text: riddle.ask,
-        hint: riddle.hint,
-        portraitCssVar: '--sprite-supervisora',
-        buttons: riddle.options.map((label, idx) => ({
-          label,
-          primary: idx === riddle.correctIndex,
-          action: () => resolve(idx === riddle.correctIndex)
-        })),
-        onClose: finish
-      });
-      return;
-    }
+    const opened = W.DialogUtils?.openRiddleDialog?.({
+      id: riddle.key,
+      title: 'Supervisora',
+      ask: riddle.ask,
+      hint: riddle.hint,
+      options: riddle.options,
+      correctIndex: riddle.correctIndex,
+      portraitCssVar: '--sprite-supervisora',
+      onSuccess: () => resolve(true),
+      onFail: () => resolve(false),
+      onClose: finish
+    });
 
-    if (W.Dialog?.open) {
-      W.Dialog.open({
-        portrait: 'supervisora.png',
-        text: riddle.ask,
-        options: riddle.options,
-        correct: riddle.correctIndex,
-        onAnswer: (idx) => resolve(idx === riddle.correctIndex)
-      });
-      return;
+    if (!opened) {
+      finish(false);
     }
-
-    const answer = W.prompt(`${riddle.ask}\n${riddle.options.map((o, i) => `[${i + 1}] ${o}`).join('\n')}`, '1');
-    const pick = (Number(answer) | 0) - 1;
-    resolve(pick === riddle.correctIndex);
   }
 
   function onSupervisorDialogEnd(ent, hero) {
