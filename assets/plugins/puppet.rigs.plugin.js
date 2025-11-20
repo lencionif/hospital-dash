@@ -4698,6 +4698,161 @@
   };
   API.registerRig('patient_hematologic_lvl1', rig_patient_hematologic_lvl1);
 
+  // ───────────────────────────── PACIENTE PIROMANA NIVEL 3 ───────────────────────────────
+  const rig_paciente_pyromana_lvl3 = {
+    create(){
+      return { anim: 'idle', phase: Math.random() * TAU, bob: 0, flamePhase: 0, rageGlow: 0 };
+    },
+    update(st, e, dt){
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      st.phase += dt * (speed > 0.01 ? 7 : 4);
+      st.bob = Math.sin(st.phase) * (speed > 0.01 ? 0.4 : 0.2);
+      st.flamePhase += dt * 5;
+      const isRage = e?.ai?.state === 'rage';
+      const targetGlow = isRage ? 1 : 0;
+      st.rageGlow += (targetGlow - st.rageGlow) * Math.min(1, dt * 4);
+    },
+    draw(ctx, cam, e, st){
+      const [cx, cy, sc] = toScreen(cam, e);
+      const s = sc * 0.9;
+      ctx.save();
+      ctx.translate(cx, cy + st.bob * s * 4);
+      ctx.scale(s, s);
+
+      // Sombras sutiles
+      drawShadow(ctx, 10, 1, 0.25, 0.2);
+
+      // Halo de furia
+      if (st.rageGlow > 0.01){
+        ctx.save();
+        ctx.globalAlpha = 0.25 * st.rageGlow;
+        ctx.fillStyle = 'rgba(255,130,60,0.6)';
+        ctx.beginPath();
+        ctx.arc(0, -4, 11, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Cuerpo (vestido blanco)
+      ctx.save();
+      ctx.translate(0, -4);
+      ctx.fillStyle = '#f9f9fb';
+      ctx.strokeStyle = '#c5c5d6';
+      ctx.lineWidth = 0.8;
+      if (safeEllipse(ctx, 0, 2, 7, 8, 0, 0, TAU)) ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // Piernas descalzas
+      ctx.save();
+      ctx.translate(0, 6);
+      ctx.strokeStyle = '#3a2a28';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-3, 0); ctx.lineTo(-3, 5);
+      ctx.moveTo(3, 0); ctx.lineTo(3, 5);
+      ctx.stroke();
+      ctx.fillStyle = '#d9a278';
+      if (safeEllipse(ctx, -3, 6, 2.5, 1.4, 0, 0, TAU)) ctx.fill();
+      if (safeEllipse(ctx, 3, 6, 2.5, 1.4, 0, 0, TAU)) ctx.fill();
+      ctx.restore();
+
+      // Brazos
+      ctx.save();
+      ctx.strokeStyle = '#d9a278';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-6, -1); ctx.lineTo(-9, 2);
+      ctx.moveTo(6, -1); ctx.lineTo(9, 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // Cabeza y pelo
+      ctx.save();
+      ctx.translate(0, -9);
+      ctx.fillStyle = '#2a1c1a';
+      if (safeEllipse(ctx, 0, 0, 6, 6.5, 0, 0, TAU)) ctx.fill();
+      ctx.fillStyle = '#3b2a28';
+      if (safeEllipse(ctx, 0, 1, 6.5, 6.2, 0.1, 0, TAU)) ctx.fill();
+      ctx.restore();
+
+      // Rostro
+      ctx.save();
+      ctx.translate(0, -9);
+      ctx.fillStyle = '#e4b58f';
+      if (safeEllipse(ctx, 0, 0, 5, 4.5, 0, 0, TAU)) ctx.fill();
+      ctx.fillStyle = '#1c1010';
+      ctx.beginPath();
+      ctx.ellipse(-2, -0.8, 0.8, 1.2, 0, 0, TAU); ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(2, -0.8, 0.8, 1.2, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#2a1616';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(-2.5, 1.8); ctx.quadraticCurveTo(0, 3, 2.5, 1.8);
+      ctx.stroke();
+      ctx.restore();
+
+      // Bidón rojo
+      ctx.save();
+      ctx.translate(-9, 2);
+      ctx.rotate(-0.1);
+      ctx.fillStyle = '#d12d2d';
+      ctx.fillRect(-3, -5, 8, 10);
+      ctx.strokeStyle = '#8a1414';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(-3, -5, 8, 10);
+      ctx.strokeStyle = '#f25c5c';
+      ctx.beginPath();
+      ctx.moveTo(-2, 0); ctx.lineTo(4, -2); ctx.lineTo(5, 3);
+      ctx.stroke();
+      ctx.restore();
+
+      // Mechero
+      ctx.save();
+      ctx.translate(10, 0);
+      ctx.fillStyle = '#d0d6df';
+      ctx.fillRect(-1, -3, 3, 6);
+      ctx.fillStyle = '#fcbc3c';
+      const flame = 1.2 + Math.sin(st.flamePhase * 2) * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -4 - flame);
+      ctx.lineTo(-1.5, -2); ctx.lineTo(1.5, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Llamas alrededor
+      ctx.save();
+      const flameCount = 5;
+      for (let i = 0; i < flameCount; i++){
+        const ang = (i / flameCount) * TAU + st.flamePhase * 0.25;
+        const radius = 9 + Math.sin(st.flamePhase * 1.6 + i) * 0.8;
+        const fx = Math.cos(ang) * radius;
+        const fy = Math.sin(ang) * radius - 2;
+        const scale = 1 + st.rageGlow * 0.4;
+        ctx.save();
+        ctx.translate(fx, fy);
+        ctx.scale(scale, scale);
+        const grd = ctx.createLinearGradient(0, -4, 0, 4);
+        safeColorStop(grd, 0, 'rgba(255,210,90,0.9)');
+        safeColorStop(grd, 1, 'rgba(255,100,40,0.6)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.moveTo(0, -4);
+        ctx.quadraticCurveTo(-2.5, 0, 0, 4);
+        ctx.quadraticCurveTo(2.5, 0, 0, -4);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      ctx.restore();
+    }
+  };
+
+  API.registerRig('paciente_pyromana_lvl3', rig_paciente_pyromana_lvl3);
+
   // ───────────────────────────── INFRA ──────────────────────────────
   function doorProgress(e){
     const st = e?.state || {};
