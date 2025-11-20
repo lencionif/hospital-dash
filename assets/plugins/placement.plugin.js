@@ -1827,6 +1827,19 @@
           if (!G.boss) G.boss = entity;
           placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 4 });
         }
+      } else if (type === 'pill') {
+        const payload = { ...(entry || {}) };
+        if (!payload.targetPatientId && payload.patientId) {
+          payload.targetPatientId = payload.patientId;
+        }
+        entity = spawnPill(tx, ty, payload, cfg, G);
+        if (entity) {
+          if (payload.targetPatientId && !entity.targetPatientId) entity.targetPatientId = payload.targetPatientId;
+          if (payload.patientId && !entity.patientId) entity.patientId = payload.patientId;
+          if (Array.isArray(G.pills) && !G.pills.includes(entity)) {
+            G.pills.push(entity);
+          }
+        }
       } else if (type === 'door' && root.Entities?.Door?.spawn) {
         entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
       } else if (type === 'boss_door' && root.Entities?.Door?.spawn) {
