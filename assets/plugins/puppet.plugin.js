@@ -155,6 +155,15 @@
         if (key) return `hero_${key}`;
         return null;
       },
+      familiar: 'npc_familiar_molesto',
+      familiar_molesto: 'npc_familiar_molesto',
+      cleaner: 'npc_limpiadora',
+      medic: 'npc_medico',
+      medico: 'npc_medico',
+      enfermera: 'npc_enfermera_enamoradiza',
+      supervisora: 'npc_supervisora',
+      jefe_servicio: 'npc_jefe_servicio',
+      furiosa: 'patient_furiosa',
       patient: 'patient_bed',
       cart: (ent) => {
         const type = normalizeLookupKey(ent?.cartType || 'med');
@@ -181,11 +190,40 @@
       follower: (ent) => {
         const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || '');
         return key ? `hero_${key}` : null;
-      }
+      },
+      medico: 'npc_medico',
+      enfermera: 'npc_enfermera_enamoradiza',
+      supervisora: 'npc_supervisora',
+      jefe_servicio: 'npc_jefe_servicio',
+      familiar: 'npc_familiar_molesto',
+      furiosa: 'patient_furiosa',
+      cleaner: 'npc_limpiadora'
     },
     spriteKey: {
       timbre_apagado: null,
-      timbre_encendido: null
+      timbre_encendido: null,
+      medico: 'npc_medico',
+      medico_png: 'npc_medico',
+      'medico.png': 'npc_medico',
+      supervisora: 'npc_supervisora',
+      supervisora_png: 'npc_supervisora',
+      'supervisora.png': 'npc_supervisora',
+      enfermera_sexy: 'npc_enfermera_enamoradiza',
+      enfermera: 'npc_enfermera_enamoradiza',
+      enfermera_png: 'npc_enfermera_enamoradiza',
+      'enfermera_sexy.png': 'npc_enfermera_enamoradiza',
+      paciente_furiosa: 'patient_furiosa',
+      paciente_furiosa_png: 'patient_furiosa',
+      'paciente_furiosa.png': 'patient_furiosa',
+      familiar_molesto: 'npc_familiar_molesto',
+      familiar_molesto_png: 'npc_familiar_molesto',
+      'familiar_molesto.png': 'npc_familiar_molesto',
+      jefe_servicio: 'npc_jefe_servicio',
+      jefe_servicio_png: 'npc_jefe_servicio',
+      'jefe_servicio.png': 'npc_jefe_servicio',
+      chica_limpieza: 'npc_limpiadora',
+      chica_limpieza_png: 'npc_limpiadora',
+      'chica_limpieza.png': 'npc_limpiadora'
     }
   };
 
