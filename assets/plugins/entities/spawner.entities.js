@@ -192,7 +192,9 @@
       if (s === 'supervisora'  && W.Entities?.SupervisoraAPI?.spawn) return W.Entities.SupervisoraAPI.spawn(x, y);
       if (s === 'guardia'      && W.Entities?.Guardia?.spawn)       return W.Entities.Guardia.spawn({ tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) });
       if (s === 'familiar'     && W.FamiliarAPI?.registerFamiliarEntity) { const e = { x, y, w: TILE * 0.95, h: TILE * 0.95 }; W.FamiliarAPI.registerFamiliarEntity(e); return e; }
-      if (s === 'enfermera_sexy' && W.EnfermeraSexyAPI?.spawnEnfermera) return W.EnfermeraSexyAPI.spawnEnfermera(Math.floor(x / TILE), Math.floor(y / TILE), {});
+      if ((s === 'enfermera_enamoradiza' || s === 'enfermera_sexy') && W.EnfermeraSexyAPI?.spawnEnfermera) {
+        return W.EnfermeraSexyAPI.spawnEnfermera(Math.floor(x / TILE), Math.floor(y / TILE), {});
+      }
 
       console.warn('[SpawnerManager] No hay spawn para npc:', sub);
       return null;
