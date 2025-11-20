@@ -655,7 +655,7 @@
       h: spot.size,
       solid: false,
       dynamic: false,
-      spriteKey: 'pill.generic',
+      spriteKey: 'pill_generic',
       color: buff.type === 'positive' ? '#7cf29a' : '#ff7c7c'
     };
     if (!G.entities.includes(pill)) G.entities.push(pill);
@@ -664,8 +664,8 @@
     pill.group = 'item';
     try { window.EntityGroups?.assign?.(pill); } catch (_) {}
     try {
-      window.Puppet?.bind?.(pill, 'pill', { z: 0, scale: 1, data: { skin: 'pill.generic' } })
-        || window.PuppetAPI?.attach?.(pill, { rig: 'pill', z: 0, scale: 1, data: { skin: 'pill.generic' } });
+      window.Puppet?.bind?.(pill, 'pill', { z: 0, scale: 1, data: { skin: 'pill_generic' } })
+        || window.PuppetAPI?.attach?.(pill, { rig: 'pill', z: 0, scale: 1, data: { skin: 'pill_generic' } });
     } catch (_) {}
     if (isDebug()) console.debug('[DOCTOR_PILL] spawn', { doctorId: doctor.id || null, x: pill.x, y: pill.y, buff: pill.buff });
     return pill;

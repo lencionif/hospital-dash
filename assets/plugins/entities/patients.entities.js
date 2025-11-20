@@ -76,7 +76,8 @@
     'pastilla_luzon.png',
     'pastilla_patoplast.png',
     'pastilla_tillaout.png',
-    'pastilla_zenidina.png'
+    'pastilla_zenidina.png',
+    'pill_generic.png'
   ];
 
   function isBlockedRect(x, y, w, h) {
@@ -319,7 +320,7 @@
       forPatientId: patient.id,
       patientId: patient.id,
       patientName: patient.displayName,
-      spriteKey: 'pill.generic',
+      spriteKey: 'pill_generic',
       skin: pillSkin
     };
     try {

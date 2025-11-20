@@ -1766,7 +1766,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
 
     // 10) 7 PACIENTES + PASTILLAS + TIMBRES enlazados (no en Control ni Boss)
     const usedRooms = rooms.filter(r=> r!==ctrl && r!==bossR);
-    const kindsPills = ['pastilla_azul','pastilla_zenidina','pastilla_tillalout','pastilla_gaviscon','pastilla_luzon','pastilla_patoplast','pastilla_generic'];
+    const kindsPills = ['pastilla_azul','pastilla_zenidina','pastilla_tillaout','pastilla_gaviscon','pastilla_luzon','pastilla_patoplast','pill_generic'];
     const takeN = Math.min(7, usedRooms.length);
     for (let i=0;i<takeN;i++){
       const rP = usedRooms[i]; const pPt = randomInside(rP,2);
