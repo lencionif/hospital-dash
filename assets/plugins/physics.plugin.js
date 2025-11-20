@@ -137,6 +137,7 @@
     let TILE = window.TILE_SIZE || 32;
     let lastFireSpawn = -Infinity;
     let loggedSummary = false;
+    const collisionWarnings = new WeakSet();
 
     const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
     const isDebugPhysics = () => {
@@ -389,6 +390,148 @@
         targetType: targetLabel,
         damage: shouldCrush ? 'crush' : Number(damage.toFixed ? damage.toFixed(2) : damage)
       });
+    }
+
+    function kindString(ent){
+      return (ent?.kindName || ent?.kind || ent?.type || ent?.tag || '').toString().toLowerCase();
+    }
+
+    function isPatientEntity(ent){
+      if (!ent) return false;
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
+      if (ENT && ent.kind === ENT.PATIENT) return true;
+      const k = kindString(ent);
+      return k.includes('patient') || k.includes('paciente');
+    }
+
+    function isPillEntity(ent){
+      if (!ent) return false;
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
+      if (ENT && ent.kind === ENT.PILL) return true;
+      const k = kindString(ent);
+      return k.includes('pill') || k.includes('pastilla');
+    }
+
+    function removePillEntity(pill){
+      if (!G || !pill) return;
+      pill.dead = true;
+      if (Array.isArray(G.entities)) G.entities = G.entities.filter((e) => e !== pill);
+      if (Array.isArray(G.pills)) G.pills = G.pills.filter((e) => e !== pill);
+      try { window.PuppetAPI?.detach?.(pill); } catch (_) {}
+      try { window.EntityGroups?.unregister?.(pill, G); } catch (_) {}
+    }
+
+    function pickupPillOnContact(hero, pill){
+      if (!hero || !pill || hero.carry || G.carry) return false;
+      const k = kindString(pill);
+      const isDoctorPill = k.includes('pill_doctor') || pill.source === 'doctor';
+      if (isDoctorPill){
+        const applied = window.MedicoAPI?.applyDoctorBuff?.(hero, pill.buff);
+        if (!applied && !collisionWarnings.has(pill)){
+          collisionWarnings.add(pill);
+          try { console.warn('[PhysicsCollision] Buff de pastilla de doctor no aplicado', { pillId: pill.id || null }); } catch (_) {}
+        }
+        if (applied) removePillEntity(pill);
+        return !!applied;
+      }
+      const carry = {
+        type: 'PILL',
+        kind: 'PILL',
+        id: pill.id,
+        label: pill.label || 'Pastilla',
+        patientName: pill.targetName || pill.patientName || null,
+        pairName: pill.pairName || null,
+        anagram: pill.anagram || null,
+        forPatientId: pill.forPatientId || pill.patientId || null,
+        patientId: pill.patientId || pill.forPatientId || null,
+        targetPatientId: pill.forPatientId || pill.patientId || null,
+      };
+      hero.carry = carry;
+      G.carry = carry;
+      hero.currentPill = carry;
+      G.currentPill = carry;
+      hero.inventory = hero.inventory || {};
+      hero.inventory.medicine = Object.assign({}, carry);
+      removePillEntity(pill);
+      try { window.LOG?.event?.('PILL_PICKUP', { pill: carry.id || pill.id || null }); } catch (_) {}
+      return true;
+    }
+
+    function deliverPillOnContact(hero, patient){
+      if (!hero || !patient) return false;
+      if (!window.PatientsAPI?.canDeliver || !window.PatientsAPI?.deliverPill) return false;
+      if (!window.PatientsAPI.canDeliver(hero, patient)) return false;
+      const delivered = window.PatientsAPI.deliverPill(hero, patient);
+      if (!delivered && !collisionWarnings.has(patient)){
+        collisionWarnings.add(patient);
+        try { console.warn('[PhysicsCollision] Entrega de pastilla fallida en contacto', { patientId: patient.id || null }); } catch (_) {}
+      }
+      return !!delivered;
+    }
+
+    function applyTouchDamageToHero(hero, other){
+      const dmg = Number.isFinite(other?.touchDamage) ? other.touchDamage : Number(other?.damageOnTouch) || 0;
+      if (!(dmg > 0)) return false;
+      let applied = false;
+      try {
+        if (window.Entities?.Hero?.applyDamage){
+          window.Entities.Hero.applyDamage(hero, dmg, other.role || kindString(other) || 'enemy');
+          applied = true;
+        }
+      } catch (err){
+        try { console.warn('[PhysicsCollision] Error aplicando daño al héroe', err); } catch (_) {}
+      }
+      if (!applied && typeof window.damagePlayer === 'function'){
+        try { window.damagePlayer(other, Math.ceil(dmg)); applied = true; } catch (_) {}
+      }
+      if (!applied && !collisionWarnings.has(other)){
+        collisionWarnings.add(other);
+        try { console.warn('[PhysicsCollision] Daño por contacto no aplicado', { source: kindString(other), damage: dmg }); } catch (_) {}
+      }
+      return applied;
+    }
+
+    function handleInteractiveTouch(hero, other){
+      const k = kindString(other);
+      let handled = false;
+      if (k.includes('door')){
+        try {
+          handled = !!(window.Entities?.Door?.open?.(other, { by: 'hero_touch' }) || window.Entities?.Door?.toggle?.(other, { by: 'hero_touch' }));
+        } catch (_) {}
+        if (!handled && other.open === false){
+          other.open = true; other.solid = false; handled = true;
+        }
+      }
+      if (k.includes('bell')){
+        try { window.BellsAPI?.ring?.(other, { by: 'hero' }); handled = true; }
+        catch (_) {}
+      }
+      if (k.includes('phone')){
+        try { window.PhoneAPI?.interact?.(other, { by: 'hero' }); handled = true; } catch (_) {}
+      }
+      return handled;
+    }
+
+    function handleHeroCollision(hero, other){
+      if (!hero || !other || hero.dead) return;
+      if (isPillEntity(other)) {
+        pickupPillOnContact(hero, other);
+      }
+      if (isPatientEntity(other)) {
+        deliverPillOnContact(hero, other);
+      }
+      applyTouchDamageToHero(hero, other);
+      handleInteractiveTouch(hero, other);
+    }
+
+    function handleCollisionCallbacks(a, b){
+      if (!a || !b) return;
+      try { if (typeof a.onCollide === 'function') a.onCollide(b); } catch (err){ try { console.warn('[PhysicsCollision] onCollide a->b', err); } catch (_) {} }
+      try { if (typeof b.onCollide === 'function') b.onCollide(a); } catch (err){ try { console.warn('[PhysicsCollision] onCollide b->a', err); } catch (_) {} }
+      if (G?.player){
+        if (a === G.player) handleHeroCollision(a, b);
+        else if (b === G.player) handleHeroCollision(b, a);
+      }
     }
 
     function inverseMass(e){
@@ -735,6 +878,7 @@
           if (!nearAABB(a, b, 2)) continue;
           cartImpactDamage(a, b);
           if (!AABB(a, b)) continue;
+          handleCollisionCallbacks(a, b);
           const ax = a.x + a.w * 0.5, ay = a.y + a.h * 0.5;
           const bx = b.x + b.w * 0.5, by = b.y + b.h * 0.5;
           const penX = (a.w * 0.5 + b.w * 0.5) - Math.abs(ax - bx);

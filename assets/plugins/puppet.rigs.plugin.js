@@ -5308,7 +5308,7 @@
       const data = e?.puppet?.data || {};
       return {
         phase: Math.random() * TAU,
-        skin: normalizeSkinAsset(data.skin || e.skin || 'pastilla_generic'),
+        skin: normalizeSkinAsset(data.skin || e.skin || 'pill_generic'),
         scale: (typeof data.scale === 'number') ? data.scale : 1,
         tint: parseTint(data.tint, 0.4)
       };

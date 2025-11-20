@@ -160,9 +160,16 @@
   }
 
   function registerRig(name, rig){
-    if (!name || !rig) return;
-    rigs.set(name, rig);
-    registry[name] = rig;
+    if (!name || !rig){
+      try { console.warn('[Puppet] Registro de rig inválido', { name, hasRig: !!rig }); } catch (_) {}
+      return;
+    }
+    try {
+      rigs.set(name, rig);
+      registry[name] = rig;
+    } catch (err){
+      try { console.error(`[Puppet] No se pudo registrar rig '${name}'`, err); } catch (_) {}
+    }
   }
 
   function cleanupPuppet(puppet){
