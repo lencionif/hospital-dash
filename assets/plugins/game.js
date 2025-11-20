@@ -1851,7 +1851,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     );
   }
   window.AABB = AABB;
-  
+
+  function notifySpawnerOnDeath(entity, population, template){
+    const api = (window.SpawnerAPI && typeof window.SpawnerAPI.notifyDeath === 'function') ? window.SpawnerAPI : null;
+    if (!api || !entity) return;
+    const payload = Object.assign({ entity }, template || {});
+    try { api.notifyDeath(population ? { population, template: payload, entity } : { entity }); }
+    catch (err) { if (window.DEBUG_SPAWNER) console.warn('[SpawnerAPI] notifyDeath error', err); }
+  }
+
   function killEnemy(e, meta){
       if (e.dead) return;
       e.dead = true;
@@ -1864,6 +1872,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     G.entities = G.entities.filter(x => x !== e);
     detachEntityRig(e);
     MovementSystem.unregister(e);
+    if (matchesKind(e, 'MOSQUITO')) notifySpawnerOnDeath(e, 'animals', { kind: 'mosquito' });
+    else if (matchesKind(e, 'RAT')) notifySpawnerOnDeath(e, 'animals', { kind: 'rat' });
     // notificar respawn diferido
     SPAWN.pending = Math.min(SPAWN.pending + 1, SPAWN.max);
     // Planificar respawn si hay spawner de este tipo
@@ -1889,6 +1899,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     try { window.EntityGroups?.unregister?.(e, G); } catch (_) {}
     G.patients = G.patients.filter(x => x !== e);
     MovementSystem.unregister(e);
+    if (matchesKind(e, 'CART')) {
+      notifySpawnerOnDeath(e, 'carts', { kind: (e.cartType || e.cartTier || 'cart').toString().toLowerCase() });
+    } else if (e.role || matchesKind(e, 'NPC')) {
+      const role = (e.role || e.kindName || e.kind || '').toString().toLowerCase();
+      notifySpawnerOnDeath(e, 'humans', { role, kind: role || undefined });
+    }
 
     // si era enemigo “con vida”, respawn por su sistema
     if (e.kind === ENT.MOSQUITO) {
@@ -2952,7 +2968,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
 
-    if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
+    if (window.SpawnerAPI && typeof SpawnerAPI.update === 'function'){
+      try { SpawnerAPI.update(dt); }
+      catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerAPI.update', err); }
+    } else if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
       try { SpawnerManager.update(dt); }
       catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
     }
