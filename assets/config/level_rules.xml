@@ -65,7 +65,7 @@
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
 
     <!-- Puerta urgencias -->
-    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
+    <rule type="door"  kind="door" bossDoor="true" at="bossRoomEntrance"/>
 
     <!-- Ascensores: prohibido en/hacia bossRoom -->
     <rule type="elevator" count="1"
@@ -122,7 +122,7 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
 
-    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
+    <rule type="door"  kind="door" bossDoor="true" at="bossRoomEntrance"/>
 
     <rule type="elevator" count="2"
           connect="room:entrance->room:control,room:control->room:ICU"
@@ -175,7 +175,7 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="2"/>
 
-    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
+    <rule type="door"  kind="door" bossDoor="true" at="bossRoomEntrance"/>
 
     <rule type="elevator" count="2"
           connect="room:entrance->room:control,room:control->room:ICU"

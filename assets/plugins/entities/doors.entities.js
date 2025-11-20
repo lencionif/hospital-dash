@@ -41,6 +41,10 @@
     return false;
   }
 
+  function isBossDoorEntity(door){
+    return !!(door && (door.bossDoor || door.isBossDoor || door.tag === 'bossDoor'));
+  }
+
   function attachPuppet(ent){
     try {
       const puppet = window.Puppet?.bind?.(ent, 'door', { z: 0, scale: 1 })
@@ -174,7 +178,7 @@
     const urgenciasOpen = !blocking && !!(state.urgenciasOpen || (window.G && window.G.urgenciasOpen));
     for (const ent of state.entities){
       if (!isKind(ent, 'DOOR')) continue;
-      if (ent.bossDoor || ent.isBossDoor || ent.tag === 'bossDoor'){
+      if (isBossDoorEntity(ent)){
         ent.locked = !urgenciasOpen;
         ent.state = ent.state || { open: false, openProgress: 0 };
         if (urgenciasOpen && !ent.state.open){
@@ -212,7 +216,7 @@
     } catch (_) { console.info('[Door]', 'locked'); }
   }
 
-  function openDoor(door, opts={}){
+  function openDoorImmediate(door, opts={}){
     if (!door) return false;
     door.state = door.state || { open: false, openProgress: 0 };
     if (door.locked && !opts.ignoreLock) return false;
@@ -234,6 +238,39 @@
     return true;
   }
 
+  function openNormalDoor(door, opts={}){
+    if (!door) return false;
+    return openDoorImmediate(door, opts);
+  }
+
+  function openBossDoor(door, opts={}){
+    if (!door) return false;
+    const state = resolveState(opts.state);
+    const blocking = hasBlockingPatientsOrFuriosas(state);
+    if (blocking) {
+      console.info('[URGENT] Door locked, patients remain');
+      state.urgenciasOpen = false;
+      if (window.G) window.G.urgenciasOpen = false;
+      if (opts.feedback !== false) notifyLocked(door);
+      return false;
+    }
+    door.locked = false;
+    const opened = openDoorImmediate(door, Object.assign({}, opts, { holdOpen: true, ignoreLock: true }));
+    if (opened) {
+      state.urgenciasOpen = true;
+      try {
+        const G = window.G || null;
+        if (G && typeof G === 'object') G.urgenciasOpen = true;
+      } catch (_) {}
+    }
+    return opened;
+  }
+
+  function openDoor(door, opts={}){
+    if (isBossDoorEntity(door)) return openBossDoor(door, opts);
+    return openNormalDoor(door, opts);
+  }
+
   function closeDoor(door, opts={}){
     if (!door) return false;
     door.state = door.state || { open: false, openProgress: 0 };
@@ -251,7 +288,9 @@
 
   function toggleDoor(door, opts={}){
     if (!door) return false;
+    const bossDoor = isBossDoorEntity(door);
     if (door.locked && !door.open){
+      if (bossDoor) return openBossDoor(door, opts);
       if (opts.feedback !== false) notifyLocked(door);
       return true;
     }
@@ -303,7 +342,7 @@
     const door = findNearestDoor(entity, radius, { state: opts.state });
     if (!door) return false;
     const toggled = toggleDoor(door, Object.assign({ by: entity, feedback: opts.feedback !== false }, opts));
-    if (!toggled && (door.bossDoor || door.isBossDoor)) return true;
+    if (!toggled && isBossDoorEntity(door)) return true;
     return toggled;
   }
 
@@ -315,8 +354,9 @@
 
   function openUrgencias(state){
     state = resolveState(state);
-    if (hasBlockingPatientsOrFuriosas(state)) {
-      console.debug('[URGENT] Door locked, patients remain');
+    const blocking = hasBlockingPatientsOrFuriosas(state);
+    if (blocking) {
+      console.info('[URGENT] Door locked, patients remain');
       state.urgenciasOpen = false;
       if (window.G) window.G.urgenciasOpen = false;
       return false;
@@ -325,20 +365,16 @@
     let bossDoorRef = null;
     const maybeOpen = (door) => {
       if (!door) return;
-      const isBoss = !!(door.bossDoor || door.isBossDoor || door.tag === 'bossDoor');
-      if (!isBoss) return;
-      door.state = door.state || { open: false, openProgress: 0 };
-      if (!door.state.open || door.solid) opened = true;
-      door.locked = false;
-      door.state.open = true;
-      door.state.holdOpen = true;
-      door.state.openProgress = 1;
-      door.state.autoCloseTimer = 0;
-      door.state.autoCloser = null;
-      door.open = true;
-      door.solid = false;
-      if (door.spriteKey) door.spriteKey = '--sprite-door-open';
-      bossDoorRef = door;
+      if (!isBossDoorEntity(door)) return;
+      if (openDoorImmediate(door, { holdOpen: true, ignoreLock: true, silent: true })) {
+        opened = true;
+        bossDoorRef = bossDoorRef || door;
+        door.locked = false;
+        door.state.holdOpen = true;
+        door.state.openProgress = 1;
+        door.state.autoCloseTimer = 0;
+        door.state.autoCloser = null;
+      }
     };
     if (Array.isArray(state.entities)) {
       for (const ent of state.entities) {
