@@ -181,6 +181,8 @@
 
     if (!ent.bossTimerActive && !ent.cured && !ent.dead) {
       const stats = G.stats || {};
+      const total = stats.totalPatients || 0;
+      if (total <= 0) return;
       const remaining = (stats.remainingPatients || 0) + (stats.activeFuriosas || 0);
       if (remaining <= 0) {
         activateBossTimer(ent);
