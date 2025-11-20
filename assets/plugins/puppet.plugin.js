@@ -36,19 +36,19 @@
     return Number.isFinite(num) && num > 0 ? num : 32;
   }
 
-  function resolveVisualRadiusTiles(){
-    const raw = Number(window.G?.visualRadiusTiles);
-    return Number.isFinite(raw) && raw > 0 ? raw : 8;
+  function resolveCullingRadiusTiles(){
+    const raw = Number(window.G?.cullingRadiusTiles ?? window.G?.culling);
+    return Number.isFinite(raw) && raw > 0 ? raw : 20;
   }
 
-  function resolveVisualRadiusPx(){
+  function resolveCullingRadiusPx(){
     const G = window.G || {};
-    const px = Number(G.visualRadiusPx);
+    const px = Number(G.cullingRadiusPx);
     if (Number.isFinite(px) && px > 0) return px;
-    const tiles = resolveVisualRadiusTiles();
+    const tiles = resolveCullingRadiusTiles();
     const tile = getTileSize();
     const computed = Math.max(1, tiles * tile);
-    G.visualRadiusPx = computed;
+    G.cullingRadiusPx = computed;
     return computed;
   }
 
@@ -64,9 +64,9 @@
     return { hero, hx, hy };
   }
 
-  function computeVisualContext(hero){
+  function computeCullingContext(hero){
     const base = computeHeroInfo(hero);
-    const radius = Math.max(1, resolveVisualRadiusPx());
+    const radius = Math.max(1, resolveCullingRadiusPx());
     const radiusSq = radius * radius;
     const now = getNow();
     if (!base) return { hero: null, hx: 0, hy: 0, radius, radiusSq, now };
@@ -80,7 +80,7 @@
     return Number.isFinite(awakeUntil) && awakeUntil > now;
   }
 
-  function withinVisualRadius(entity, heroInfo, details){
+  function withinCullingRadius(entity, heroInfo, details){
     if (!entity) return false;
     if (!heroInfo || !heroInfo.hero) return true;
     if (entity === heroInfo.hero) return true;
@@ -105,6 +105,7 @@
     let activeCount = 0;
     let inactiveCount = 0;
     const distInfo = {};
+    const logActivity = shouldLogDebug() || window.DEBUG_PUPPET_ACTIVITY;
     for (const ent of entities){
       if (!ent) continue;
       let active = true;
@@ -114,7 +115,7 @@
           active = true;
         } else {
           distInfo.distanceSq = null;
-          active = withinVisualRadius(ent, heroInfo, distInfo);
+          active = withinCullingRadius(ent, heroInfo, distInfo);
           if (distInfo.distanceSq != null) distanceSq = distInfo.distanceSq;
         }
       }
@@ -123,22 +124,14 @@
       const prev = activityLog.get(ent);
       if (prev !== active){
         activityLog.set(ent, active);
-        const label = ent.name || ent.id || ent.tag || ent.kindName || ent.rigName || `entity@${entities.indexOf(ent)}`;
-        let extra = '';
-        if (distanceSq != null && heroInfo?.hero && ent !== heroInfo.hero){
-          extra = ` (dist≈${Math.sqrt(distanceSq).toFixed(1)}px)`;
-        }
-        try {
-          console.log(`[Puppet] ${active ? 'Activando' : 'Desactivando'} ${label}${extra}`);
-        } catch (_) {}
       }
     }
     const summaryKey = `${activeCount}|${inactiveCount}`;
-    if (summaryKey !== lastActivitySummary){
+    if (logActivity && summaryKey !== lastActivitySummary){
       lastActivitySummary = summaryKey;
       const radiusPx = heroInfo?.radius ? Math.round(heroInfo.radius) : 0;
       const tileSize = getTileSize();
-      const radiusTiles = radiusPx > 0 && tileSize > 0 ? radiusPx / tileSize : resolveVisualRadiusTiles();
+      const radiusTiles = radiusPx > 0 && tileSize > 0 ? radiusPx / tileSize : resolveCullingRadiusTiles();
       try {
         console.log(`[Puppet] Radio visual ≈ ${radiusTiles.toFixed(1)} tiles (~${radiusPx}px). Activos: ${activeCount}, Inactivos: ${inactiveCount}.`);
       } catch (_) {}
@@ -587,11 +580,11 @@
   function updateAll(state, dt){
     sortPuppets();
     const hero = window.G?.hero || window.G?.player || null;
-    const context = computeVisualContext(hero);
+    const context = computeCullingContext(hero);
     if (window.G) {
       if (hero) {
-        window.G.__visualRadiusInfo = {
-          radiusTiles: resolveVisualRadiusTiles(),
+        window.G.__cullingInfo = {
+          radiusTiles: resolveCullingRadiusTiles(),
           radiusPx: context.radius,
           radiusSq: context.radiusSq,
           hx: context.hx,
@@ -599,7 +592,7 @@
           timestamp: context.now
         };
       } else {
-        window.G.__visualRadiusInfo = null;
+        window.G.__cullingInfo = null;
       }
     }
     refreshEntityActivity(context);
@@ -633,8 +626,8 @@
     const G = window.G || {};
     const player = G.player || null;
     const tileSize = getTileSize();
-    const radiusValue = Number(G.visibleTilesRadius);
-    const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
+    const radiusValue = Number(G.cullingRadiusTiles);
+    const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 20;
     const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
     const applyCull = !!player && !G.isDebugMap && tileSize > 0;
     const playerX = player ? (Number(player.x) || 0) : 0;

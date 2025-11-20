@@ -138,7 +138,11 @@
     const heroKey = (owner.skin || owner.heroId || W.selectedHeroKey || '');
     const color   = opts.color || flashlightColorForHero(heroKey);
 
-    const radius = opts.radius   || TILE * 6.5;
+    const tileSize = (typeof TILE === 'number' && TILE > 0) ? TILE : 32;
+    const desiredRadius = opts.radius   || tileSize * 6.5;
+    const cullTiles = Number.isFinite(W?.G?.cullingRadiusTiles) && W.G.cullingRadiusTiles > 0 ? W.G.cullingRadiusTiles : null;
+    const maxRadiusPx = cullTiles ? Math.max(tileSize, (cullTiles - 1) * tileSize) : null;
+    const radius = maxRadiusPx ? Math.min(desiredRadius, maxRadiusPx) : desiredRadius;
     const intensity = (typeof opts.intensity === 'number' ? opts.intensity : 0.90);
     const offsetX = Number.isFinite(opts.offsetX) ? opts.offsetX
       : (Number.isFinite(owner.flashlightOffsetX) ? owner.flashlightOffsetX : 0);

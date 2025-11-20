@@ -213,9 +213,8 @@
     patientsFurious: 0,
     cycleSeconds: 0,
     TILE_SIZE: TILE,
-    visibleTilesRadius: 8,
-    visualRadiusTiles: 8,
-    visualRadiusPx: 8 * TILE,
+    cullingRadiusTiles: 20,
+    cullingRadiusPx: 20 * TILE,
     isDebugMap: DEBUG_MAP_MODE,
     firstBellDelayMinutes: 5,
     firstBellDelaySeconds: 300,
@@ -274,7 +273,7 @@
     window.ENT = ENT;
   }
 
-  let currentVisualInfo = null;
+  let currentCullingInfo = null;
 
   function detachEntityRig(ent){
     if (!ent) return;
@@ -292,12 +291,12 @@
   }
   window.detachEntityRig = detachEntityRig;
 
-  function resolveVisualRadiusTiles(){
+  function resolveCullingRadiusTiles(){
     const candidates = [
-      Number.isFinite(G?.visualRadiusTiles) ? G.visualRadiusTiles : null,
-      G?.levelRules?.level?.visualRadius,
-      G?.levelRules?.globals?.visualRadius,
-      G?.globals?.visualRadius
+      Number.isFinite(G?.cullingRadiusTiles) ? G.cullingRadiusTiles : null,
+      G?.levelRules?.level?.culling,
+      G?.levelRules?.globals?.culling,
+      G?.globals?.culling
     ];
     for (const value of candidates){
       if (Number.isFinite(value) && value > 0) return value;
@@ -305,17 +304,17 @@
     return null;
   }
 
-  function computeVisualRadiusInfo(){
+  function computeCullingInfo(){
     const hero = G.player;
     if (!hero){
-      currentVisualInfo = null;
-      if (G) G.__visualRadiusInfo = null;
+      currentCullingInfo = null;
+      if (G) G.__cullingInfo = null;
       return null;
     }
-    const radiusTiles = resolveVisualRadiusTiles();
+    const radiusTiles = resolveCullingRadiusTiles();
     if (!Number.isFinite(radiusTiles) || radiusTiles <= 0){
-      currentVisualInfo = null;
-      G.__visualRadiusInfo = null;
+      currentCullingInfo = null;
+      G.__cullingInfo = null;
       return null;
     }
     const tileSize = window.TILE_SIZE || window.TILE || TILE;
@@ -330,8 +329,8 @@
         ? performance.now()
         : Date.now()
     };
-    currentVisualInfo = info;
-    G.__visualRadiusInfo = info;
+    currentCullingInfo = info;
+    G.__cullingInfo = info;
     return info;
   }
 
@@ -348,7 +347,7 @@
       const fn = ent && typeof ent[name] === 'function' ? ent[name] : null;
       if (!fn) continue;
       try {
-        fn.call(ent, G, currentVisualInfo);
+        fn.call(ent, G, currentCullingInfo);
       } catch (err){
         if (window.DEBUG_FORCE_ASCII) console.warn(`[Entity:${name}] error`, err);
       }
@@ -362,7 +361,7 @@
       setEntityActivity(ent, true);
       return true;
     }
-    const info = currentVisualInfo;
+    const info = currentCullingInfo;
     if (!info){
       setEntityActivity(ent, true);
       return true;
@@ -2818,7 +2817,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // Paso de IA específica por entidad hostil (antes de la física)
   function runEntityAI(dt){
     const ents = Array.isArray(G.entities) ? G.entities : null;
-    const useCulling = !!currentVisualInfo && Array.isArray(ents);
+    const useCulling = !!currentCullingInfo && Array.isArray(ents);
     const toProcess = useCulling
       ? ents.filter((ent) => ent && !ent.dead && shouldUpdateEntity(ent))
       : (Array.isArray(ents) ? ents : []);
@@ -3189,8 +3188,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
     applyStateVisuals();
     if (!isPlaying || !G.player){
-      currentVisualInfo = null;
-      G.__visualRadiusInfo = null;
+      currentCullingInfo = null;
+      G.__cullingInfo = null;
       return; // <-- evita tocar nada sin jugador
     }
     G.time += dt;
@@ -3214,7 +3213,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (p.pushAnimT>0) p.pushAnimT = Math.max(0, p.pushAnimT - dt);
     }
 
-    computeVisualRadiusInfo();
+    computeCullingInfo();
 
     // Posición del oyente (para paneo/atenuación en SFX posicionales)
     //if (G.player) AudioAPI.setListener(G.player.x + G.player.w/2, G.player.y + G.player.h/2);
@@ -3300,8 +3299,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
 function drawEntities(c2){
   const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
-  const radiusValue = Number(G?.visibleTilesRadius);
-  const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
+  const radiusValue = Number(G?.cullingRadiusTiles);
+  const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 20;
   const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
   const hasPlayer = !!G.player;
   const applyCull = hasPlayer && !G.isDebugMap && tileSize > 0;
@@ -3641,10 +3640,10 @@ function drawEntities(c2){
     return output;
   }
 
-  function pickVisibleRadiusFromRules(ruleSet){
+  function pickCullingRadiusFromRules(ruleSet){
     const candidates = [
-      Number.isFinite(ruleSet?.level?.visibleTilesRadius) ? ruleSet.level.visibleTilesRadius : null,
-      Number.isFinite(ruleSet?.globals?.visibleTilesRadius) ? ruleSet.globals.visibleTilesRadius : null,
+      Number.isFinite(ruleSet?.level?.culling) ? ruleSet.level.culling : null,
+      Number.isFinite(ruleSet?.globals?.culling) ? ruleSet.globals.culling : null,
     ];
     for (const value of candidates){
       if (Number.isFinite(value) && value > 0) return value;
@@ -3713,7 +3712,7 @@ function drawEntities(c2){
     const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
     const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
     let levelRules = null;
-    let ruleVisibleRadius = null;
+    let ruleCullingRadius = null;
     let targetWidth = null;
     let targetHeight = null;
 
@@ -3722,7 +3721,7 @@ function drawEntities(c2){
         levelRules = await window.XMLRules.load(level);
         targetWidth = Number.isFinite(levelRules?.level?.width) ? levelRules.level.width : null;
         targetHeight = Number.isFinite(levelRules?.level?.height) ? levelRules.level.height : null;
-        ruleVisibleRadius = pickVisibleRadiusFromRules(levelRules);
+        ruleCullingRadius = pickCullingRadiusFromRules(levelRules);
       } catch (err) {
         console.warn('[level_rules] no se pudo cargar level_rules.xml', err);
       }
@@ -3808,7 +3807,7 @@ function drawEntities(c2){
       mode: 'normal',
       meta,
       levelRules,
-      visibleTilesRadius: ruleVisibleRadius,
+      cullingRadiusTiles: ruleCullingRadius,
       width: finalWidth,
       height: finalHeight
     };
@@ -3963,8 +3962,11 @@ function drawEntities(c2){
       ? payload.lines.slice()
       : (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
 
-    if (Number.isFinite(payload?.visibleTilesRadius) && payload.visibleTilesRadius > 0) {
-      G.visibleTilesRadius = payload.visibleTilesRadius;
+    if (Number.isFinite(payload?.cullingRadiusTiles) && payload.cullingRadiusTiles > 0) {
+      G.cullingRadiusTiles = payload.cullingRadiusTiles;
+      const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
+      G.cullingRadiusPx = G.cullingRadiusTiles * tileSize;
+      G.culling = G.cullingRadiusTiles;
     }
 
     ASCII_MAP = asciiLines;
