@@ -48,6 +48,9 @@
     hemaTimer: null,
     hemaTimerBar: null,
     hemaTimerText: null,
+    pyroTimer: null,
+    pyroTimerBar: null,
+    pyroTimerText: null,
     cleanerTimer: null,
     cleanerTimerBar: null,
     cleanerTimerText: null,
@@ -127,6 +130,23 @@
     hemaTimer.appendChild(hemaLabel);
     hemaTimer.appendChild(hemaMeter);
 
+    const pyroTimer = document.createElement('div');
+    pyroTimer.className = 'hud-pyro-l3-timer';
+    pyroTimer.hidden = true;
+    const pyroLabel = document.createElement('strong');
+    pyroLabel.textContent = 'Pac. Piromana L3';
+    const pyroMeter = document.createElement('div');
+    pyroMeter.className = 'hud-pyro-meter';
+    const pyroFill = document.createElement('div');
+    pyroFill.className = 'hud-pyro-fill';
+    const pyroText = document.createElement('span');
+    pyroText.className = 'hud-pyro-text';
+    pyroText.textContent = '00:00';
+    pyroMeter.appendChild(pyroFill);
+    pyroMeter.appendChild(pyroText);
+    pyroTimer.appendChild(pyroLabel);
+    pyroTimer.appendChild(pyroMeter);
+
     const cleanerTimer = document.createElement('div');
     cleanerTimer.className = 'hud-cleanerboss-timer';
     cleanerTimer.hidden = true;
@@ -156,6 +176,7 @@
 
     center.appendChild(objective);
     center.appendChild(hemaTimer);
+    center.appendChild(pyroTimer);
     center.appendChild(cleanerTimer);
     center.appendChild(carryBox);
 
@@ -204,6 +225,9 @@
     HUD_DOM.hemaTimer = hemaTimer;
     HUD_DOM.hemaTimerBar = hemaFill;
     HUD_DOM.hemaTimerText = hemaText;
+    HUD_DOM.pyroTimer = pyroTimer;
+    HUD_DOM.pyroTimerBar = pyroFill;
+    HUD_DOM.pyroTimerText = pyroText;
     HUD_DOM.cleanerTimer = cleanerTimer;
     HUD_DOM.cleanerTimerBar = cleanerFill;
     HUD_DOM.cleanerTimerText = cleanerText;
@@ -399,6 +423,26 @@
   function flashHemaWarning(flag = false) {
     if (!HUD_DOM.hemaTimer) return;
     HUD_DOM.hemaTimer.classList.toggle('is-alert', !!flag);
+  }
+
+  function updatePyroL3Timer(current = 0, max = 0) {
+    if (!HUD_DOM.pyroTimer) return;
+    const ratio = (max > 0) ? clamp(current / max, 0, 1) : 0;
+    if (HUD_DOM.pyroTimerBar) {
+      HUD_DOM.pyroTimerBar.style.width = `${(ratio * 100).toFixed(1)}%`;
+    }
+    if (HUD_DOM.pyroTimerText) {
+      HUD_DOM.pyroTimerText.textContent = formatHemaTime(current);
+    }
+    HUD_DOM.pyroTimer.classList.toggle('is-critical', ratio < 0.25);
+  }
+
+  function showPyroL3Timer() {
+    if (HUD_DOM.pyroTimer) HUD_DOM.pyroTimer.hidden = false;
+  }
+
+  function hidePyroL3Timer() {
+    if (HUD_DOM.pyroTimer) HUD_DOM.pyroTimer.hidden = true;
   }
 
   function updateCleanerTimer(current = 0, max = 0) {
@@ -786,6 +830,9 @@
   HUD.showHematologicTimer = showHemaTimer;
   HUD.hideHematologicTimer = hideHemaTimer;
   HUD.flashHematologicWarning = flashHemaWarning;
+  HUD.updatePyroL3Timer = updatePyroL3Timer;
+  HUD.showPyroL3Timer = showPyroL3Timer;
+  HUD.hidePyroL3Timer = hidePyroL3Timer;
   HUD.updateCleanerBossTimer = updateCleanerTimer;
   HUD.showCleanerBossTimer = showCleanerTimer;
   HUD.hideCleanerBossTimer = hideCleanerTimer;

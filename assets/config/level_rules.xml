@@ -23,6 +23,7 @@
     firstBellDelayMinutes="5"
     hematologicTimerSeconds="90"
     cleanerBossTimerSeconds="90"
+    pyroPatientLvl3TimerSeconds="75"
   />
 
   <!-- ====== LEVEL 1 ====== -->
