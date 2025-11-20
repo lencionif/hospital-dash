@@ -1586,10 +1586,11 @@
     'supervisora.png': 'npc_supervisora',
     'tcae.png': 'npc_tcae',
     'celador.png': 'npc_celador',
-    'guardia.png': 'npc_guardia',
+    'guardia.png': 'npc_guardia_seguridad',
     'enfermera_sexy.png': 'npc_enfermera_enamoradiza',
     'familiar_molesto.png': 'npc_familiar_molesto',
-    'chica_limpieza.png': 'npc_chica_limpieza',
+    'chica_limpieza.png': 'npc_limpiadora',
+    'jefe_servicio.png': 'npc_jefe_servicio',
     'paciente_furiosa.png': 'patient_furiosa'
   };
 

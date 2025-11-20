@@ -9,6 +9,9 @@
   let activityLog = new WeakMap();
   const fallbackErrorLabels = new Set();
   const rigCheckTargets = new Set(['door', 'door_urgencias', 'elevator', 'hazard_fire', 'hazard_water']);
+  const rigOptionalKinds = new Set(['bell', 'timbre', 'hud', 'decor']);
+  const rigOptionalSprites = new Set(['timbre_apagado.png', 'timbre_encendido.png']);
+  const rigAuditSummary = { printed: false };
   let lastActivitySummary = '';
   const debugStatus = { rigs: false, lights: false, activity: false, successAnnounced: false };
   const rigAuditState = { lastTime: 0, lastCount: 0 };
@@ -140,14 +143,145 @@
     }
   }
 
-  function resolveRigName(name){
+  function normalizeLookupKey(value){
+    if (typeof value !== 'string') return '';
+    return value.trim().toLowerCase();
+  }
+
+  const RIG_NAME_LOOKUP = {
+    kind: {
+      hero: (ent) => {
+        const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || ent?.id || '');
+        if (key) return `hero_${key}`;
+        return null;
+      },
+      familiar: 'npc_familiar_molesto',
+      familiar_molesto: 'npc_familiar_molesto',
+      cleaner: 'npc_limpiadora',
+      medic: 'npc_medico',
+      medico: 'npc_medico',
+      enfermera: 'npc_enfermera_enamoradiza',
+      supervisora: 'npc_supervisora',
+      jefe_servicio: 'npc_jefe_servicio',
+      furiosa: 'patient_furiosa',
+      patient: 'patient_bed',
+      cart: (ent) => {
+        const type = normalizeLookupKey(ent?.cartType || 'med');
+        if (type === 'er') return 'cart_emergency';
+        if (type === 'food') return 'cart_food';
+        return 'cart_meds';
+      },
+      door: 'door',
+      door_urgencias: 'door_urgencias',
+      elevator: 'elevator',
+      light: 'light',
+      phone: 'phone',
+      hazard_fire: 'hazard_fire',
+      hazard_water: 'hazard_water',
+      pill: 'pill',
+      mosquito: 'mosquito',
+      rat: 'rat'
+    },
+    role: {
+      hero: (ent) => {
+        const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || '');
+        return key ? `hero_${key}` : null;
+      },
+      follower: (ent) => {
+        const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || '');
+        return key ? `hero_${key}` : null;
+      },
+      medico: 'npc_medico',
+      enfermera: 'npc_enfermera_enamoradiza',
+      supervisora: 'npc_supervisora',
+      jefe_servicio: 'npc_jefe_servicio',
+      familiar: 'npc_familiar_molesto',
+      furiosa: 'patient_furiosa',
+      cleaner: 'npc_limpiadora'
+    },
+    spriteKey: {
+      timbre_apagado: null,
+      timbre_encendido: null,
+      medico: 'npc_medico',
+      medico_png: 'npc_medico',
+      'medico.png': 'npc_medico',
+      supervisora: 'npc_supervisora',
+      supervisora_png: 'npc_supervisora',
+      'supervisora.png': 'npc_supervisora',
+      enfermera_sexy: 'npc_enfermera_enamoradiza',
+      enfermera: 'npc_enfermera_enamoradiza',
+      enfermera_png: 'npc_enfermera_enamoradiza',
+      'enfermera_sexy.png': 'npc_enfermera_enamoradiza',
+      paciente_furiosa: 'patient_furiosa',
+      paciente_furiosa_png: 'patient_furiosa',
+      'paciente_furiosa.png': 'patient_furiosa',
+      familiar_molesto: 'npc_familiar_molesto',
+      familiar_molesto_png: 'npc_familiar_molesto',
+      'familiar_molesto.png': 'npc_familiar_molesto',
+      jefe_servicio: 'npc_jefe_servicio',
+      jefe_servicio_png: 'npc_jefe_servicio',
+      'jefe_servicio.png': 'npc_jefe_servicio',
+      chica_limpieza: 'npc_limpiadora',
+      chica_limpieza_png: 'npc_limpiadora',
+      'chica_limpieza.png': 'npc_limpiadora'
+    }
+  };
+
+  function isRigOptional(ent){
+    const kind = normalizeLookupKey(ent?.kind || ent?.kindName || ent?.type || ent?.tag);
+    if (rigOptionalKinds.has(kind)) return true;
+    const sprite = normalizeLookupKey(ent?.spriteKey || ent?._spriteIdle || ent?._spriteRinging || ent?.skin);
+    if (!sprite) return false;
+    const clean = sprite.replace(/\.png$/i, '');
+    return rigOptionalSprites.has(sprite) || rigOptionalSprites.has(`${clean}.png`);
+  }
+
+  function resolveMappedRig(ent){
+    if (!ent || typeof ent !== 'object') return null;
+    const kinds = [ent.kind, ent.kindName, ent.type, ent.entityType, ent.tag, ent.role, ent.sub];
+    for (const raw of kinds){
+      const key = normalizeLookupKey(raw);
+      if (!key) continue;
+      const entry = RIG_NAME_LOOKUP.kind[key];
+      if (typeof entry === 'function'){
+        const rig = entry(ent);
+        if (rig) return rig;
+      } else if (typeof entry === 'string'){
+        return entry;
+      }
+    }
+    const role = normalizeLookupKey(ent.role || ent.sub || ent.tag);
+    if (role){
+      const entry = RIG_NAME_LOOKUP.role[role];
+      if (typeof entry === 'function'){
+        const rig = entry(ent);
+        if (rig) return rig;
+      } else if (typeof entry === 'string'){
+        return entry;
+      }
+    }
+    const spriteRaw = normalizeLookupKey(ent.spriteKey || ent._spriteIdle || ent._spriteRinging || ent.skin);
+    if (spriteRaw){
+      const clean = spriteRaw.replace(/\.png$/i, '');
+      const entry = RIG_NAME_LOOKUP.spriteKey[spriteRaw] ?? RIG_NAME_LOOKUP.spriteKey[clean];
+      if (typeof entry === 'string') return entry;
+      if (entry === null) return null;
+    }
+    return null;
+  }
+
+  function resolveRigName(name, entity){
     const key = typeof name === 'string' ? name : null;
-    if (key && registry[key]) return key;
+    if (key && (registry[key] || rigs.get(key))) return key;
+    const mapped = resolveMappedRig(entity);
+    if (mapped && (registry[mapped] || rigs.get(mapped))) return mapped;
     if (key && !missingRigWarnings.has(key)){
       missingRigWarnings.add(key);
-      try {
-        console.warn(`[Puppet] rig "${key}" no registrado, usando fallback 'default'.`);
-      } catch (_) {}
+      if (!isRigOptional(entity)){
+        try {
+          console.error(`[RigError] No se encontró rig para kind=${entity?.kind || entity?.kindName || 'desconocido'} / spriteKey=${entity?.spriteKey || entity?.skin || 'none'}`);
+        } catch (_) {}
+      }
     }
     return 'default';
   }
@@ -199,7 +333,7 @@
     if (!entity) return null;
     detach(entity);
     const requestedRig = opts.rig || opts.name || entity.rigName;
-    const resolvedRig = resolveRigName(requestedRig);
+    const resolvedRig = resolveRigName(requestedRig, entity);
     const puppet = {
       entity,
       rigName: resolvedRig,
@@ -214,6 +348,7 @@
     if (entity) {
       entity.rigName = puppet.rigName;
       entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
+      if (!entity.rigOk && isRigOptional(entity)) entity.rigOk = true;
       if (puppet.rigName === 'default' && requestedRig && requestedRig !== 'default'){
         const label = describeEntity(entity);
         const kind = entity?.kind ?? entity?.kindName ?? entity?.tag ?? 'desconocido';
@@ -233,12 +368,15 @@
 
   function bind(entity, rigName, opts={}){
     if (!entity) return null;
-    const name = resolveRigName(rigName);
+    const name = resolveRigName(rigName, entity);
     if (name === 'default' && rigName && rigName !== 'default'){
       const label = describeEntity(entity);
-      try {
-        console.warn(`[Puppet.bind] Advertencia: '${label || 'Entidad'}' solicitó rig '${rigName}' pero se está usando 'default'.`);
-      } catch (_) {}
+      if (!isRigOptional(entity)){
+        try {
+          console.error(`[RigError] No se encontró rig para kind=${entity?.kind || entity?.kindName || 'desconocido'} / spriteKey=${entity?.spriteKey || entity?.skin || 'none'}`);
+        } catch (_) {}
+      }
+      entity.rigOk = false;
     }
     const puppet = attach(entity, { ...opts, rig: name });
     const rig = registry[name];
@@ -247,6 +385,7 @@
         puppet.state = rig.create(entity, opts) || puppet.state || { e: entity };
       }
       entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
+      if (!entity.rigOk && isRigOptional(entity)) entity.rigOk = true;
     } catch (err) {
       const label = describeEntity(entity);
       try {
@@ -444,6 +583,7 @@
     rigAuditState.lastCount = count;
     const messages = [];
     let fallbackCount = 0;
+    let okCount = 0;
     for (let i = 0; i < entities.length; i++){
       const ent = entities[i];
       if (!ent) continue;
@@ -457,8 +597,15 @@
           ok = ent.rigOk === true && rigName && rigName !== 'default';
         }
       }
-      if (!ok) fallbackCount++;
+      if (!ok && !isRigOptional(ent)) fallbackCount++;
+      else if (ok) okCount++;
       messages.push(`[Debug] Rigs check: ${label} -> rig=${rigName || 'none'} ${ok ? '✔' : '⚠️'}`);
+    }
+    if (!rigAuditSummary.printed){
+      rigAuditSummary.printed = true;
+      try {
+        console.info(`[Puppet] Auditoría de rigs: ${okCount} OK, ${fallbackCount} sin rig`);
+      } catch (_) {}
     }
     if (!messages.length) return;
     const debugLogging = shouldLogDebug();
@@ -501,6 +648,7 @@
     }
     needsSort = false;
     activityLog = new WeakMap();
+    rigAuditSummary.printed = false;
     if (opts.clearWarnings !== false) missingRigWarnings.clear();
     if (opts.resetFallbacks !== false) fallbackErrorLabels.clear();
     if (shouldLogDebug() || opts.log){
