@@ -301,6 +301,13 @@
   const api = { spawn, updateAll, MOS_BALANCE };
   W.MosquitoAPI = api;
 
+  // Legacy alias used by existing AI hooks
+  W.Mosquitos = W.Mosquitos || {};
+  W.Mosquitos.ai = function (ent, G, dt) {
+    updateMosquito(ent, dt || 1 / 60, G);
+  };
+  W.Mosquitos.updateAll = api.updateAll;
+
   const oldOnFrame = W.onFrame;
   if (!W._mosquitoHooked) {
     W.onFrame = function (dt) {
