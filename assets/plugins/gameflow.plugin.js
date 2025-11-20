@@ -652,6 +652,7 @@
     if (!cart || !patient) return;
 
     if (patient.isHematologic && !patient.cured) return;
+    if (patient.isJefaLimpiadoras && !patient.cured) return;
 
     const cartCenter = centerOf(cart);
     const patientCenter = centerOf(patient);

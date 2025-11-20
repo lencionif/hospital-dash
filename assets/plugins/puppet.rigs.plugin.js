@@ -3346,6 +3346,238 @@
 
   API.registerRig('npc_jefe_servicio', rig_jefe_servicio);
 
+  const rig_cleaner_agresiva = {
+    create() {
+      return { anim: 'idle', phase: Math.random() * TAU, bob: 0 };
+    },
+    update(st, e, dt) {
+      const speed = Math.hypot(e?.vx || 0, e?.vy || 0);
+      st.phase += dt * (speed > 0.01 ? 6.0 : 2.5);
+      st.bob = Math.sin(st.phase) * (speed > 0.01 ? 1.8 : 0.8);
+      st.anim = e?.puppetState?.anim || st.anim || 'idle';
+    },
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen || !ctx) return;
+      const [cx, cy, sc] = screen;
+      const flip = (e?.flipX && e.flipX < 0) ? -1 : 1;
+      const s = applyOneTileScale(sc, { inner: 0.92 });
+      ctx.save();
+      ctx.translate(cx, cy + st.bob * 0.35);
+      ctx.scale(s * flip, s);
+
+      drawShadow(ctx, 10, sc, 0.4, 0.22);
+
+      // Traje más oscuro
+      const rr = (x, y, w, h, r) => {
+        const rad = Math.max(0, Math.min(Math.abs(r), Math.abs(w) * 0.5, Math.abs(h) * 0.5));
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, rad);
+        else {
+          ctx.moveTo(x + rad, y);
+          ctx.lineTo(x + w - rad, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+          ctx.lineTo(x + w, y + h - rad);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+          ctx.lineTo(x + rad, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+          ctx.lineTo(x, y + rad);
+          ctx.quadraticCurveTo(x, y, x + rad, y);
+        }
+      };
+
+      ctx.save();
+      ctx.fillStyle = '#1d2736';
+      ctx.strokeStyle = '#3f5475';
+      ctx.lineWidth = 0.04;
+      ctx.beginPath();
+      rr(-0.22, -0.42, 0.44, 0.7, 0.14);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // Guantes brillantes
+      ctx.fillStyle = '#5ec3ff';
+      ctx.beginPath();
+      ctx.ellipse(-0.26, 0.03 + Math.sin(st.phase) * 0.02, 0.08, 0.05, 0, 0, TAU);
+      ctx.ellipse(0.26, 0.03 - Math.sin(st.phase) * 0.02, 0.08, 0.05, 0, 0, TAU);
+      ctx.fill();
+
+      // Cabeza
+      ctx.fillStyle = '#f2c7a6';
+      ctx.beginPath();
+      ctx.ellipse(0, -0.55, 0.16, 0.19, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#2b1d16';
+      ctx.beginPath();
+      ctx.arc(-0.06, -0.58, 0.02, 0, TAU);
+      ctx.arc(0.06, -0.58, 0.02, 0, TAU);
+      ctx.fill();
+
+      // Zuecos
+      ctx.fillStyle = '#f26ba0';
+      ctx.beginPath();
+      ctx.ellipse(-0.12, 0.42, 0.11, 0.07, 0.08, 0, TAU);
+      ctx.ellipse(0.14, 0.42, 0.11, 0.07, -0.08, 0, TAU);
+      ctx.fill();
+
+      // Mopa en acción
+      ctx.save();
+      ctx.translate(0.06 * flip, 0.2);
+      ctx.rotate(-0.3 * flip + Math.sin(st.phase) * 0.04);
+      ctx.strokeStyle = '#c9cbd2';
+      ctx.lineWidth = 0.035;
+      ctx.beginPath();
+      ctx.moveTo(0, -0.2);
+      ctx.lineTo(0, 0.32);
+      ctx.stroke();
+      ctx.fillStyle = '#c9f0ff';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.36, 0.15, 0.08, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Acentos agresivos
+      ctx.strokeStyle = '#ff7b6b';
+      ctx.lineWidth = 0.02;
+      ctx.beginPath();
+      ctx.moveTo(-0.18, -0.1);
+      ctx.lineTo(0.18, -0.1);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  };
+
+  const rig_jefa_limpiadoras_lvl2 = {
+    create() {
+      return { anim: 'unconscious', phase: Math.random() * TAU, bob: 0, pulse: 0 };
+    },
+    update(st, e, dt) {
+      st.phase += dt * 1.2;
+      st.bob = Math.sin(st.phase) * 0.08;
+      st.pulse += dt * 2.0;
+      st.anim = e?.puppetState?.anim || st.anim || 'unconscious';
+    },
+    draw(ctx, cam, e, st) {
+      const screen = toScreen(cam, e);
+      if (!screen || !ctx) return;
+      const [cx, cy, sc] = screen;
+      const s = applyOneTileScale(sc, { inner: 0.95 });
+      ctx.save();
+      ctx.translate(cx, cy + st.bob * 4);
+      ctx.scale(s, s);
+
+      const rr = (x, y, w, h, r) => {
+        const rad = Math.max(0, Math.min(Math.abs(r), Math.abs(w) * 0.5, Math.abs(h) * 0.5));
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, w, h, rad);
+        else {
+          ctx.moveTo(x + rad, y);
+          ctx.lineTo(x + w - rad, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+          ctx.lineTo(x + w, y + h - rad);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+          ctx.lineTo(x + rad, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+          ctx.lineTo(x, y + rad);
+          ctx.quadraticCurveTo(x, y, x + rad, y);
+        }
+      };
+
+      // Charco base
+      ctx.save();
+      ctx.fillStyle = 'rgba(80,160,255,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0.08, 0.42, 0.28, 0, 0, TAU);
+      ctx.fill();
+      if (st.anim === 'critical') {
+        const glow = 0.2 + 0.2 * Math.sin(st.pulse * 2);
+        ctx.strokeStyle = `rgba(255,90,90,${0.4 + glow})`;
+        ctx.lineWidth = 0.03;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Señal suelo mojado
+      ctx.save();
+      ctx.translate(-0.32, -0.05);
+      ctx.rotate(-0.15);
+      ctx.fillStyle = '#f2c94c';
+      ctx.beginPath();
+      rr(-0.08, -0.12, 0.16, 0.24, 0.03);
+      ctx.fill();
+      ctx.fillStyle = '#1c1c1c';
+      ctx.beginPath();
+      ctx.moveTo(-0.03, 0.04);
+      ctx.lineTo(0, -0.04);
+      ctx.lineTo(0.03, 0.04);
+      ctx.fill();
+      ctx.restore();
+
+      // Cuerpo tumbado
+      ctx.save();
+      ctx.rotate(-0.08);
+      ctx.fillStyle = '#fdfdfd';
+      ctx.beginPath();
+      rr(-0.22, -0.05, 0.44, 0.36, 0.12);
+      ctx.fill();
+      ctx.strokeStyle = '#cfd7e6';
+      ctx.lineWidth = 0.02;
+      ctx.stroke();
+
+      // Acreditación
+      ctx.fillStyle = '#6bb7ff';
+      ctx.fillRect(0.04, 0.05, 0.09, 0.06);
+      ctx.fillStyle = '#0d1b2b';
+      ctx.font = '0.08px monospace';
+      ctx.fillText('JEFA', 0.045, 0.09);
+
+      // Cabeza
+      ctx.fillStyle = '#f2c7a6';
+      ctx.beginPath();
+      ctx.ellipse(-0.12, -0.08, 0.14, 0.16, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#2d1a14';
+      ctx.beginPath();
+      ctx.arc(-0.16, -0.12, 0.02, 0, TAU);
+      ctx.arc(-0.08, -0.1, 0.02, 0, TAU);
+      ctx.fill();
+
+      // Guantes y zuecos
+      ctx.fillStyle = '#61b3ff';
+      ctx.beginPath();
+      ctx.ellipse(0.18, 0.12, 0.08, 0.05, 0, 0, TAU);
+      ctx.ellipse(-0.24, 0.08, 0.08, 0.05, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#f27ab0';
+      ctx.beginPath();
+      ctx.ellipse(-0.14, 0.32, 0.1, 0.06, -0.1, 0, TAU);
+      ctx.ellipse(0.1, 0.32, 0.1, 0.06, 0.1, 0, TAU);
+      ctx.fill();
+
+      // Spray y cubo cerca
+      ctx.fillStyle = '#4a90e2';
+      ctx.fillRect(0.24, -0.02, 0.08, 0.14);
+      ctx.fillStyle = '#ffd166';
+      ctx.fillRect(-0.3, 0.22, 0.1, 0.1);
+
+      ctx.restore();
+
+      // Resplandor estabilizado
+      if (st.anim === 'stabilized') {
+        ctx.strokeStyle = 'rgba(110,255,200,0.55)';
+        ctx.lineWidth = 0.02;
+        ctx.beginPath();
+        ctx.arc(0, -0.05, 0.48, 0, TAU);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  };
+
+  API.registerRig('cleaner_agresiva', rig_cleaner_agresiva);
+  API.registerRig('jefa_limpiadoras_lvl2', rig_jefa_limpiadoras_lvl2);
+
   registerHumanRig('npc_tcae', {
     totalHeight: 54,
     entityHeight: 50,

@@ -2299,6 +2299,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (target?.isHematologic) {
       return window.HematologicPatientAPI?.tryDeliver?.(hero, target) || false;
     }
+    if (target?.isJefaLimpiadoras) {
+      return window.CleanerBossAPI?.tryTreat?.(hero, target) || false;
+    }
     const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
       ? window.PatientsAPI.canDeliver(hero, target)
       : false;
@@ -2327,6 +2330,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const patient = contact.patient;
     if (patient?.isHematologic) {
       return window.HematologicPatientAPI?.tryDeliver?.(hero, patient) || false;
+    }
+    if (patient?.isJefaLimpiadoras) {
+      return window.CleanerBossAPI?.tryTreat?.(hero, patient) || false;
     }
     const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
       ? window.PatientsAPI.canDeliver(hero, patient)
@@ -3946,6 +3952,11 @@ function drawEntities(c2){
       const hemaSeconds = Number(payload.levelRules?.level?.hematologicTimerSeconds ?? payload.levelRules?.globals?.hematologicTimerSeconds);
       if (Number.isFinite(hemaSeconds) && hemaSeconds > 0) {
         G.hematologicTimerSeconds = hemaSeconds;
+      }
+
+      const cleanerBossSeconds = Number(payload.levelRules?.level?.cleanerBossTimerSeconds ?? payload.levelRules?.globals?.cleanerBossTimerSeconds);
+      if (Number.isFinite(cleanerBossSeconds) && cleanerBossSeconds > 0) {
+        G.cleanerBossTimerSeconds = cleanerBossSeconds;
       }
     }
     const asciiLines = Array.isArray(payload.lines) && payload.lines.length

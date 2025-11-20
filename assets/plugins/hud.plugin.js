@@ -48,6 +48,9 @@
     hemaTimer: null,
     hemaTimerBar: null,
     hemaTimerText: null,
+    cleanerTimer: null,
+    cleanerTimerBar: null,
+    cleanerTimerText: null,
   };
   let objectiveOverride = null;
 
@@ -124,6 +127,23 @@
     hemaTimer.appendChild(hemaLabel);
     hemaTimer.appendChild(hemaMeter);
 
+    const cleanerTimer = document.createElement('div');
+    cleanerTimer.className = 'hud-cleanerboss-timer';
+    cleanerTimer.hidden = true;
+    const cleanerLabel = document.createElement('strong');
+    cleanerLabel.textContent = 'Tiempo jefa de limpieza';
+    const cleanerMeter = document.createElement('div');
+    cleanerMeter.className = 'hud-cleaner-meter';
+    const cleanerFill = document.createElement('div');
+    cleanerFill.className = 'hud-cleaner-fill';
+    const cleanerText = document.createElement('span');
+    cleanerText.className = 'hud-cleaner-text';
+    cleanerText.textContent = '00:00';
+    cleanerMeter.appendChild(cleanerFill);
+    cleanerMeter.appendChild(cleanerText);
+    cleanerTimer.appendChild(cleanerLabel);
+    cleanerTimer.appendChild(cleanerMeter);
+
     const carryBox = document.createElement('div');
     carryBox.className = 'hud-carry';
     carryBox.hidden = true;
@@ -136,6 +156,7 @@
 
     center.appendChild(objective);
     center.appendChild(hemaTimer);
+    center.appendChild(cleanerTimer);
     center.appendChild(carryBox);
 
     const urgenciasStat = createHudStat('Urgencias', 'hud-urgencias');
@@ -183,6 +204,9 @@
     HUD_DOM.hemaTimer = hemaTimer;
     HUD_DOM.hemaTimerBar = hemaFill;
     HUD_DOM.hemaTimerText = hemaText;
+    HUD_DOM.cleanerTimer = cleanerTimer;
+    HUD_DOM.cleanerTimerBar = cleanerFill;
+    HUD_DOM.cleanerTimerText = cleanerText;
     HUD_DOM.carryBox = carryBox;
     HUD_DOM.carryPrimary = carryPrimary;
     HUD_DOM.carrySecondary = carrySecondary;
@@ -375,6 +399,31 @@
   function flashHemaWarning(flag = false) {
     if (!HUD_DOM.hemaTimer) return;
     HUD_DOM.hemaTimer.classList.toggle('is-alert', !!flag);
+  }
+
+  function updateCleanerTimer(current = 0, max = 0) {
+    if (!HUD_DOM.cleanerTimer) return;
+    const ratio = (max > 0) ? clamp(current / max, 0, 1) : 0;
+    if (HUD_DOM.cleanerTimerBar) {
+      HUD_DOM.cleanerTimerBar.style.width = `${(ratio * 100).toFixed(1)}%`;
+    }
+    if (HUD_DOM.cleanerTimerText) {
+      HUD_DOM.cleanerTimerText.textContent = formatHemaTime(current);
+    }
+    HUD_DOM.cleanerTimer.classList.toggle('is-critical', ratio < 0.25);
+  }
+
+  function showCleanerTimer() {
+    if (HUD_DOM.cleanerTimer) HUD_DOM.cleanerTimer.hidden = false;
+  }
+
+  function hideCleanerTimer() {
+    if (HUD_DOM.cleanerTimer) HUD_DOM.cleanerTimer.hidden = true;
+  }
+
+  function flashCleanerWarning(flag = false) {
+    if (!HUD_DOM.cleanerTimer) return;
+    HUD_DOM.cleanerTimer.classList.toggle('is-alert', !!flag);
   }
 
   function updateCarryInfo(carry){
@@ -737,6 +786,10 @@
   HUD.showHematologicTimer = showHemaTimer;
   HUD.hideHematologicTimer = hideHemaTimer;
   HUD.flashHematologicWarning = flashHemaWarning;
+  HUD.updateCleanerBossTimer = updateCleanerTimer;
+  HUD.showCleanerBossTimer = showCleanerTimer;
+  HUD.hideCleanerBossTimer = hideCleanerTimer;
+  HUD.flashCleanerBossWarning = flashCleanerWarning;
 
   HUD.showFloatingMessage = showFloatingMessage;
   HUD.setObjectiveText = function (text) {
