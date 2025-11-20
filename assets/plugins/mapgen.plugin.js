@@ -1632,8 +1632,16 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     // 2) BOSS pegado a pared en Boss-Room (+ marcador ASCII)
     const bossR = areas.boss;
     const pB = nearPerimeter(bossR, 2);
-    placements.push({type:'boss', x:pB.x, y:pB.y, nearWall:true});
+    const bossId = `HEMA_BOSS_${(lvl?.id||1)}_${Math.floor(rng.rand()*1e6)}`;
+    placements.push({type:'boss', x:pB.x, y:pB.y, nearWall:true, id: bossId});
     markAscii(pB.x, pB.y, charset.bossMarker||'X');
+
+    // Pastilla dirigida al boss (ubicada dentro de su sala)
+    const bossPill = randomInside(bossR, 2);
+    if (bossPill && (bossPill.x !== pB.x || bossPill.y !== pB.y)) {
+      placements.push({ type:'pill', x: bossPill.x, y: bossPill.y, patientId: bossId, targetPatientId: bossId });
+      markAscii(bossPill.x, bossPill.y, charset.pill || 'i');
+    }
 
     // 3) TODAS LAS PUERTAS (cerradas) incl. Boss Door si hay 'u'
     for (let y=0; y<ascii.length; y++){
