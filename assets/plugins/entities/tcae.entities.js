@@ -417,61 +417,22 @@
       finish(correct);
     };
 
-    const dialogPayload = {
+    const opened = W.DialogUtils?.openRiddleDialog?.({
+      id: riddle.key,
       title: 'Auxiliar TCAE',
       portraitCssVar: '--sprite-tcae',
       ask: riddle.ask,
-      text: riddle.ask,
       hint: riddle.hint,
       options: riddle.options,
       correctIndex: riddle.correctIndex,
-      key: riddle.key
-    };
+      onSuccess: () => resolve(true),
+      onFail: () => resolve(false),
+      onClose: () => finish(false)
+    });
 
-    if (W.DialogAPI?.openRiddle) {
-      W.DialogAPI.openRiddle({
-        id: riddle.key,
-        title: dialogPayload.title,
-        ask: dialogPayload.ask,
-        portraitCssVar: dialogPayload.portraitCssVar,
-        hints: [dialogPayload.hint],
-        answers: riddle.options,
-        correctIndex: riddle.correctIndex,
-        onSuccess: () => resolve(true),
-        onFail: () => resolve(false),
-        onClose: () => finish(false)
-      });
-      return;
+    if (!opened) {
+      finish(false);
     }
-
-    if (W.DialogAPI?.open) {
-      W.DialogAPI.open({
-        title: dialogPayload.title,
-        text: `${dialogPayload.ask}\n\n${dialogPayload.hint}`,
-        portraitCssVar: dialogPayload.portraitCssVar,
-        buttons: riddle.options.map((label, idx) => ({
-          label,
-          primary: idx === riddle.correctIndex,
-          action: () => resolve(idx === riddle.correctIndex)
-        })),
-        onClose: () => finish(false)
-      });
-      return;
-    }
-
-    if (W.Dialog?.open) {
-      W.Dialog.open({
-        portrait: 'TCAE.png',
-        text: dialogPayload.ask,
-        options: riddle.options,
-        correct: riddle.correctIndex,
-        onAnswer: (idx) => resolve(idx === riddle.correctIndex)
-      });
-      return;
-    }
-
-    const answer = prompt(`${dialogPayload.title}\n\n${dialogPayload.ask}\n${dialogPayload.options.map((o, i) => `[${i}] ${o}`).join('\n')}`);
-    resolve(Number(answer) === riddle.correctIndex);
   }
 
   function onTcaeDialogEnd(ent, hero, success) {

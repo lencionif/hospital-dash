@@ -782,59 +782,22 @@
       finish(correct);
     };
 
-    const dialogPayload = {
+    const opened = W.DialogUtils?.openRiddleDialog?.({
+      id: riddle.key,
       title: 'Limpiadora',
       ask: riddle.ask,
       hint: riddle.hint || '',
       options: riddle.options,
       correctIndex: riddle.correctIndex,
-      key: riddle.key
-    };
+      portraitCssVar: '--sprite-cleaner',
+      onSuccess: () => resolve(true),
+      onFail: () => resolve(false),
+      onClose: () => finish(false)
+    });
 
-    if (W.DialogAPI?.openRiddle){
-      W.DialogAPI.openRiddle({
-        id: dialogPayload.key,
-        title: dialogPayload.title,
-        ask: dialogPayload.ask,
-        hints: [dialogPayload.hint],
-        portraitCssVar: '--sprite-cleaner',
-        answers: dialogPayload.options,
-        correctIndex: dialogPayload.correctIndex,
-        onSuccess: () => resolve(true),
-        onFail: () => resolve(false),
-        onClose: () => finish(false)
-      });
-      return;
+    if (!opened){
+      finish(false);
     }
-
-    if (W.DialogAPI?.open){
-      W.DialogAPI.open({
-        title: dialogPayload.title,
-        text: `${dialogPayload.ask}\n\n${dialogPayload.hint}`,
-        portraitCssVar: '--sprite-cleaner',
-        buttons: dialogPayload.options.map((label, idx) => ({
-          label,
-          primary: idx === dialogPayload.correctIndex,
-          action: () => resolve(idx === dialogPayload.correctIndex)
-        })),
-        onClose: () => finish(false)
-      });
-      return;
-    }
-
-    if (W.Dialog?.open){
-      W.Dialog.open({
-        portrait: 'chica_limpieza.png',
-        text: dialogPayload.ask,
-        options: dialogPayload.options,
-        correct: dialogPayload.correctIndex,
-        onAnswer: (idx) => resolve(idx === dialogPayload.correctIndex)
-      });
-      return;
-    }
-
-    const answer = Number(prompt(`${dialogPayload.title}\n\n${dialogPayload.ask}\n${dialogPayload.options.map((o, i) => `[${i}] ${o}`).join('\n')}`, '0')) || 0;
-    resolve(answer === dialogPayload.correctIndex);
   }
 
   function onCleanerDialogEnd(ent, hero, success){

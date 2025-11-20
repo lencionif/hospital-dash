@@ -556,10 +556,10 @@
       finished = true;
       onDoctorDialogEnd(e, hero);
     };
-    const handleAnswer = (answerIndex) => {
+    const handleAnswer = (isCorrect) => {
       if (finished) return;
       finished = true;
-      const correct = answerIndex === riddle.correctIndex;
+      const correct = !!isCorrect;
       if (correct) {
         ai.animOverride = 'powerup';
         ai.animOverrideTimer = 0.8;
@@ -581,38 +581,23 @@
       }
       finish();
     };
+    const opened = window.DialogUtils?.openRiddleDialog?.({
+      id: riddle.key,
+      title: riddle.title,
+      ask: riddle.text,
+      hint: riddle.hint,
+      options: riddle.options,
+      correctIndex: riddle.correctIndex,
+      portraitCssVar: MedicoAPI.cfg.portraitCssVar,
+      portrait: 'medico.png',
+      onSuccess: () => handleAnswer(true),
+      onFail: () => handleAnswer(false),
+      onClose: () => finish()
+    });
 
-    const buttons = riddle.options.map((label, idx) => ({
-      label,
-      primary: idx === riddle.correctIndex,
-      action: () => handleAnswer(idx)
-    }));
-
-    if (window.DialogAPI?.open) {
-      window.DialogAPI.open({
-        portrait: 'medico',
-        portraitCssVar: MedicoAPI.cfg.portraitCssVar,
-        title: riddle.title,
-        text: riddle.text + hint,
-        buttons,
-        pauseGame: true,
-        onClose: finish
-      });
-      return true;
+    if (!opened) {
+      finish();
     }
-    if (window.Dialog?.open) {
-      window.Dialog.open({
-        portrait: 'medico.png',
-        text: riddle.text + hint,
-        options: riddle.options,
-        correct: riddle.correctIndex,
-        onAnswer: (idx) => handleAnswer(idx)
-      });
-      return true;
-    }
-
-    const answer = Number(prompt(`${riddle.title}\n\n${riddle.text}\n\n${riddle.options.map((o, i) => `[${i}] ${o}`).join('\n')}`, '0')) || 0;
-    handleAnswer(answer);
     return true;
   }
 
