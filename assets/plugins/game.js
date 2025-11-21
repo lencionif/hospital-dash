@@ -1461,10 +1461,37 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           G.entities.push(e); G.door = e;
         },
         placeBoss: (kind,tx,ty)=>{
-          const b = makeRect(tx*TILE+8, ty*TILE+8, TILE*1.2, TILE*1.2,
-                            ENT.BOSS, COLORS.boss, false, true,
-                            {mass:8, rest:0.1, mu:0.1, static:true});
-          G.entities.push(b); G.boss = b;
+          const px = tx * TILE + 8;
+          const py = ty * TILE + 8;
+          let spawnFn = null;
+
+          if (level === 1) {
+            spawnFn = window.Entities?.PatientHematologic?.spawn;
+          } else if (level === 2) {
+            spawnFn = window.Entities?.JefaLimpiadoras?.spawn
+              || window.Entities?.jefa_limpiadoras_lvl2
+              || window.CleanerBossAPI?.spawn;
+          } else if (level === 3) {
+            spawnFn = window.Entities?.PacientePyromana?.spawn
+              || window.Entities?.PyroPatientLvl3?.spawn
+              || window.Entities?.paciente_pyromana_lvl3;
+          }
+
+          if (typeof spawnFn !== 'function') {
+            console.error('[BossLoadError] Boss factory missing for level', level);
+            return;
+          }
+
+          const bossEnt = spawnFn(px, py);
+          if (!bossEnt) {
+            console.error('[BossLoadError] Boss factory returned no entity for level', level);
+            return;
+          }
+
+          G.boss = bossEnt;
+          if (!G.entities.includes(bossEnt)) {
+            G.entities.push(bossEnt);
+          }
         },
         placeEnemy: (kind,tx,ty)=>{
           const cx = tx*TILE+TILE/2;
