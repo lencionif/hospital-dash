@@ -3676,6 +3676,112 @@ function drawEntities(c2){
     return base + '.'.repeat(width - base.length);
   }
 
+  function buildAsciiSnapshotForExport(){
+    const shouldUseDebugAscii = DEBUG_MAP_MODE
+      || G.mode === 'debug'
+      || G.isDebugMap
+      || G.debugMap
+      || (G.debugAsciiSource && !/^procedural/.test(G.debugAsciiSource));
+
+    if (shouldUseDebugAscii && Array.isArray(G.asciiMap) && G.asciiMap.length) {
+      return G.asciiMap.slice();
+    }
+
+    const mapRows = Array.isArray(G.map) ? G.map : [];
+    const height = mapRows.length;
+    const width = mapRows?.[0]?.length || 0;
+    if (!height || !width) return [];
+
+    const asciiGrid = [];
+    for (let y = 0; y < height; y++) {
+      const mapRow = mapRows[y] || [];
+      const row = [];
+      for (let x = 0; x < width; x++) {
+        row.push(mapRow[x] === 1 ? '#' : '.');
+      }
+      asciiGrid.push(row);
+    }
+
+    const priority = {
+      '#': 99,
+      'S': 9,
+      'X': 8,
+      'u': 7,
+      'd': 6,
+      'f': 5,
+      'p': 4,
+      'C': 3,
+      'i': 2,
+      'b': 2,
+      '.': 0
+    };
+    const setChar = (tx, ty, ch) => {
+      if (!ch) return;
+      const row = asciiGrid[ty];
+      if (!row || typeof row[tx] === 'undefined') return;
+      const curr = row[tx];
+      const currP = priority[curr] ?? 0;
+      const nextP = priority[ch] ?? 1;
+      if (nextP >= currP) {
+        row[tx] = ch;
+      }
+    };
+
+    const tileSize = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || TILE;
+    const entities = Array.isArray(G.entities) ? G.entities : [];
+    for (const e of entities) {
+      if (!e || e.dead) continue;
+      const tx = Math.floor((e.x ?? 0) / tileSize);
+      const ty = Math.floor((e.y ?? 0) / tileSize);
+      if (tx < 0 || ty < 0 || ty >= height || tx >= width) continue;
+
+      const isDoor = matchesKind(e, 'DOOR') || e.isDoor || e.type === 'door';
+      const isBossDoor = isDoor && (e.bossDoor || e.isBossDoor || e.tag === 'bossDoor');
+      const isPatient = matchesKind(e, 'PATIENT') || e.isPatient || e.role === 'patient' || e.requiredKeyName;
+      const isCart = matchesKind(e, 'CART') || e.isCart;
+
+      let ch = '';
+      if (matchesKind(e, 'PLAYER') || e.hero || e.isPlayer) {
+        ch = 'S';
+      } else if (matchesKind(e, 'BOSS') || e.isBoss) {
+        ch = 'X';
+      } else if (isDoor) {
+        ch = isBossDoor ? 'u' : 'd';
+      } else if (matchesKind(e, 'PILL') || e.isPill) {
+        ch = 'i';
+      } else if (matchesKind(e, 'BELL') || e.isBell) {
+        ch = 'b';
+      } else if (isPatient) {
+        const furious = e.furious || e.isFuriousPatient || e.angry || e.state === 'furious';
+        ch = furious ? 'f' : 'p';
+      } else if (isCart) {
+        ch = 'C';
+      }
+
+      setChar(tx, ty, ch);
+    }
+
+    return asciiGrid.map((row) => row.join(''));
+  }
+
+  function exportAsciiMapForDebug(){
+    if (G._asciiExportedForLevel) return;
+    const lines = buildAsciiSnapshotForExport();
+    if (!lines.length) return;
+    const asciiText = lines.join('\n');
+    G.lastAsciiExport = asciiText;
+
+    try {
+      if (typeof fetch === 'function') {
+        fetch('debug-export.php', { method: 'POST', body: asciiText });
+      }
+    } catch (err) {
+      console.warn('[debug-export] no se pudo enviar mapa ASCII', err);
+    } finally {
+      G._asciiExportedForLevel = true;
+    }
+  }
+
   function enforceAsciiDimensions(lines, desiredWidth, desiredHeight){
     if (!Array.isArray(lines) || !lines.length) return lines;
     const targetWidth = Number.isFinite(desiredWidth) && desiredWidth > 0
@@ -4452,6 +4558,7 @@ function drawEntities(c2){
     G.__placementsApplied = false;
     G._gameOverLogged = false;
     G._levelCompleteLogged = false;
+    G._asciiExportedForLevel = false;
 
     if (window.LOG?.counter) {
       window.LOG.counter('spawns', 0);
@@ -4614,6 +4721,12 @@ function drawEntities(c2){
         window.PuppetAPI?.debugListAll?.('level-ready');
       } catch (err){
         if (window.DEBUG_FORCE_ASCII) console.warn('[Puppet] level-ready audit error', err);
+      }
+
+      try {
+        exportAsciiMapForDebug();
+      } catch (err) {
+        console.warn('[debug-export] exportAsciiMapForDebug error', err);
       }
 
       setGameState('READY');
