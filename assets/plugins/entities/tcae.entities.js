@@ -399,8 +399,10 @@
 
     const riddle = RIDDLES[ai.riddleIndex % RIDDLES.length];
     ai.riddleIndex = (ai.riddleIndex + 1) % RIDDLES.length;
+    if (typeof pauseGame === 'function') pauseGame();
 
     const finish = (success) => {
+      if (typeof resumeGame === 'function') resumeGame();
       ai.state = 'patrol';
       ent.isTalking = false;
       if (hero && hero.isTalking) hero.isTalking = false;

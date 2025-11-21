@@ -7,6 +7,9 @@
 (() => {
   'use strict';
 
+  window.pauseGame = function () { window.GAME_PAUSED = true; };
+  window.resumeGame = function () { window.GAME_PAUSED = false; };
+
   // ------------------------------------------------------------
   // Parámetros globales y utilidades
   // ------------------------------------------------------------
@@ -3239,6 +3242,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // Update principal
   // ------------------------------------------------------------
   function update(dt){
+    if (window.GAME_PAUSED) {
+      return; // no avanzar lógica del juego mientras hay diálogo
+    }
     window.SkyFX?.update?.(dt);
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
     try { window.Narrator?.tick?.(dt, G); } catch(e){}

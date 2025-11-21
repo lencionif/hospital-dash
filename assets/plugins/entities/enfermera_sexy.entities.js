@@ -176,11 +176,17 @@
     if (!riddle) { onLoveNurseDialogFinished(nurse, { missing: true }); return; }
     ai.dialogActive = true;
     if (DEBUG()) console.debug('[NURSE_TALK] start riddle', { nurseId: nurse.id, riddleIndex: ai.riddleIndex });
+    if (typeof pauseGame === 'function') pauseGame();
+
+    const finish = (payload) => {
+      if (typeof resumeGame === 'function') resumeGame();
+      onLoveNurseDialogFinished(nurse, payload);
+    };
 
     const resolve = (correct) => {
       if (correct) W.DialogAPI?.system?.('¡Correcto! ❤️', { ms: 1400 });
       else W.DialogAPI?.system?.('Ups, repasa tus apuntes.', { ms: 1400 });
-      onLoveNurseDialogFinished(nurse, { correct });
+      finish({ correct });
     };
 
     const opened = W.DialogUtils?.openRiddleDialog?.({
@@ -192,10 +198,10 @@
       portraitCssVar: '--sprite-enfermera-sexy',
       onSuccess: () => resolve(true),
       onFail: () => resolve(false),
-      onClose: (correct) => onLoveNurseDialogFinished(nurse, { correct })
+      onClose: (correct) => finish({ correct })
     });
 
-    if (!opened) onLoveNurseDialogFinished(nurse, { opened: false });
+    if (!opened) finish({ opened: false });
   }
 
   function onLoveNurseTouchHero(nurse, hero) {

@@ -393,6 +393,7 @@
     ai.dialogActive = true;
     ent.isTalking = true;
     if (hero) hero.isTalking = true;
+    if (typeof pauseGame === 'function') pauseGame();
     setAnim(ent, 'talk');
     if (DEBUG()) console.debug('[SUPERVISOR] start riddle', { heroId: hero?.id || 'hero' });
 
@@ -400,6 +401,7 @@
     const finish = () => {
       if (finished) return;
       finished = true;
+      if (typeof resumeGame === 'function') resumeGame();
       ai.dialogActive = false;
       ent.isTalking = false;
       if (hero && hero.isTalking) hero.isTalking = false;
@@ -409,8 +411,10 @@
     };
     const resolve = (correct) => {
       if (correct) {
+        if (window.ScoreAPI && typeof ScoreAPI.add === 'function') { ScoreAPI.add(100); }
         W.DialogAPI?.system?.('Respuesta impecable.', { ms: 1200 });
       } else {
+        if (window.HeroAPI && typeof HeroAPI.damage === 'function') { HeroAPI.damage(1); }
         W.DialogAPI?.system?.('La supervisora anota tu error…', { ms: 1400 });
         if (typeof G.score === 'number') G.score = Math.max(0, G.score - 10);
       }
