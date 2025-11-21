@@ -822,7 +822,9 @@
   };
 
   HUD.drawWorldOverlays = function(ctx, camera, G) {
-    drawNameTags(ctx, camera, G);
+    // Los pacientes ya pintan su etiqueta desde el sistema de rigs; evitamos
+    // duplicar el nombre en el overlay HUD.
+    // drawNameTags(ctx, camera, G);
     drawFloatingMessages(ctx, camera, G);
   };
 
