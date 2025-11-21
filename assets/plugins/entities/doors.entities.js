@@ -21,6 +21,7 @@
 
   let interactBound = false;
   let interactHandler = null;
+  let urgenciasWarned = false;
 
   function ensureInteractBinding(){
     if (interactBound) return;
@@ -91,6 +92,21 @@
       }
     }
     return false;
+  }
+
+  function getPendingPatientsCount(state){
+    const target = resolveState(state);
+    if (Number.isFinite(target.pendingPatients)) return Math.max(0, target.pendingPatients);
+    const stats = target.stats || window.G?.stats;
+    if (Number.isFinite(stats?.remainingPatients)) return Math.max(0, stats.remainingPatients);
+    return hasBlockingPatientsOrFuriosas(target) ? 1 : 0;
+  }
+
+  function warnUrgenciasLocked(door){
+    if (urgenciasWarned || (door && door._warnedLocked)) return;
+    console.warn('[URGENT] Door locked, patients remain');
+    urgenciasWarned = true;
+    if (door) door._warnedLocked = true;
   }
 
   function spawn(state, x, y, opts = {}){
@@ -254,17 +270,19 @@
     return openDoorImmediate(door, opts);
   }
 
-  function openBossDoor(door, opts={}){
+  function openUrgenciasDoor(door, opts={}){
     if (!door) return false;
     const state = resolveState(opts.state);
-    const blocking = hasBlockingPatientsOrFuriosas(state);
-    if (blocking) {
-      console.info('[URGENT] Door locked, patients remain');
+    const pendingPatients = getPendingPatientsCount(state);
+    if (pendingPatients > 0) {
+      warnUrgenciasLocked(door);
       state.urgenciasOpen = false;
       if (window.G) window.G.urgenciasOpen = false;
       if (opts.feedback !== false) notifyLocked(door);
       return false;
     }
+    urgenciasWarned = false;
+    if (door) door._warnedLocked = false;
     door.locked = false;
     const opened = openDoorImmediate(door, Object.assign({}, opts, { holdOpen: true, ignoreLock: true }));
     if (opened) {
@@ -278,7 +296,7 @@
   }
 
   function openDoor(door, opts={}){
-    if (isBossDoorEntity(door)) return openBossDoor(door, opts);
+    if (isBossDoorEntity(door) || isKind(door, 'URGENCIAS')) return openUrgenciasDoor(door, opts);
     return openNormalDoor(door, opts);
   }
 
@@ -301,7 +319,7 @@
     if (!door) return false;
     const bossDoor = isBossDoorEntity(door);
     if (door.locked && !door.open){
-      if (bossDoor) return openBossDoor(door, opts);
+      if (bossDoor || isKind(door, 'URGENCIAS')) return openUrgenciasDoor(door, opts);
       if (opts.feedback !== false) notifyLocked(door);
       return true;
     }
@@ -365,9 +383,9 @@
 
   function openUrgencias(state){
     state = resolveState(state);
-    const blocking = hasBlockingPatientsOrFuriosas(state);
-    if (blocking) {
-      console.info('[URGENT] Door locked, patients remain');
+    const pendingPatients = getPendingPatientsCount(state);
+    if (pendingPatients > 0) {
+      warnUrgenciasLocked(null);
       state.urgenciasOpen = false;
       if (window.G) window.G.urgenciasOpen = false;
       return false;
@@ -376,15 +394,10 @@
     let bossDoorRef = null;
     const maybeOpen = (door) => {
       if (!door) return;
-      if (!isBossDoorEntity(door)) return;
-      if (openDoorImmediate(door, { holdOpen: true, ignoreLock: true, silent: true })) {
+      if (!(isBossDoorEntity(door) || isKind(door, 'URGENCIAS'))) return;
+      if (openUrgenciasDoor(door, { state, silent: true, feedback: false, holdOpen: true, ignoreLock: true })) {
         opened = true;
         bossDoorRef = bossDoorRef || door;
-        door.locked = false;
-        door.state.holdOpen = true;
-        door.state.openProgress = 1;
-        door.state.autoCloseTimer = 0;
-        door.state.autoCloser = null;
       }
     };
     if (Array.isArray(state.entities)) {
