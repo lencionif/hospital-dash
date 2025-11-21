@@ -5354,6 +5354,27 @@
     }
   });
 
+  API.registerRig('item_pill_generic', {
+    create(e){
+      const data = e?.puppet?.data || {};
+      return {
+        skin: normalizeSkinAsset(data.skin || e.skin || 'pill_generic'),
+        tint: parseTint(data.tint, 0.2)
+      };
+    },
+    update(){},
+    draw(ctx, cam, e, st){
+      if (!ctx || !e || !st) return;
+      const [cx, cy, sc] = toScreen(cam, e);
+      const w = (e.w || 16) * sc;
+      const h = (e.h || 16) * sc;
+      ctx.save();
+      ctx.translate(cx, cy);
+      drawSprite(ctx, st.skin, w, h, '#f4e4ba', st.tint);
+      ctx.restore();
+    }
+  });
+
   API.registerRig('syringe', {
     create(e){
       const data = e?.puppet?.data || {};

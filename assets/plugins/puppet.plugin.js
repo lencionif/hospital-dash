@@ -177,7 +177,7 @@
       phone: 'phone',
       hazard_fire: 'hazard_fire',
       hazard_water: 'hazard_water',
-      pill: 'pill',
+      pill: 'item_pill_generic',
       mosquito: 'mosquito',
       rat: 'rat'
     },

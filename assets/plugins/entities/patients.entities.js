@@ -210,8 +210,20 @@
       skin: skinName,
       bellId: null,
       pillId: null,
-      ringing: false
+      ringing: false,
+      isNPC: true
     };
+
+    const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
+    const npcLayer = layers.NPC ?? (1 << 1);
+    const mask = (layers.WALL ?? (1 << 3)) | (layers.HERO ?? (1 << 0)) | (layers.CART ?? (1 << 2));
+    patient.collisionLayer = npcLayer;
+    patient.collisionMask = mask;
+    const body = patient.body || patient;
+    body.collisionLayer = npcLayer;
+    body.collisionMask = mask;
+    body.entity = patient;
+    patient.body = body;
 
     if (!patient.id) patient.id = (Math.random() * 1e9) | 0;
     patient.state = patient.state || 'idle_bed';

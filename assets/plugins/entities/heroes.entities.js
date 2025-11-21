@@ -82,6 +82,7 @@
       tag: 'player',
       hero: key,
       heroId: key,
+      isHero: true,
       x: Math.round(x), y: Math.round(y),
       w, h,
       solid: true,
@@ -121,6 +122,16 @@
       // util
       onDestroy(){ for(const fn of this._destroyCbs) try{ fn(); }catch(e){}; this._destroyCbs.length=0; },
     };
+    const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
+    const heroLayer = layers.HERO ?? (1 << 0);
+    const mask = (layers.WALL ?? (1 << 3)) | (layers.NPC ?? (1 << 1)) | (layers.CART ?? (1 << 2)) | (layers.TRIGGER ?? (1 << 4));
+    p.collisionLayer = heroLayer;
+    p.collisionMask = mask;
+    const body = p.body || p;
+    body.collisionLayer = heroLayer;
+    body.collisionMask = mask;
+    body.entity = p;
+    p.body = body;
     window.MovementSystem?.register?.(p);
     return p;
   }

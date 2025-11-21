@@ -2,6 +2,21 @@
 (() => {
   'use strict';
 
+  const COLLISION_LAYERS = (() => {
+    const existing = window.CollisionLayers || window.COLLISION_LAYERS || {};
+    const layers = {
+      HERO: existing.HERO ?? (1 << 0),
+      NPC: existing.NPC ?? (1 << 1),
+      CART: existing.CART ?? (1 << 2),
+      WALL: existing.WALL ?? (1 << 3),
+      TRIGGER: existing.TRIGGER ?? (1 << 4)
+    };
+    const target = window.CollisionLayers || (window.CollisionLayers = {});
+    Object.assign(target, layers);
+    window.COLLISION_LAYERS = target;
+    return layers;
+  })();
+
   const MASS = {
     HERO: 1.0,
     CART: 3.5,
@@ -140,6 +155,23 @@
     const collisionWarnings = new WeakSet();
 
     const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
+    const getBody = (ent) => (ent && ent.body) ? ent.body : ent;
+    const collisionLayerOf = (ent) => {
+      const body = getBody(ent);
+      return body?.collisionLayer ?? null;
+    };
+    const collisionMaskOf = (ent) => {
+      const body = getBody(ent);
+      return body?.collisionMask ?? null;
+    };
+    const canCollide = (a, b) => {
+      const layerA = collisionLayerOf(a);
+      const layerB = collisionLayerOf(b);
+      const maskA = collisionMaskOf(a);
+      const maskB = collisionMaskOf(b);
+      if (layerA == null || layerB == null || maskA == null || maskB == null) return true;
+      return ((maskA & layerB) !== 0) && ((maskB & layerA) !== 0);
+    };
     const isDebugPhysics = () => {
       try {
         if (window.DEBUG_PUSH || window.DEBUG_FORCE_ASCII) return true;
@@ -326,6 +358,7 @@
       if (!cart) return;
       const other = (cart === a) ? b : a;
       if (!other || other.dead) return;
+      if (!canCollide(cart, other)) return;
       const behavior = ensureCartPhysicsMeta(cart);
       const speedCart = Math.hypot(cart.vx || 0, cart.vy || 0);
       const rel = Math.hypot((cart.vx || 0) - (other.vx || 0), (cart.vy || 0) - (other.vy || 0));
@@ -856,6 +889,7 @@
       if (!G) return;
       for (const o of G.entities){
         if (o === e || !o.solid || o.dead) continue;
+        if (!canCollide(e, o)) continue;
         if (!nearAABB(e, o, 2)) continue;
         cartImpactDamage(e, o);
         if (!AABB(e, o)) continue;
@@ -875,6 +909,7 @@
       for (let i = 0; i < dyn.length; i++){
         for (let k = i + 1; k < dyn.length; k++){
           const a = dyn[i], b = dyn[k];
+          if (!canCollide(a, b)) continue;
           if (!nearAABB(a, b, 2)) continue;
           cartImpactDamage(a, b);
           if (!AABB(a, b)) continue;
@@ -956,6 +991,24 @@
       }
     }
 
+    function queryOverlap(target){
+      if (!G || !target) return [];
+      const body = getBody(target);
+      if (!body) return [];
+      if (!body.entity) body.entity = target.entity || target;
+      const hits = [];
+      for (const other of G.entities){
+        if (!other || other.dead) continue;
+        const otherBody = getBody(other);
+        if (!otherBody || otherBody === body) continue;
+        if (!canCollide(body, otherBody)) continue;
+        if (!AABB(body, otherBody)) continue;
+        if (!otherBody.entity) otherBody.entity = other;
+        hits.push(otherBody);
+      }
+      return hits;
+    }
+
     function tick(dt){
       if (!G) return;
       for (const e of G.entities){
@@ -1010,6 +1063,7 @@
 
     const api = {
       MASS,
+      LAYERS: COLLISION_LAYERS,
       DEFAULTS,
       bindGame,
       assignCartPhysicsMetadata: ensureCartPhysicsMeta,
@@ -1019,6 +1073,7 @@
       resolveAgainstSolids,
       resolveEntityPairs,
       snapInsideMap,
+      queryOverlap,
       tick,
       step: tick
     };
@@ -1036,5 +1091,5 @@
     return api;
   }
 
-  window.Physics = { MASS, PHYS, DEFAULTS, init, assignCartPhysicsMetadata: () => null };
+  window.Physics = { MASS, PHYS, DEFAULTS, LAYERS: COLLISION_LAYERS, init, queryOverlap: () => [], assignCartPhysicsMetadata: () => null };
 })();
