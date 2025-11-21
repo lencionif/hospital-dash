@@ -4724,6 +4724,17 @@ function drawEntities(c2){
       }
 
       try {
+        const entities = Array.isArray(G.entities) ? G.entities : [];
+        if (typeof window.auditRigs === 'function') {
+          window.auditRigs(entities);
+        } else if (window.PuppetAPI?.auditRigs) {
+          window.PuppetAPI.auditRigs(entities);
+        }
+      } catch (err) {
+        if (window.DEBUG_FORCE_ASCII) console.warn('[Puppet] auditoría de rigs fallida', err);
+      }
+
+      try {
         exportAsciiMapForDebug();
       } catch (err) {
         console.warn('[debug-export] exportAsciiMapForDebug error', err);

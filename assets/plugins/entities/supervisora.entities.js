@@ -262,7 +262,7 @@
       ai.pathIndex = 0;
       ai.pathGoal = { x: target.x, y: target.y };
       ai.repathTimer = cfg.repathTime;
-      if (DEBUG()) console.debug('[SUPERVISOR] patrol target', { id: ent.id, index: ai.patrolIndex });
+      // console.debug('[SUPERVISOR] patrol target', { id: ent.id, index: ai.patrolIndex });
     }
 
     const moved = moveAlongPath(ent, cfg.speed, dt);

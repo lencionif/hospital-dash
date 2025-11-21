@@ -318,6 +318,7 @@
         h: height,
         static: true,
         solid: false,
+        rigOptional: true,
         spriteKey: idleSprite,
         _spriteIdle: idleSprite,
         _spriteRinging: ringingSprite,
