@@ -98,7 +98,11 @@
     const target = resolveState(state);
     if (Number.isFinite(target.pendingPatients)) return Math.max(0, target.pendingPatients);
     const stats = target.stats || window.G?.stats;
-    if (Number.isFinite(stats?.remainingPatients)) return Math.max(0, stats.remainingPatients);
+    if (stats && (Number.isFinite(stats.remainingPatients) || Number.isFinite(stats.activeFuriosas))){
+      const remaining = Number.isFinite(stats.remainingPatients) ? Math.max(0, stats.remainingPatients) : 0;
+      const activeFuriosas = Number.isFinite(stats.activeFuriosas) ? Math.max(0, stats.activeFuriosas) : 0;
+      return remaining + activeFuriosas;
+    }
     return hasBlockingPatientsOrFuriosas(target) ? 1 : 0;
   }
 
