@@ -352,7 +352,11 @@
       e.isCart = true;
       const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
       const cartLayer = layers.CART ?? (1 << 2);
-      const mask = (layers.WALL ?? (1 << 3)) | (layers.HERO ?? (1 << 0)) | (layers.NPC ?? (1 << 1)) | (layers.TRIGGER ?? (1 << 4));
+      const mask = (layers.WALL ?? (1 << 3))
+        | (layers.HERO ?? (1 << 0))
+        | (layers.NPC ?? (1 << 1))
+        | (layers.TRIGGER ?? (1 << 4))
+        | cartLayer;
       e.collisionLayer = cartLayer;
       e.collisionMask = mask;
       const body = e.body || e;
