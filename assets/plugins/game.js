@@ -13,7 +13,8 @@
   const RAW_SEARCH = location.search || '';
   const NORMALIZED_SEARCH = RAW_SEARCH.replace(/;/g, '&');
   const SEARCH_PARAMS = new URLSearchParams(NORMALIZED_SEARCH);
-  const DEBUG_MAP_MODE = /(?:\?|&)map=debug\b/i.test(location.search || '');
+  const MAP_PARAM = (getParamCaseInsensitive('map') || '').toLowerCase();
+  const DEBUG_MAP_MODE = MAP_PARAM === 'debug';
   const DEFAULT_DEBUG_MAP_PATH = 'assets/config/debug-map.txt';
   const DEBUG_MAP_FILE_PARAM = (() => {
     const raw = SEARCH_PARAMS.get('debugMap')
@@ -443,6 +444,8 @@
         vy: e.vy || 0,
         intentVx: e.vx || 0,
         intentVy: e.vy || 0,
+        targetX: Number.isFinite(e.targetX) ? e.targetX : null,
+        targetY: Number.isFinite(e.targetY) ? e.targetY : null,
         teleportX: e.x || 0,
         teleportY: e.y || 0,
         forceTeleport: false,
@@ -640,6 +643,44 @@
       if (Math.abs(st.vy) < 0.0001) st.vy = 0;
     }
 
+    function applyTargetMotion(e, st){
+      if (!Number.isFinite(st.targetX) || !Number.isFinite(st.targetY)) return false;
+      const cx = (st.x || 0) + (e.w || 0) * 0.5;
+      const cy = (st.y || 0) + (e.h || 0) * 0.5;
+      const dx = st.targetX - cx;
+      const dy = st.targetY - cy;
+      const distSq = dx * dx + dy * dy;
+      const stopDist = Math.max(1, (tileSize || TILE) * 0.25);
+      if (distSq < stopDist * stopDist) {
+        st.targetX = null; st.targetY = null;
+        st.vx = 0; st.vy = 0; st.intentVx = 0; st.intentVy = 0;
+        if (e) {
+          e.speed = 0;
+          if (typeof e.setAnimation === 'function') {
+            try { e.setAnimation('idle'); } catch (_) {}
+          } else if (e.state) {
+            e.state.animation = 'idle';
+          }
+        }
+        return true;
+      }
+
+      const len = Math.hypot(dx, dy) || 1;
+      const desiredSpeed = Number.isFinite(e.speed)
+        ? e.speed
+        : (Number.isFinite(e.maxSpeed) ? e.maxSpeed : 160);
+      const ndx = dx / len;
+      const ndy = dy / len;
+      st.vx = ndx * desiredSpeed;
+      st.vy = ndy * desiredSpeed;
+      st.intentVx = st.vx;
+      st.intentVy = st.vy;
+      if (typeof e.setAnimation === 'function') {
+        try { e.setAnimation('walk'); } catch (_) {}
+      }
+      return false;
+    }
+
     function step(dt){
       if (!dt || dt <= 0) return;
       for (const e of movers){
@@ -657,6 +698,7 @@
           st.vy = 0;
           continue;
         }
+        applyTargetMotion(e, st);
         st.vx = st.intentVx;
         st.vy = st.intentVy;
         const maxSp = (typeof e.maxSpeed === 'number') ? e.maxSpeed : null;
@@ -682,6 +724,19 @@
       step,
       setMap,
       getState(e){ return ensure(e); },
+      setTarget(e, x, y){
+        const st = ensure(e);
+        if (!st) return null;
+        const tx = Number(x);
+        const ty = Number(y);
+        st.targetX = Number.isFinite(tx) ? tx : null;
+        st.targetY = Number.isFinite(ty) ? ty : null;
+        if (e) {
+          e.targetX = st.targetX;
+          e.targetY = st.targetY;
+        }
+        return st;
+      },
       allowTeleport(e, opts = {}) {
         const st = ensure(e);
         if (!st) return null;
@@ -3552,7 +3607,7 @@ function drawEntities(c2){
 
   async function resolveAsciiMapForLevel(level){
     const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
-    const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
+    const shouldUseDebugAscii = DEBUG_MAP_MODE;
     let levelRules = null;
     let ruleVisibleRadius = null;
     let targetWidth = null;
@@ -3604,6 +3659,9 @@ function drawEntities(c2){
           seed: G.seed || Date.now(),
           place: false,
           defs: null,
+          rules: levelRules || undefined,
+          w: targetWidth || (window.DEBUG_MINIMAP ? 128 : undefined),
+          h: targetHeight || (window.DEBUG_MINIMAP ? 128 : undefined),
           width: window.DEBUG_MINIMAP ? 128 : undefined,
           height: window.DEBUG_MINIMAP ? 128 : undefined
         }) || {};
@@ -3811,6 +3869,33 @@ function drawEntities(c2){
     const height = G.mapH || ASCII_MAP.length;
     const asciiString = ASCII_MAP.join('\n');
 
+    G.ascii = () => asciiString;
+    G.asciiString = asciiString;
+    placeHeroAtControlRoom();
+    window.MapAPI = window.MapAPI || {};
+    window.MapAPI.ascii = () => asciiString;
+    try {
+      console.log('[debug-map] mapa ASCII externo cargado');
+      console.log(asciiString);
+    } catch (_) {}
+    if (asciiString && typeof fetch === 'function') {
+      try {
+        fetch('debug-export.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: asciiString,
+        }).catch((err) => {
+          console.error('[debug-map] Error enviando mapa ASCII al servidor', err);
+        });
+      } catch (e) {
+        console.error('[debug-map] Excepción al enviar mapa ASCII', e);
+      }
+    }
+    if (DEBUG_MAP_MODE) {
+      try {
+        console.debug(`[debug-map] ASCII (${width}x${height}):\n${asciiString}`);
+      } catch (_) {}
+    }
     const asciiPlacements = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
     if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
       asciiPlacements.push(...G.mapgenPlacements);
