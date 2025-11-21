@@ -5,7 +5,8 @@
     defaultLightAlpha="0.6"
     maxHeroes="2"
     defaultHero="enrique"
-    culling="20"
+    visualRadius="8"
+    visibleTilesRadius="20"
     massHero="1.0"
     massCart="3.5"
     massRat="0.5"
@@ -20,9 +21,6 @@
     npcLightGuardia="#b9ff6b"
     npcLightFamiliar="#ff6b9a"
     firstBellDelayMinutes="5"
-    hematologicTimerSeconds="90"
-    cleanerBossTimerSeconds="90"
-    pyroPatientLvl3TimerSeconds="75"
   />
 
   <!-- ====== LEVEL 1 ====== -->
@@ -31,7 +29,7 @@
          seed="auto"
          heroes="1"
          width="60" height="40"
-         culling="20"
+         visibleTilesRadius="20"
          rooms="8"
          roomSizeMin="6x6" roomSizeMax="12x10"
          corridors="true"
@@ -65,7 +63,7 @@
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
 
     <!-- Puerta urgencias -->
-    <rule type="door"  kind="urgencias" bossDoor="true" at="bossRoomEntrance"/>
+    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
 
     <!-- Ascensores: prohibido en/hacia bossRoom -->
     <rule type="elevator" count="1"
@@ -93,7 +91,7 @@
          seed="auto"
          heroes="2"
          width="80" height="56"
-         culling="20"
+         visibleTilesRadius="20"
          rooms="12"
          roomSizeMin="8x8" roomSizeMax="14x12"
          corridors="true"
@@ -122,7 +120,7 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
 
-    <rule type="door"  kind="urgencias" bossDoor="true" at="bossRoomEntrance"/>
+    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
 
     <rule type="elevator" count="2"
           connect="room:entrance->room:control,room:control->room:ICU"
@@ -144,7 +142,7 @@
          seed="auto"
          heroes="2"
          width="96" height="64"
-         culling="20"
+         visibleTilesRadius="20"
          rooms="14"
          roomSizeMin="9x9" roomSizeMax="16x14"
          corridors="true"
@@ -175,7 +173,7 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="2"/>
 
-    <rule type="door"  kind="urgencias" bossDoor="true" at="bossRoomEntrance"/>
+    <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
 
     <rule type="elevator" count="2"
           connect="room:entrance->room:control,room:control->room:ICU"

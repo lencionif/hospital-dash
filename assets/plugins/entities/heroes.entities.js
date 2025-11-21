@@ -24,7 +24,6 @@
   const TILE = (typeof W.TILE_SIZE !== 'undefined') ? W.TILE_SIZE : (W.TILE || 32);
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-  const nowSecs = () => (typeof performance?.now === 'function' ? performance.now() : Date.now()) / 1000;
   function pushUnique(arr, x){ if (!Array.isArray(arr)) return; if (!arr.includes(x)) arr.push(x); }
   function aabb(a,b){ return a.x<a.bx && a.bx>b.x && a.y<a.by && a.by>b.y; }
   function rectFrom(e){ return { x:e.x, y:e.y, bx:e.x+e.w, by:e.y+e.h }; }
@@ -82,7 +81,6 @@
       tag: 'player',
       hero: key,
       heroId: key,
-      isHero: true,
       x: Math.round(x), y: Math.round(y),
       w, h,
       solid: true,
@@ -101,37 +99,22 @@
       dir: { x: 1, y: 0 },
       pushing: false,
       sprint: 1.0,
-      stunTimer: 0,
-      isStunned: false,
-      stunSource: null,
       // render / sprite
       spriteKey: key,     // sprites.plugin: "enrique.png", "roberto.png", "francesco.png"
       // orientación + giro suave de linterna/FOW
       facing: 'S',
       lookAngle: Math.PI / 2,  // 90º hacia abajo (sur)
       turnSpeed: 6.0,          // radianes/segundo (~143º/s) -> ajustable
-      loveLock: null,
       _facingHold: 0,          // anti-parpadeo de cardinales
       _flashlightId: null,
       flashlightOffsetX: 0,
       flashlightOffsetY: 0,
-      status: { confused: false, confusedUntil: 0, confusedSource: null },
       _fogRange: null,
       _lastHitAt: 0,
       _destroyCbs: [],
       // util
       onDestroy(){ for(const fn of this._destroyCbs) try{ fn(); }catch(e){}; this._destroyCbs.length=0; },
     };
-    const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
-    const heroLayer = layers.HERO ?? (1 << 0);
-    const mask = (layers.WALL ?? (1 << 3)) | (layers.NPC ?? (1 << 1)) | (layers.CART ?? (1 << 2)) | (layers.TRIGGER ?? (1 << 4));
-    p.collisionLayer = heroLayer;
-    p.collisionMask = mask;
-    const body = p.body || p;
-    body.collisionLayer = heroLayer;
-    body.collisionMask = mask;
-    body.entity = p;
-    p.body = body;
     window.MovementSystem?.register?.(p);
     return p;
   }
@@ -153,14 +136,10 @@
     const overrideRadiusTiles = (overrides.radiusTiles ?? (Number.isFinite(overrides.radius)
       ? overrides.radius / (TILE || 32)
       : undefined));
-    const desiredRadiusTiles = overrideRadiusTiles ?? heroLight.radiusTiles ?? defaults.radiusTiles ?? 6;
-    const cullTiles = Number.isFinite(G?.cullingRadiusTiles) && G.cullingRadiusTiles > 0 ? G.cullingRadiusTiles : null;
-    const maxCullingRadius = cullTiles ? Math.max(1, cullTiles - 1) : null;
-    const radiusTiles = maxCullingRadius ? Math.min(desiredRadiusTiles, maxCullingRadius) : desiredRadiusTiles;
-    const desiredInnerTiles = overrides.innerTiles
+    const radiusTiles = overrideRadiusTiles ?? heroLight.radiusTiles ?? defaults.radiusTiles ?? 6;
+    const innerTiles = overrides.innerTiles
       ?? heroLight.innerTiles
       ?? ((heroLight.innerRatio ?? defaults.innerRatio ?? 0.5) * radiusTiles);
-    const innerTiles = Math.min(radiusTiles, desiredInnerTiles);
     const color = overrides.color || heroLight.color || defaults.color || '#ffffff';
     const intensity = overrides.intensity ?? heroLight.intensity ?? defaults.intensity ?? 0.6;
     const coneDeg = heroLight.coneDeg ?? defaults.coneDeg ?? 80;
@@ -339,43 +318,6 @@
       }
       try{ e.onDestroy(); }catch(_){};
     }
-  }
-
-  function applyStun(e, duration, meta) {
-    if (!e || e.dead) return;
-    const time = Math.max(0, Number(duration) || 0);
-    if (!(time > 0)) return;
-    e.stunTimer = Math.max(e.stunTimer || 0, time);
-    e.stunSource = meta && meta.source ? meta.source : (meta && meta.attacker) || null;
-    e.isStunned = true;
-    const st = ensureAnimState(e);
-    if (st) {
-      const prof = st.profile || HERO_ANIM_PROFILE[e.hero] || HERO_ANIM_PROFILE.francesco;
-      st.hurtTimer = Math.max(st.hurtTimer, meta?.hurtDuration || prof.hurt || 0.45);
-      st.dirty = true;
-    }
-  }
-
-  function applyConfuse(e, duration, meta) {
-    if (!e || e.dead) return;
-    const st = e.status || (e.status = {});
-    const time = Math.max(0, Number(duration) || 0);
-    if (!(time > 0)) return;
-    const now = nowSecs();
-    st.confused = true;
-    st.confusedUntil = Math.max(st.confusedUntil || 0, now + time);
-    st.confusedSource = meta?.source || meta?.attacker || 'npc';
-  }
-
-  function isConfused(e) {
-    if (!e || !e.status) return false;
-    const now = nowSecs();
-    if (e.status.confused && (!e.status.confusedUntil || e.status.confusedUntil > now)) return true;
-    if (e.status.confused && e.status.confusedUntil <= now) {
-      e.status.confused = false;
-      e.status.confusedSource = null;
-    }
-    return false;
   }
   function heal(e, amount, opts) {
     if (!e || e.dead) return;
@@ -699,15 +641,12 @@
 
     // Exponer utilidades (por si otras entidades las usan)
     applyDamage,
-    applyStun,
-    applyConfuse,
     heal,
     startAttack,
     setTalking,
     triggerPush,
     notifyDamage,
     setDeathCause,
-    isConfused,
     getAnimationState,
     updateAnimation: updateHeroAnimation,
   };

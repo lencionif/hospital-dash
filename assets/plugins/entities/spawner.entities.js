@@ -1,339 +1,382 @@
-// filename: spawner.entities.js
-// Sistema de spawners visibles con colas por población (animals / humans / carts).
-// - Cada spawner tiene sprite propio, cooldown fijo de 120 s y cola interna.
-// - Las muertes notifican a SpawnerAPI.notifyDeath(entity|data) para encolar reapariciones.
-// - SpawnerAPI reparte peticiones al spawner con menor cola y más cercano al jugador.
-// - Compatibilidad: se expone SpawnerManager con firmas similares al módulo previo.
+// filename: spawner.manager.js
+// Gestor de re-spawns (enemigos, NPC y carros) SOLO tras muertes.
+// - No puebla al inicio. Registra puntos de spawn y repone bajas con cooldown por punto.
+// - Si mueren varias unidades (p.ej., 5 mosquitos y 2 ratas) reparte aleatorio entre spawners del tipo.
+// - Cada spawner crea de una en una y entra en cooldown (default 180 s).
+// - Si no hay spawners del tipo, las muertes quedan en cola global hasta que aparezcan.
+//
+// API principal:
+//   SpawnerManager.init(G?)                           // opcional (autodetecta G)
+//   SpawnerManager.registerPoint(type, x, y, opts?)   // registra punto (px por defecto; opts.inTiles para tiles)
+//   SpawnerManager.reportDeath(type, sub, n=1)        // reportar muertes (type: 'enemy'|'npc'|'cart')
+//   SpawnerManager.update(dt)                         // llama en tu bucle (o deja que se autoenganche)
+//
+// Atajos útiles de registro desde placements (opcionales):
+//   SpawnerManager.registerFromPlacement({type:'spawn_animal', x,y, ...})
+//
+// Integración de muertes: en tus APIs de entidades, cuando muera alguien, llama a:
+//   SpawnerManager.reportDeath('enemy','mosquito'|'rat')
+//   SpawnerManager.reportDeath('npc','tcae'|'medico'|'supervisora'|'guardia'|...)
+//   SpawnerManager.reportDeath('cart','food'|'med'|'er')
 
 (function (W) {
   'use strict';
+  const getGame = () => (W.G || (W.G = {}));
+  const TILE = (typeof W.TILE_SIZE === 'number' ? W.TILE_SIZE : (typeof W.TILE === 'number' ? W.TILE : 32));
+  const nowSec = () => (W.performance && performance.now ? performance.now() / 1000 : Date.now() / 1000);
 
-  const TILE = (typeof W.TILE_SIZE === 'number') ? W.TILE_SIZE : (typeof W.TILE === 'number' ? W.TILE : 32);
-  const COOLDOWN_SEC = 120;
-  const STATE = {
-    spawners: { animals: [], humans: [], carts: [] },
-    pending: { animals: [], humans: [], carts: [] },
+  // ------------------ Estado interno ------------------
+  const S = {
+    spawners: { enemy: [], npc: [], cart: [] },   // por familia
+    pending:  { enemy: [], npc: [], cart: [] },   // cola global si no hay puntos (array de subs)
+    rng: Math.random,
     autoUpdateHooked: false
   };
 
-  // ------------------------------------------------------------
-  // Utilidades
-  // ------------------------------------------------------------
-  function getGame() { return W.G || (W.G = { entities: [] }); }
+  // ------------------ Utilidades ------------------
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
-  function logDebug(...args) { if (W.DEBUG_SPAWNER) try { console.info('[Spawner]', ...args); } catch (_) {} }
-  function nowSec() { return (W.performance && performance.now ? performance.now() / 1000 : Date.now() / 1000); }
+  function randPick(arr) { return arr[(S.rng() * arr.length) | 0]; }
+  function randRange(a, b) { return a + S.rng() * (b - a); }
 
-  function distanceToPlayer(sp) {
-    const g = getGame();
-    const p = g.player;
-    if (!p) return Infinity;
-    const dx = (sp.worldX || sp.x) - (p.x || 0);
-    const dy = (sp.worldY || sp.y) - (p.y || 0);
-    return Math.hypot(dx, dy);
-  }
-
-  function ensureAutoUpdate() {
-    if (STATE.autoUpdateHooked) return;
+  function ensureSystemsAutoUpdate() {
+    if (S.autoUpdateHooked) return;
+    // Se engancha de forma suave a tu bucle si usas G.systems
     const game = getGame();
-    if (Array.isArray(game.systems)) {
-      game.systems.push({ id: 'spawner_api', update: (dt) => SpawnerAPI.update(dt) });
-      STATE.autoUpdateHooked = true;
-      return;
-    }
-    // Fallback suave si no existe systems
-    let last = nowSec();
-    function tick() {
-      const t = nowSec();
-      const dt = clamp(t - last, 0, 0.25);
-      last = t;
-      try { SpawnerAPI.update(dt); } catch (_) {}
+    if (game && Array.isArray(game.systems)) {
+      game.systems.push({ id: 'spawner_manager', update: (dt) => SpawnerManager.update(dt) });
+      S.autoUpdateHooked = true;
+    } else {
+      // Fallback: pequeño ticker si no tienes systems (no interfiere si no hay juego corriendo)
+      S._lastTick = nowSec();
+      function tick() {
+        try {
+          const t = nowSec();
+          const dt = clamp(t - (S._lastTick || t), 0, 0.25);
+          S._lastTick = t;
+          SpawnerManager.update(dt);
+        } catch (_) {}
+        W.requestAnimationFrame(tick);
+      }
       W.requestAnimationFrame(tick);
-    }
-    W.requestAnimationFrame(tick);
-    STATE.autoUpdateHooked = true;
-  }
-
-  function normalizeType(raw) {
-    const t = String(raw || '').toLowerCase();
-    if (t === 'enemy' || t === 'animals' || t === 'animal') return 'animals';
-    if (t === 'npc' || t === 'human' || t === 'humans') return 'humans';
-    if (t === 'cart' || t === 'carts' || t === 'car') return 'carts';
-    return t;
-  }
-
-  function spriteForType(spawnType) {
-    switch (spawnType) {
-      case 'animals': return { spriteKey: 'spawner_animals', skin: 'spawner_animals.png' };
-      case 'humans':  return { spriteKey: 'spawner_humans',  skin: 'spawner_humans.png' };
-      case 'carts':   return { spriteKey: 'spawner_carts',   skin: 'spawner_carts.png' };
-      default:        return { spriteKey: 'spawner_generic', skin: 'spawner_generic.png' };
+      S.autoUpdateHooked = true;
     }
   }
 
-  function createSpawnerEntity(spawnType, x, y, opts = {}) {
-    const { spriteKey, skin } = spriteForType(spawnType);
-    const baseX = opts.inTiles ? x * TILE : x;
-    const baseY = opts.inTiles ? y * TILE : y;
-    const w = opts.w || TILE * 0.9;
-    const h = opts.h || TILE * 0.9;
-    return {
-      id: 'SP_' + Math.random().toString(36).slice(2),
-      spawnType,
-      x, y, w, h,
-      worldX: baseX,
-      worldY: baseY,
-      inTiles: !!opts.inTiles,
-      static: true,
-      solid: false,
-      spriteKey,
-      skin,
-      puppet: opts.puppet || null,
-      _cooldown: 0,
-      _queue: [],
-      allows: Array.isArray(opts.allows) ? opts.allows.map((s) => String(s || '').toLowerCase()) : [],
-      prefer: typeof opts.prefer === 'string' ? opts.prefer.toLowerCase() : '',
-      _meta: opts.meta || {},
-    };
+  function worldFromTiles(tx, ty) {
+    return { x: tx * TILE + TILE * 0.5 - (TILE * 0.5), y: ty * TILE + TILE * 0.5 - (TILE * 0.5) };
   }
 
-  function spawnerQueueLength(sp) { return Array.isArray(sp?._queue) ? sp._queue.length : 0; }
-
-  function spawnerAccepts(sp, template) {
-    if (!sp) return false;
-    if (!sp.allows || !sp.allows.length) return true;
-    const key = (template?.kind || template?.role || template?.sub || '').toLowerCase();
-    if (!key) return true;
-    return sp.allows.includes(key);
-  }
-
-  function assignRequestToBestSpawner(type, request) {
-    const list = STATE.spawners[type];
-    if (!Array.isArray(list) || !list.length) return false;
-    const candidates = list.filter((sp) => spawnerAccepts(sp, request.template));
-    if (!candidates.length) return false;
-    let best = candidates[0];
-    for (const sp of candidates) {
-      const lenBest = spawnerQueueLength(best);
-      const lenCur = spawnerQueueLength(sp);
-      if (lenCur < lenBest) { best = sp; continue; }
-      if (lenCur === lenBest) {
-        if (distanceToPlayer(sp) < distanceToPlayer(best)) best = sp;
+  function isWallRect(x, y, w, h) {
+    if (typeof W.isWallAt === 'function') return !!W.isWallAt(x, y, w, h);
+    // Fallback con G.map (1 = muro)
+    const tx1 = Math.floor(x / TILE), ty1 = Math.floor(y / TILE);
+    const tx2 = Math.floor((x + w - 1) / TILE), ty2 = Math.floor((y + h - 1) / TILE);
+    const map = getGame().map || [];
+    for (let ty = ty1; ty <= ty2; ty++) {
+      for (let tx = tx1; tx <= tx2; tx++) {
+        if (map[ty] && map[ty][tx] === 1) return true;
       }
-    }
-    best._queue.push(request);
-    logDebug('Asignado request a spawner', { spawner: best.id, type, pending: best._queue.length });
-    return true;
-  }
-
-  function processGlobalPending(type) {
-    const pend = STATE.pending[type];
-    if (!pend.length) return;
-    for (let i = pend.length - 1; i >= 0; i--) {
-      const req = pend[i];
-      const ok = assignRequestToBestSpawner(type, req);
-      if (ok) pend.splice(i, 1);
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Spawners
-  // ------------------------------------------------------------
-  const Spawn = {
-    animals(sub, x, y, payload) {
-      const key = (sub || payload?.kind || payload?.role || '').toLowerCase();
-      if (key === 'mosquito' && W.MosquitoAPI?.spawn) return W.MosquitoAPI.spawn(x, y, payload);
-      if (key === 'rat' && W.RatsAPI?.spawn) return W.RatsAPI.spawn(x, y, payload);
-      if (W.Entities?.Enemy?.spawn) return W.Entities.Enemy.spawn(key, x, y, payload);
-      console.warn('[SpawnerAPI] No hay factory para animal:', key);
-      return null;
-    },
-    humans(sub, x, y, payload) {
-      const key = (sub || payload?.role || payload?.kind || '').toLowerCase();
-      if (W.Entities?.NPC?.spawn) return W.Entities.NPC.spawn(key, x, y, payload);
-      if (W.Entities?.SupervisoraAPI?.spawn && key === 'supervisora') return W.Entities.SupervisoraAPI.spawn(x, y);
-      if (W.Entities?.Guardia?.spawn && key === 'guardia') return W.Entities.Guardia.spawn({ tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) });
-      if (W.Entities?.TCAE?.spawn && key === 'tcae') return W.Entities.TCAE.spawn({ tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) });
-      if (W.EnfermeraSexyAPI?.spawnEnfermera && (key === 'enfermera' || key === 'enfermera_sexy')) {
-        return W.EnfermeraSexyAPI.spawnEnfermera(Math.floor(x / TILE), Math.floor(y / TILE), {});
-      }
-      if (W.MedicoAPI?.registerMedicEntity && key === 'medico') {
-        const e = { x, y, w: TILE * 0.9, h: TILE * 0.9 };
-        W.MedicoAPI.registerMedicEntity(e);
-        return e;
-      }
-      if (W.FamiliarAPI?.registerFamiliarEntity && key === 'familiar') {
-        const e = { x, y, w: TILE * 0.95, h: TILE * 0.95 };
-        W.FamiliarAPI.registerFamiliarEntity(e);
-        return e;
-      }
-      if (W.Humans && typeof W.Humans.spawn === 'function') return W.Humans.spawn(key, x, y, payload);
-      console.warn('[SpawnerAPI] No hay factory para human:', key);
-      return null;
-    },
-    carts(sub, x, y, payload) {
-      const key = (sub || payload?.kind || payload?.type || '').toLowerCase();
-      if (W.Entities?.Cart?.spawn) return W.Entities.Cart.spawn(key, x, y, payload);
-      if (W.CartsAPI?.spawn) return W.CartsAPI.spawn({ type: key, x, y, ...(payload || {}) });
-      console.warn('[SpawnerAPI] No hay factory para cart:', key);
-      return null;
-    }
-  };
-
-  function spawnFromSpawner(sp) {
-    if (!sp || !sp._queue.length) return false;
-    const req = sp._queue[0];
-    const baseX = sp.inTiles ? sp.x * TILE : sp.worldX;
-    const baseY = sp.inTiles ? sp.y * TILE : sp.worldY;
-    const payload = Object.assign({ spawnerId: sp.id }, req.template || {});
-
-    let ent = null;
-    if (sp.spawnType === 'animals') ent = Spawn.animals(payload.kind || payload.sub, baseX, baseY, payload);
-    else if (sp.spawnType === 'humans') ent = Spawn.humans(payload.role || payload.kind || payload.sub, baseX, baseY, payload);
-    else if (sp.spawnType === 'carts') ent = Spawn.carts(payload.kind || payload.type || payload.sub, baseX, baseY, payload);
-
-    if (ent) {
-      sp._queue.shift();
-      sp._cooldown = COOLDOWN_SEC;
-      const g = getGame();
-      if (Array.isArray(g.entities) && !g.entities.includes(ent)) g.entities.push(ent);
-      logDebug('Spawn realizado', { spawner: sp.id, type: sp.spawnType, remaining: sp._queue.length });
-      return true;
     }
     return false;
   }
 
-  function tickSpawner(sp, dt) {
-    sp._cooldown = Math.max(0, (sp._cooldown || 0) - dt);
-    if (sp._cooldown > 0) return;
-    if (!sp._queue.length) return;
-    spawnFromSpawner(sp);
+  function findFreeSpotNear(x, y, radiusTiles = 3, w = TILE * 0.9, h = TILE * 0.9) {
+    for (let k = 0; k < 80; k++) {
+      const ang = randRange(0, Math.PI * 2);
+      const r = (1 + ((S.rng() * radiusTiles) | 0)) * TILE;
+      const nx = x + Math.cos(ang) * r;
+      const ny = y + Math.sin(ang) * r;
+      if (!isWallRect(nx, ny, w, h)) return { x: nx, y: ny };
+    }
+    return { x, y };
   }
 
-  // ------------------------------------------------------------
-  // Notificación de muertes y colas
-  // ------------------------------------------------------------
-  function normalizeTemplateFromEntity(entity) {
-    if (!entity) return {};
-    const role = (entity.role || entity.kindName || entity.kind || entity.type || '').toString().toLowerCase();
-    const cartType = (entity.cartType || entity.cartTier || '').toString().toLowerCase();
-    const template = {};
-    if (entity.spawnTemplate && typeof entity.spawnTemplate === 'object') Object.assign(template, entity.spawnTemplate);
-    if (entity.sub) template.sub = entity.sub;
-    if (entity.kindName) template.kind = entity.kindName.toLowerCase();
-    if (entity.kind && typeof entity.kind === 'string') template.kind = entity.kind.toLowerCase();
-    if (entity.role) template.role = entity.role.toLowerCase();
-    if (cartType) template.kind = cartType;
-    else if (role) template.kind = role;
-    return template;
+  function findFreeTileForPushable(tx, ty, radiusTiles){
+    if (!W.Placement || typeof W.Placement.findNearestFreeTile !== 'function') return null;
+    const game = getGame();
+    if (!game) return null;
+    return W.Placement.findNearestFreeTile(game, tx, ty, null, { maxRadius: Math.max(0, radiusTiles | 0) });
   }
 
-  function resolvePopulationFromEntity(entity) {
-    if (!entity) return null;
-    const ENT = W.ENT || {};
-    const kind = (entity.kindName || entity.kind || '').toString().toLowerCase();
-    const role = (entity.role || '').toString().toLowerCase();
-    const sprite = (entity.spriteKey || entity.skin || '').toString().toLowerCase();
-
-    if (entity.kind === ENT.CART || kind === 'cart' || entity.cartType) return 'carts';
-    if (kind === 'mosquito' || kind === 'rat' || sprite.includes('mosquito') || sprite.includes('rat')) return 'animals';
-    if (role || sprite.includes('enfermera') || sprite.includes('guardia') || sprite.includes('tcae')) return 'humans';
-    return null;
+  function logCartRelocation(fromTx, fromTy, toTx, toTy){
+    if (fromTx === toTx && fromTy === toTy) return;
+    try {
+      console.info(`Spawner: reubicado carro de (${fromTx},${fromTy}) a (${toTx},${toTy}) por espacio ocupado.`);
+    } catch (_) {}
   }
 
-  function enqueueRequest(population, template) {
-    const type = normalizeType(population);
-    if (!STATE.pending[type]) STATE.pending[type] = [];
-    const req = { type, template: template || {}, createdAt: nowSec() };
-    const assigned = assignRequestToBestSpawner(type, req);
-    if (!assigned) STATE.pending[type].push(req);
-    logDebug('Nueva petición encolada', { type, assigned });
+  function sumQueue(qMap) {
+    let s = 0;
+    qMap.forEach(v => s += (v | 0));
+    return s;
   }
 
-  // ------------------------------------------------------------
-  // API pública
-  // ------------------------------------------------------------
-  const SpawnerAPI = {
-    /** Registra un spawner visible y lo añade a la escena */
-    registerSpawner(type, x, y, opts = {}) {
-      const spawnType = normalizeType(type);
-      if (!STATE.spawners[spawnType]) STATE.spawners[spawnType] = [];
-      const sp = createSpawnerEntity(spawnType, x, y, opts);
-      STATE.spawners[spawnType].push(sp);
-      const g = getGame();
-      if (Array.isArray(g.entities) && !g.entities.includes(sp)) g.entities.push(sp);
-      processGlobalPending(spawnType);
-      logDebug('Spawner registrado', { spawnType, id: sp.id });
+  function decQueue(qMap, sub) {
+    const v = (qMap.get(sub) | 0);
+    if (v > 1) qMap.set(sub, v - 1);
+    else qMap.delete(sub);
+  }
+
+  // ------------------ Spawners ------------------
+  function makeSpawner(type, x, y, opts) {
+    const t = (type + '').toLowerCase();
+    const allows = new Set(Array.isArray(opts?.allows) ? opts.allows.map(s => (s + '').toLowerCase()) : []);
+    return {
+      id: 'SP_' + Math.random().toString(36).slice(2),
+      type: t,                              // 'enemy' | 'npc' | 'cart'
+      x: x | 0, y: y | 0,
+      inTiles: !!opts?.inTiles,             // si se registró con tiles
+      cooldownSec: Number.isFinite(opts?.cooldownSec) ? Math.max(1, opts.cooldownSec) : 180,
+      nextAvailableAt: 0,
+      queue: new Map(),                     // sub -> count pendiente
+      allows,                               // vacío = acepta cualquier sub
+      radiusPx: Number.isFinite(opts?.radiusPx) ? opts.radiusPx : TILE * 1.0,
+      meta: opts || {}
+    };
+  }
+
+  function canAccept(sp, sub) {
+    if (!sp) return false;
+    if (!sp.allows || sp.allows.size === 0) return true;
+    return sp.allows.has((sub + '').toLowerCase());
+  }
+
+  function assignOneDeathToRandomSpawner(type, sub) {
+    const list = S.spawners[type] || [];
+    const cands = list.filter(sp => canAccept(sp, sub));
+    if (!cands.length) {
+      S.pending[type].push((sub + '').toLowerCase());
+      return false;
+    }
+    const key = (sub + '').toLowerCase();
+    const preferred = cands.filter((sp) => String(sp.meta?.prefer || '').toLowerCase() === key);
+    const pool = preferred.length ? preferred : cands;
+    const sp = randPick(pool);
+    sp.queue.set(key, (sp.queue.get(key) | 0) + 1);
+    return true;
+  }
+
+  function drainGlobalPendingIfAny(type) {
+    const list = S.spawners[type] || [];
+    if (!list.length) return;
+    const pend = S.pending[type];
+    for (let i = pend.length - 1; i >= 0; i--) {
+      const sub = pend[i];
+      const ok = assignOneDeathToRandomSpawner(type, sub);
+      if (ok) pend.splice(i, 1);
+    }
+  }
+
+  // ------------------ Creación de entidades (por familia/sub) ------------------
+  const Spawn = {
+    enemy(sub, x, y, payload) {
+      const s = (sub + '').toLowerCase();
+      if (s === 'mosquito' && W.MosquitoAPI?.spawn) return W.MosquitoAPI.spawn(x, y, payload);
+      if (s === 'rat'       && W.RatsAPI?.spawn)     return W.RatsAPI.spawn(x, y, payload);
+
+      // Fallback genérico si tuvieras un factory central
+      if (W.Entities?.Enemy?.spawn) return W.Entities.Enemy.spawn(s, x, y, payload);
+      if (W.Entities?.Spawner?.spawn) return W.Entities.Spawner.spawn(s, x, y, payload); // último recurso
+      console.warn('[SpawnerManager] No hay spawn para enemy:', sub);
+      return null;
+    },
+
+    npc(sub, x, y, payload) {
+      const s = (sub + '').toLowerCase();
+      // Factoría central si existe
+      if (W.Entities?.NPC?.spawn) return W.Entities.NPC.spawn(s, x, y, payload);
+
+      // Específicas ya presentes en tu proyecto
+      if (s === 'tcae'         && W.Entities?.TCAE?.spawn)         return W.Entities.TCAE.spawn({ tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) });
+      if (s === 'medico'       && W.MedicoAPI?.registerMedicEntity) { const e = { x, y, w: TILE * 0.9, h: TILE * 0.9 }; W.MedicoAPI.registerMedicEntity(e); return e; }
+      if (s === 'supervisora'  && W.Entities?.SupervisoraAPI?.spawn) return W.Entities.SupervisoraAPI.spawn(x, y);
+      if (s === 'guardia'      && W.Entities?.Guardia?.spawn)       return W.Entities.Guardia.spawn({ tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) });
+      if (s === 'familiar'     && W.FamiliarAPI?.registerFamiliarEntity) { const e = { x, y, w: TILE * 0.95, h: TILE * 0.95 }; W.FamiliarAPI.registerFamiliarEntity(e); return e; }
+      if (s === 'enfermera_sexy' && W.EnfermeraSexyAPI?.spawnEnfermera) return W.EnfermeraSexyAPI.spawnEnfermera(Math.floor(x / TILE), Math.floor(y / TILE), {});
+
+      console.warn('[SpawnerManager] No hay spawn para npc:', sub);
+      return null;
+    },
+
+    cart(sub, x, y, payload) {
+      const k = (sub + '').toLowerCase();
+      if (W.Entities?.Cart?.spawn) return W.Entities.Cart.spawn(k, x, y, payload);
+      if (W.CartsAPI?.spawn) return W.CartsAPI.spawn({ type: k, x, y, ...(payload || {}) });
+      console.warn('[SpawnerManager] No hay spawn para cart:', sub);
+      return null;
+    }
+  };
+
+  function spawnOneForSpawner(sp) {
+    // Elegir qué sub generar (ponderado por cuántos haya en cola)
+    const entries = Array.from(sp.queue.entries()); // [[sub,count],...]
+    if (!entries.length) return false;
+    const total = entries.reduce((a, [, c]) => a + c, 0);
+    let pick = S.rng() * total;
+    let pickedSub = entries[0][0];
+    for (const [sub, cnt] of entries) {
+      if ((pick -= cnt) <= 0) { pickedSub = sub; break; }
+    }
+
+    // Elegir posición (radio alrededor del punto, evitando paredes)
+    const baseX = sp.inTiles ? worldFromTiles(sp.x, sp.y).x : sp.x;
+    const baseY = sp.inTiles ? worldFromTiles(sp.x, sp.y).y : sp.y;
+    const baseTx = Math.round(baseX / TILE);
+    const baseTy = Math.round(baseY / TILE);
+    const radiusTiles = clamp(Math.round((sp.radiusPx || TILE) / TILE), 1, 8);
+    let pos = null;
+
+    if (sp.type === 'cart') {
+      const freeTile = findFreeTileForPushable(baseTx, baseTy, radiusTiles);
+      if (freeTile) {
+        pos = { x: freeTile.tx * TILE, y: freeTile.ty * TILE };
+        logCartRelocation(baseTx, baseTy, freeTile.tx, freeTile.ty);
+      } else {
+        try {
+          console.warn(`[SpawnerManager] No se encontró casilla libre para carro cerca de (${baseTx},${baseTy}). Se usará la posición original.`);
+        } catch (_) {}
+      }
+    }
+
+    if (!pos) {
+      pos = findFreeSpotNear(baseX, baseY, radiusTiles);
+    }
+
+    if (sp.type === 'cart' && W.Placement?.isTileOccupiedByPushable) {
+      const game = getGame();
+      if (game) {
+        const tx = Math.round(pos.x / TILE);
+        const ty = Math.round(pos.y / TILE);
+        if (W.Placement.isTileOccupiedByPushable(game, tx, ty, {})) {
+          const fallback = findFreeTileForPushable(tx, ty, radiusTiles + 1);
+          if (fallback) {
+            logCartRelocation(tx, ty, fallback.tx, fallback.ty);
+            pos = { x: fallback.tx * TILE, y: fallback.ty * TILE };
+          } else {
+            try {
+              console.warn(`[SpawnerManager] No fue posible reubicar un carro desde (${tx},${ty}) a una casilla libre cercana.`);
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    // Crear
+    let ent = null;
+    if (sp.type === 'enemy') ent = Spawn.enemy(pickedSub, pos.x, pos.y, { spawnerId: sp.id, sub: pickedSub });
+    else if (sp.type === 'npc') ent = Spawn.npc(pickedSub, pos.x, pos.y, { spawnerId: sp.id, sub: pickedSub });
+    else if (sp.type === 'cart') ent = Spawn.cart(pickedSub, pos.x, pos.y, { spawnerId: sp.id, sub: pickedSub });
+
+    if (ent) {
+      decQueue(sp.queue, pickedSub);
+      sp.nextAvailableAt = nowSec() + sp.cooldownSec;
+      const game = getGame();
+      if (game.entities && !game.entities.includes(ent)) game.entities.push(ent);
+      return true;
+    } else {
+      // Si falló el spawn, deja la cola como estaba y reintenta más tarde
+      return false;
+    }
+  }
+
+  // ------------------ API público ------------------
+  const SpawnerManager = {
+    init(Gref) {
+      if (Gref) W.G = Gref;
+      ensureSystemsAutoUpdate();
+      return this;
+    },
+
+    // Registra un punto de spawn
+    // type: 'enemy' | 'npc' | 'cart'
+    // x,y: coords (px por defecto). opts: { inTiles, allows:[sub...], cooldownSec:180, radiusPx:TILE*1 }
+    registerPoint(type, x, y, opts = {}) {
+      const t = (type + '').toLowerCase();
+      if (!S.spawners[t]) S.spawners[t] = [];
+      const sp = makeSpawner(t, x, y, opts);
+      S.spawners[t].push(sp);
+      // si había cola global sin punto, intenta drenar
+      drainGlobalPendingIfAny(t);
       return sp;
     },
 
-    /** Notifica una muerte para encolar respawn */
-    notifyDeath(data) {
-      if (!data) return;
-      let population = null;
-      let template = {};
-      if (typeof data === 'string') {
-        population = data;
-      } else if (data.population) {
-        population = data.population;
-        template = data.template || {};
-      } else if (data.entity) {
-        population = resolvePopulationFromEntity(data.entity);
-        template = normalizeTemplateFromEntity(data.entity);
-      } else {
-        population = resolvePopulationFromEntity(data);
-        template = normalizeTemplateFromEntity(data);
+    // Atajo desde placements 'spawn_*' (por comodidad; no crea nada al inicio):
+    registerFromPlacement(p) {
+      if (!p || !p.type) return null;
+      const T = (p.type + '').toLowerCase();
+      const inTiles = !!p.inTiles; // si tu placement venía en tiles
+      const px = inTiles ? p.x : (p.x | 0);
+      const py = inTiles ? p.y : (p.y | 0);
+      if (T === 'spawn_mosquito') return this.registerPoint('enemy', px, py, { inTiles, allows: ['mosquito'] });
+      if (T === 'spawn_rat')      return this.registerPoint('enemy', px, py, { inTiles, allows: ['rat'] });
+      if (T === 'spawn_animal') {
+        const base = Array.isArray(p.allows) && p.allows.length
+          ? p.allows.map((s) => String(s || '').toLowerCase()).filter(Boolean)
+          : ['mosquito', 'rat'];
+        const allowSet = new Set(base);
+        allowSet.add('mosquito');
+        allowSet.add('rat');
+        const allows = Array.from(allowSet);
+        const preferRaw = String(p.prefers || p.prefer || '').toLowerCase();
+        const opts = { inTiles, allows };
+        if (preferRaw && allows.includes(preferRaw)) opts.prefer = preferRaw;
+        return this.registerPoint('enemy', px, py, opts);
       }
-      if (!population) return;
-      enqueueRequest(population, template);
+      if (T === 'spawn_staff')    return this.registerPoint('npc',   px, py, { inTiles }); // admite varios subs
+      if (T === 'spawn_cart')     return this.registerPoint('cart',  px, py, { inTiles }); // admite food/med/er
+      return null;
     },
 
-    /** Procesa colas y cooldowns */
-    update(dt = 0) {
-      if (!dt || !isFinite(dt)) return;
-      ['animals', 'humans', 'carts'].forEach((type) => processGlobalPending(type));
-      for (const type of Object.keys(STATE.spawners)) {
-        for (const sp of STATE.spawners[type]) { tickSpawner(sp, dt); }
+    // Reportar muertes:
+    // type: 'enemy'|'npc'|'cart' ; sub: p.ej. 'mosquito','rat','tcae','medico','guardia','food','med','er'
+    reportDeath(type, sub, n = 1) {
+      const t = (type + '').toLowerCase();
+      const count = Math.max(1, n | 0);
+      for (let i = 0; i < count; i++) assignOneDeathToRandomSpawner(t, sub);
+    },
+
+    // Bucle de actualización: intenta crear 1 por spawner si tiene cola y cooldown cumplido
+    update(dt) {
+      const now = nowSec();
+      // Enemigos
+      for (const sp of S.spawners.enemy) {
+        if (sumQueue(sp.queue) > 0 && now >= sp.nextAvailableAt) spawnOneForSpawner(sp);
+      }
+      // NPCs
+      for (const sp of S.spawners.npc) {
+        if (sumQueue(sp.queue) > 0 && now >= sp.nextAvailableAt) spawnOneForSpawner(sp);
+      }
+      // Carros
+      for (const sp of S.spawners.cart) {
+        if (sumQueue(sp.queue) > 0 && now >= sp.nextAvailableAt) spawnOneForSpawner(sp);
       }
     },
 
-    /** Resumen de depuración */
+    // Depuración
     debugSummary() {
+      const toObj = (sp) => ({
+        id: sp.id, type: sp.type, x: sp.x, y: sp.y, inTiles: sp.inTiles,
+        cooldownSec: sp.cooldownSec, nextIn: Math.max(0, sp.nextAvailableAt - nowSec()).toFixed(1),
+        queue: Object.fromEntries(sp.queue.entries()),
+        allows: Array.from(sp.allows)
+      });
       return {
-        spawners: Object.fromEntries(Object.entries(STATE.spawners).map(([k, arr]) => [k, arr.map((s) => ({ id: s.id, queue: s._queue.length, cooldown: s._cooldown }))])),
-        pending: STATE.pending
+        enemy: S.spawners.enemy.map(toObj),
+        npc:   S.spawners.npc.map(toObj),
+        cart:  S.spawners.cart.map(toObj),
+        pending: {
+          enemy: S.pending.enemy.slice(),
+          npc:   S.pending.npc.slice(),
+          cart:  S.pending.cart.slice()
+        }
       };
     }
   };
 
-  // ------------------------------------------------------------
-  // Compatibilidad con la API previa
-  // ------------------------------------------------------------
-  const SpawnerManager = {
-    init(Gref) { if (Gref) W.G = Gref; ensureAutoUpdate(); return this; },
-    registerPoint(type, x, y, opts) { return SpawnerAPI.registerSpawner(type, x, y, opts); },
-    registerFromPlacement(p) {
-      if (!p || !p.type) return null;
-      const t = String(p.type).toLowerCase();
-      const inTiles = !!p.inTiles;
-      const px = inTiles ? p.x : (p.x | 0);
-      const py = inTiles ? p.y : (p.y | 0);
-      if (t === 'spawn_mosquito' || t === 'spawn_rat' || t === 'spawn_animal') {
-        return SpawnerAPI.registerSpawner('animals', px, py, { inTiles, allows: p.allows || [], prefer: p.prefer });
-      }
-      if (t === 'spawn_staff' || t === 'spawn_human') return SpawnerAPI.registerSpawner('humans', px, py, { inTiles, allows: p.allows || [] });
-      if (t === 'spawn_cart') return SpawnerAPI.registerSpawner('carts', px, py, { inTiles, allows: p.allows || [] });
-      return null;
-    },
-    reportDeath(type, sub, n = 1) {
-      const population = normalizeType(type);
-      for (let i = 0; i < Math.max(1, n | 0); i++) enqueueRequest(population, { kind: sub });
-    },
-    update(dt) { SpawnerAPI.update(dt); }
-  };
+  // Export
+  W.SpawnerManager = SpawnerManager;
 
-  W.SpawnerAPI = SpawnerAPI;
-  W.SpawnerManager = SpawnerManager; // compat
-  SpawnerManager.init(W.G);
+  // Auto-init suave
+  SpawnerManager.init(G);
 
 })(this);

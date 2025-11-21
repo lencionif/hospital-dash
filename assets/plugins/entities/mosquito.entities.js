@@ -1,312 +1,186 @@
 // ./assets/plugins/entities/mosquito.entities.js
-(function () {
-  'use strict';
-  const W = (typeof window !== 'undefined') ? window : globalThis;
-  const G = W.G || (W.G = {});
-  const ENT = W.ENT || (W.ENT = {});
-  ENT.MOSQUITO = ENT.MOSQUITO || 206;
-  const TILE = (W.TILE_SIZE || W.TILE || G.TILE_SIZE || 32) | 0;
+(function(){
+  const SPEED = 34;
+  const WANDER_SPEED = 18;
+  const CHASE_RADIUS = 160;
+  const CHASE_COOLDOWN = 1.8;
+  const WANDER_FAR_RADIUS = 320;
+  const TAU = Math.PI * 2;
 
-  const MOS_BALANCE = {
-    maxHp: 12,
-    moveSpeed: 3.2 * TILE,
-    sightTiles: 6,
-    attackRangeTiles: 0.6,
-    attackCooldown: 0.8,
-    baseDamage: 4,
-    heavyDamage: 7,
-    pushOnHit: 0.7 * TILE,
-    annoyanceScore: -2,
-  };
-
-  const mosquitos = [];
-  let mosquitoCounter = 0;
-
-  function ensureEntityArrays() {
-    if (!Array.isArray(G.entities)) G.entities = [];
-    if (!Array.isArray(G.movers)) G.movers = [];
-    if (!Array.isArray(G.enemies)) G.enemies = [];
-    try { W.EntityGroups?.ensure?.(G); } catch (_) {}
+  function resolveState(state){
+    const g = window.G || (window.G = {});
+    const target = (state && typeof state === 'object') ? state : g;
+    if (!Array.isArray(target.entities)) target.entities = [];
+    if (!Array.isArray(target.hostiles)) target.hostiles = [];
+    if (!Array.isArray(target.movers)) target.movers = [];
+    try { window.EntityGroups?.ensure?.(target); } catch (_) {}
+    return target;
   }
 
-  function rectsOverlap(a, b) {
-    if (!a || !b) return false;
-    const ax1 = a.x, ay1 = a.y, ax2 = a.x + (a.w || 0), ay2 = a.y + (a.h || 0);
-    const bx1 = b.x, by1 = b.y, bx2 = b.x + (b.w || 0), by2 = b.y + (b.h || 0);
-    return ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1;
-  }
-
-  function moveWithCollisionsOrSimple(ent, dt) {
-    if (typeof W.moveWithCollisions === 'function') {
-      try { W.moveWithCollisions(ent, dt); return; } catch (_) {}
-    }
-    ent.x += (ent.vx || 0) * dt;
-    ent.y += (ent.vy || 0) * dt;
-  }
-
-  function setAnim(ent, anim, flipX) {
-    if (!ent) return;
-    const puppet = ent.puppet || ent._puppet;
-    if (puppet && puppet.state) {
-      puppet.state.anim = anim;
-      puppet.state.flipX = !!flipX;
-    }
-    ent.puppetState = ent.puppetState || {};
-    ent.puppetState.anim = anim;
-    ent.puppetState.flipX = !!flipX;
-  }
-
-  function setAnimIdle(ent) { setAnim(ent, 'idle'); }
-  function setAnimFly(ent, vx, vy) {
-    const absX = Math.abs(vx || 0);
-    const absY = Math.abs(vy || 0);
-    if (absY >= absX) {
-      if (vy < -1e-3) { setAnim(ent, 'walk_up', false); }
-      else if (vy > 1e-3) { setAnim(ent, 'walk_down', false); }
-      else { setAnimIdle(ent); }
-    } else {
-      setAnim(ent, 'walk_side', vx < 0);
-    }
-  }
-  function setAnimAttack(ent) { setAnim(ent, 'attack', ent.vx < 0); }
-  function setAnimEat(ent) { setAnim(ent, 'eat', ent.vx < 0); }
-  function setAnimPowerup(ent) { setAnim(ent, 'powerup', ent.vx < 0); }
-  function setAnimPush(ent) { setAnim(ent, 'push_action', ent.vx < 0); }
-  function setAnimTalk(ent) { setAnim(ent, 'talk', ent.vx < 0); }
-  function setAnimExtra(ent) { setAnim(ent, 'extra', ent.vx < 0); }
-  function setAnimDead(ent, cause) {
-    const c = (cause || '').toLowerCase();
-    if (c.includes('fire')) setAnim(ent, 'die_fire');
-    else if (c.includes('crush')) setAnim(ent, 'die_crush');
-    else setAnim(ent, 'die_hit');
-  }
-
-  function bindRig(ent) {
-    let puppet = null;
+  function attachPuppet(ent){
     try {
-      puppet = W.Puppet?.bind?.(ent, 'mosquito', { z: 0, scale: 1, data: { skin: ent.skin } })
-        || W.PuppetAPI?.attach?.(ent, { rig: 'mosquito', z: 0, scale: 1, data: { skin: ent.skin } });
-    } catch (err) {
-      puppet = null;
+      const puppet = window.Puppet?.bind?.(ent, 'mosquito', { z: 0, scale: 1 })
+        || window.PuppetAPI?.attach?.(ent, { rig: 'mosquito', z: 0, scale: 1 });
+      ent.rigOk = ent.rigOk === true || !!puppet;
+    } catch (_) {
+      ent.rigOk = ent.rigOk === true;
     }
-    ent.puppet = puppet || ent.puppet;
-    ent._puppet = ent._puppet || puppet;
-    ent.rigOk = !!puppet;
-    ent.puppetState = puppet?.state || { anim: 'idle' };
-    if (!ent.rigOk) {
-      try { console.error('[MOSQUITO] rig mosquito non trovato'); } catch (_) {}
-    }
-    return puppet;
   }
 
-  function spawn(x, y, opts = {}) {
-    ensureEntityArrays();
-    const ent = Object.assign({
-      id: opts.id || `MOSQUITO_${++mosquitoCounter}`,
-      kind: 'enemy_mosquito',
-      kindId: ENT.MOSQUITO,
-      role: 'enemy',
+  function ensureKind(state){
+    const ent = state.ENT || window.ENT || {};
+    return (ent.MOSQUITO != null) ? ent.MOSQUITO : 'MOSQUITO';
+  }
+
+  function spawn(state, x, y, opts = {}){
+    if (typeof state === 'number' || !state || !state.entities){
+      opts = y || {};
+      y = x;
+      x = state;
+      state = resolveState();
+    } else {
+      state = resolveState(state);
+    }
+
+    const ent = {
+      kind: ensureKind(state),
+      kindName: 'MOSQUITO',
       x: Number(x) || 0,
       y: Number(y) || 0,
-      w: Math.max(6, Math.floor(TILE * 0.65)),
-      h: Math.max(6, Math.floor(TILE * 0.6)),
+      w: 12,
+      h: 8,
       vx: 0,
       vy: 0,
-      group: 'enemy',
-      static: false,
-      pushable: false,
-      spriteKey: 'enemy_mosquito',
-      skin: opts.skin || 'mosquito_hospital.png',
-      ai: { state: 'hover', hoverTimer: 0, buzzTimer: 0, attackTimer: 0, powerTimer: 0 },
-      hp: MOS_BALANCE.maxHp,
-      maxHp: MOS_BALANCE.maxHp,
       hostile: true,
-      solid: true,
-      dynamic: true,
-      rest: 0.4,
-      mu: 0.02,
-    }, opts || {});
+      _t: 0,
+      ai: 'MOSQUITO',
+      aiId: 'MOSQUITO'
+    };
 
-    bindRig(ent);
-    G.entities.push(ent);
-    G.movers.push(ent);
-    G.enemies.push(ent);
-    try { W.EntityGroups?.assign?.(ent); } catch (_) {}
-    try { W.EntityGroups?.register?.(ent, G); } catch (_) {}
+    ent.solid = true;
+    ent.dynamic = true;
+    ent.pushable = true;
+    ent.mass = 0.3;
+    ent.rest = 0.6;
+    ent.restitution = 0.6;
+    ent.mu = 0.018;
 
-    mosquitos.push(ent);
+    ent._spawnX = ent.x;
+    ent._spawnY = ent.y;
+    ent._wanderTimer = 0;
+    ent._wanderDir = Math.random() * TAU;
+
+    try { window.AI?.attach?.(ent, 'MOSQUITO'); } catch (_) {}
+
+    attachPuppet(ent);
+    window.MovementSystem?.register?.(ent);
+    ent.group = 'animal';
+    state.entities.push(ent);
+    state.hostiles.push(ent);
+    state.movers.push(ent);
+    try { window.EntityGroups?.assign?.(ent); } catch (_) {}
+    try { window.EntityGroups?.register?.(ent, state); } catch (_) {}
     return ent;
   }
 
-  function applyKnockback(hero, from, strength) {
-    if (!hero || !from) return;
-    const hx = hero.x + (hero.w || 0) * 0.5;
-    const hy = hero.y + (hero.h || 0) * 0.5;
-    const rx = from.x + (from.w || 0) * 0.5;
-    const ry = from.y + (from.h || 0) * 0.5;
-    const dx = hx - rx;
-    const dy = hy - ry;
-    const dist = Math.hypot(dx, dy) || 1;
-    const ux = dx / dist;
-    const uy = dy / dist;
-    hero.vx = (hero.vx || 0) + ux * strength;
-    hero.vy = (hero.vy || 0) + uy * strength;
-  }
-
-  function damageHero(hero, mos) {
-    if (!hero || !mos) return;
-    if ((mos.ai.attackTimer || 0) > 0) return;
-    const hx = hero.x + (hero.w || 0) * 0.5;
-    const hy = hero.y + (hero.h || 0) * 0.5;
-    const mx = mos.x + (mos.w || 0) * 0.5;
-    const my = mos.y + (mos.h || 0) * 0.5;
-    const dx = hx - mx;
-    const dy = hy - my;
-    const dist = Math.hypot(dx, dy) || 1;
-    const close = dist < (MOS_BALANCE.attackRangeTiles * TILE * 0.55);
-    const dmg = close ? MOS_BALANCE.heavyDamage : MOS_BALANCE.baseDamage;
-    if (close) { setAnimPowerup(mos); }
-    else { setAnimEat(mos); }
-
-    const kb = MOS_BALANCE.pushOnHit;
-    const vx = (dx / dist) * kb;
-    const vy = (dy / dist) * kb;
-    if (typeof hero.takeDamage === 'function') {
-      try { hero.takeDamage(dmg, { cause: 'mosquito_bite', source: mos, knockback: { vx, vy } }); } catch (_) {}
-    } else {
-      hero.hp = Math.max(0, (hero.hp || 0) - dmg);
-    }
-    applyKnockback(hero, mos, kb);
-    try { W.ScoreAPI?.addPoints?.(MOS_BALANCE.annoyanceScore); } catch (_) {}
-    mos.ai.attackTimer = MOS_BALANCE.attackCooldown;
-  }
-
-  function updateHover(ent, dt) {
-    ent.ai.hoverTimer = (ent.ai.hoverTimer || 0) - dt;
-    ent.ai.buzzTimer = (ent.ai.buzzTimer || 0) - dt;
-    if (ent.ai.hoverTimer <= 0) {
-      ent.ai.hoverTimer = 0.6 + Math.random() * 1.6;
-      ent.ai.hoverDir = Math.random() * Math.PI * 2;
-    }
-    if (ent.ai.buzzTimer <= 0 && Math.random() < 0.2) {
-      ent.ai.buzzTimer = 2 + Math.random() * 2;
-      setAnimExtra(ent);
-    }
-    const sway = Math.sin((ent.ai.buzzTimer || 0) + ent.y * 0.01) * 0.3;
-    const dir = (ent.ai.hoverDir || 0) + sway * 0.6;
-    const speed = MOS_BALANCE.moveSpeed * 0.35;
-    ent.vx = Math.cos(dir) * speed;
-    ent.vy = Math.sin(dir) * speed;
-    setAnimFly(ent, ent.vx, ent.vy);
-  }
-
-  function updateHarass(ent, hero, dt) {
-    const cx = ent.x + (ent.w || 0) * 0.5;
-    const cy = ent.y + (ent.h || 0) * 0.5;
-    const hx = hero.x + (hero.w || 0) * 0.5;
-    const hy = hero.y + (hero.h || 0) * 0.5;
-    const dx = hx - cx;
-    const dy = hy - cy;
-    const dist = Math.hypot(dx, dy) || 1;
-    const ux = dx / dist;
-    const uy = dy / dist;
-    const perpendicular = { x: -uy, y: ux };
-    const zig = (Math.random() - 0.5) * 0.6;
-    const speed = MOS_BALANCE.moveSpeed;
-    ent.vx = (ux + perpendicular.x * zig) * speed;
-    ent.vy = (uy + perpendicular.y * zig) * speed;
-    setAnimFly(ent, ent.vx, ent.vy);
-  }
-
-  function updateAttack(ent, hero, dt) {
-    const cx = ent.x + (ent.w || 0) * 0.5;
-    const cy = ent.y + (ent.h || 0) * 0.5;
-    const hx = hero.x + (hero.w || 0) * 0.5;
-    const hy = hero.y + (hero.h || 0) * 0.5;
-    const dx = hx - cx;
-    const dy = hy - cy;
-    const dist = Math.hypot(dx, dy) || 1;
-    const ux = dx / dist;
-    const uy = dy / dist;
-    const hover = MOS_BALANCE.moveSpeed * 0.25;
-    ent.vx = ux * hover + Math.sin(ent.y * 0.1 + ent.x * 0.05) * hover * 0.3;
-    ent.vy = uy * hover + Math.cos(ent.x * 0.1 + ent.y * 0.07) * hover * 0.3;
-    setAnimAttack(ent);
-
-    ent.ai.attackTimer = Math.max(0, (ent.ai.attackTimer || 0) - dt);
-    const rangePx = MOS_BALANCE.attackRangeTiles * TILE;
-    if (dist <= rangePx && rectsOverlap(ent, hero)) {
-      damageHero(hero, ent);
-    }
-  }
-
-  function updateMosquito(ent, dt) {
+  function ai(ent, state, dt){
+    state = resolveState(state);
     if (!ent || ent.dead) return;
-    const hero = (G.player && !G.player.dead) ? G.player : (G.hero && !G.hero.dead ? G.hero : null);
-    ent.ai = ent.ai || { state: 'hover', hoverTimer: 0, buzzTimer: 0, attackTimer: 0 };
-    ent.ai.attackTimer = Math.max(0, (ent.ai.attackTimer || 0) - dt);
+    const player = state.player;
+    const cx = ent.x + ent.w * 0.5;
+    const cy = ent.y + ent.h * 0.5;
+    const px = player ? (player.x + (player.w || 0) * 0.5) : cx;
+    const py = player ? (player.y + (player.h || 0) * 0.5) : cy;
+    const dx = px - cx;
+    const dy = py - cy;
+    const dist = Math.hypot(dx, dy);
 
-    if (ent.hp <= 0) {
-      ent.dead = true;
-      ent.vx *= 0.7;
-      ent.vy = (ent.vy || 0) + TILE * 0.2 * dt;
-      setAnimDead(ent, ent.deathCause || 'hit');
-      moveWithCollisionsOrSimple(ent, dt);
+    ent._t = (ent._t || 0) + dt;
+
+    const wantsChase = !!player && dist <= CHASE_RADIUS;
+    const cooldownReady = (ent._nextChaseAt == null) || (ent._t >= ent._nextChaseAt);
+
+    const wander = (stayHostile) => {
+      ent.hostile = !!stayHostile;
+      ent._aiState = stayHostile ? 'COOLDOWN' : 'WANDER';
+      ent._wanderTimer = (ent._wanderTimer || 0) - dt;
+      if (ent._wanderTimer <= 0){
+        ent._wanderTimer = 1.1 + Math.random() * 1.8;
+        const homeDx = (ent._spawnX || ent.x) - cx;
+        const homeDy = (ent._spawnY || ent.y) - cy;
+        const homeDist = Math.hypot(homeDx, homeDy);
+        const outward = Math.atan2(-homeDy, -homeDx);
+        const toHome = Math.atan2(homeDy, homeDx);
+        const far = WANDER_FAR_RADIUS;
+        let bias;
+        if (!isFinite(homeDist) || homeDist < 1) {
+          bias = Math.random() * TAU;
+        } else if (homeDist < far * 0.6) {
+          bias = outward;
+        } else if (homeDist > far) {
+          bias = toHome;
+        } else {
+          bias = outward;
+        }
+        const jitter = (Math.random() - 0.5) * Math.PI * 0.5;
+        ent._wanderDir = isFinite(bias) ? bias + jitter : Math.random() * TAU;
+      }
+      const sway = Math.sin(ent._t * 2.0) * 0.35;
+      const dir = (ent._wanderDir || 0) + sway * 0.25;
+      ent.vx = Math.cos(dir) * WANDER_SPEED;
+      ent.vy = Math.sin(dir) * WANDER_SPEED;
+    };
+
+    if (!wantsChase){
+      if (ent._aiState === 'CHASE') {
+        ent._nextChaseAt = ent._t + CHASE_COOLDOWN;
+      }
+      wander(false);
       return;
     }
 
-    const sightPx = MOS_BALANCE.sightTiles * TILE;
-    let state = ent.ai.state || 'hover';
-    if (!hero) { state = 'hover'; }
-    else {
-      const cx = ent.x + (ent.w || 0) * 0.5;
-      const cy = ent.y + (ent.h || 0) * 0.5;
-      const hx = hero.x + (hero.w || 0) * 0.5;
-      const hy = hero.y + (hero.h || 0) * 0.5;
-      const dx = hx - cx;
-      const dy = hy - cy;
-      const dist = Math.hypot(dx, dy);
-      if (dist <= MOS_BALANCE.attackRangeTiles * TILE * 1.1) state = 'attack';
-      else if (dist <= sightPx) state = 'harass';
-      else state = 'hover';
-      ent.ai._distToHero = dist;
+    if (!cooldownReady){
+      wander(true);
+      return;
     }
 
-    ent.ai.state = state;
+    const ux = dist > 0 ? dx / dist : 0;
+    const uy = dist > 0 ? dy / dist : 0;
 
-    switch (state) {
-      case 'harass':
-        updateHarass(ent, hero, dt);
-        break;
-      case 'attack':
-        updateAttack(ent, hero, dt);
-        break;
-      default:
-        updateHover(ent, dt);
-        break;
+    if (ent._aiState !== 'CHASE') {
+      ent._aiState = 'CHASE';
+      try {
+        window.LOG?.event?.('AI_STATE', {
+          entity: ent.id || null,
+          kind: 'MOSQUITO',
+          state: 'CHASE',
+        });
+      } catch (_) {}
     }
 
-    if (state === 'harass' && Math.random() < 0.05) setAnimTalk(ent);
-    if (state === 'hover' && Math.random() < 0.03) setAnimPush(ent);
+    const sway = Math.sin(ent._t * 5.8);
+    const sway2 = Math.cos(ent._t * 6.6);
 
-    moveWithCollisionsOrSimple(ent, dt);
+    ent.vx = (ux + 0.4 * sway) * SPEED;
+    ent.vy = (uy + 0.4 * sway2) * SPEED;
+    ent.hostile = true;
   }
 
-  function updateAll(dt = 1 / 60) {
-    for (let i = 0; i < mosquitos.length; i++) {
-      updateMosquito(mosquitos[i], dt);
-    }
-  }
+  window.Mosquitos = { spawn, ai };
 
-  const api = { spawn, updateAll, MOS_BALANCE };
-  W.MosquitoAPI = api;
-
-  const oldOnFrame = W.onFrame;
-  if (!W._mosquitoHooked) {
-    W.onFrame = function (dt) {
-      if (typeof oldOnFrame === 'function') oldOnFrame(dt);
-      api.updateAll(dt || 1 / 60);
-    };
-    W._mosquitoHooked = true;
-  }
+  const compat = {
+    state: null,
+    init(state){ this.state = resolveState(state); return this; },
+    spawn(x, y, props){ return spawn(this.state || resolveState(), x, y, props); },
+    spawnAtTiles(tx, ty, props){
+      const s = this.state || resolveState();
+      const tile = window.TILE_SIZE || window.TILE || 32;
+      return spawn(s, tx * tile + tile * 0.5, ty * tile + tile * 0.5, props);
+    },
+    registerSpawn(){ return true; },
+    populateAtStart(){},
+    onEnemyKilled(){},
+    update(){},
+  };
+  window.MosquitoAPI = compat;
 })();

@@ -45,15 +45,6 @@
     bellsList: null,
     bellsCount: null,
     bellsEmpty: null,
-    hemaTimer: null,
-    hemaTimerBar: null,
-    hemaTimerText: null,
-    pyroTimer: null,
-    pyroTimerBar: null,
-    pyroTimerText: null,
-    cleanerTimer: null,
-    cleanerTimerBar: null,
-    cleanerTimerText: null,
   };
   let objectiveOverride = null;
 
@@ -113,57 +104,6 @@
     objective.className = 'hud-objective';
     objective.textContent = 'Objetivo: ninguno';
 
-    const hemaTimer = document.createElement('div');
-    hemaTimer.className = 'hud-hema-timer';
-    hemaTimer.hidden = true;
-    const hemaLabel = document.createElement('strong');
-    hemaLabel.textContent = 'Tiempo paciente hematológica';
-    const hemaMeter = document.createElement('div');
-    hemaMeter.className = 'hud-hema-meter';
-    const hemaFill = document.createElement('div');
-    hemaFill.className = 'hud-hema-fill';
-    const hemaText = document.createElement('span');
-    hemaText.className = 'hud-hema-text';
-    hemaText.textContent = '00:00';
-    hemaMeter.appendChild(hemaFill);
-    hemaMeter.appendChild(hemaText);
-    hemaTimer.appendChild(hemaLabel);
-    hemaTimer.appendChild(hemaMeter);
-
-    const pyroTimer = document.createElement('div');
-    pyroTimer.className = 'hud-pyro-l3-timer';
-    pyroTimer.hidden = true;
-    const pyroLabel = document.createElement('strong');
-    pyroLabel.textContent = 'Pac. Piromana L3';
-    const pyroMeter = document.createElement('div');
-    pyroMeter.className = 'hud-pyro-meter';
-    const pyroFill = document.createElement('div');
-    pyroFill.className = 'hud-pyro-fill';
-    const pyroText = document.createElement('span');
-    pyroText.className = 'hud-pyro-text';
-    pyroText.textContent = '00:00';
-    pyroMeter.appendChild(pyroFill);
-    pyroMeter.appendChild(pyroText);
-    pyroTimer.appendChild(pyroLabel);
-    pyroTimer.appendChild(pyroMeter);
-
-    const cleanerTimer = document.createElement('div');
-    cleanerTimer.className = 'hud-cleanerboss-timer';
-    cleanerTimer.hidden = true;
-    const cleanerLabel = document.createElement('strong');
-    cleanerLabel.textContent = 'Tiempo jefa de limpieza';
-    const cleanerMeter = document.createElement('div');
-    cleanerMeter.className = 'hud-cleaner-meter';
-    const cleanerFill = document.createElement('div');
-    cleanerFill.className = 'hud-cleaner-fill';
-    const cleanerText = document.createElement('span');
-    cleanerText.className = 'hud-cleaner-text';
-    cleanerText.textContent = '00:00';
-    cleanerMeter.appendChild(cleanerFill);
-    cleanerMeter.appendChild(cleanerText);
-    cleanerTimer.appendChild(cleanerLabel);
-    cleanerTimer.appendChild(cleanerMeter);
-
     const carryBox = document.createElement('div');
     carryBox.className = 'hud-carry';
     carryBox.hidden = true;
@@ -175,9 +115,6 @@
     carryBox.appendChild(carrySecondary);
 
     center.appendChild(objective);
-    center.appendChild(hemaTimer);
-    center.appendChild(pyroTimer);
-    center.appendChild(cleanerTimer);
     center.appendChild(carryBox);
 
     const urgenciasStat = createHudStat('Urgencias', 'hud-urgencias');
@@ -222,15 +159,6 @@
     HUD_DOM.urgenciasValue = urgenciasStat.value;
     HUD_DOM.scoreValue = scoreStat.value;
     HUD_DOM.objectiveText = objective;
-    HUD_DOM.hemaTimer = hemaTimer;
-    HUD_DOM.hemaTimerBar = hemaFill;
-    HUD_DOM.hemaTimerText = hemaText;
-    HUD_DOM.pyroTimer = pyroTimer;
-    HUD_DOM.pyroTimerBar = pyroFill;
-    HUD_DOM.pyroTimerText = pyroText;
-    HUD_DOM.cleanerTimer = cleanerTimer;
-    HUD_DOM.cleanerTimerBar = cleanerFill;
-    HUD_DOM.cleanerTimerText = cleanerText;
     HUD_DOM.carryBox = carryBox;
     HUD_DOM.carryPrimary = carryPrimary;
     HUD_DOM.carrySecondary = carrySecondary;
@@ -393,83 +321,6 @@
     }
   }
 
-  function formatHemaTime(sec) {
-    const safe = Math.max(0, Math.floor(sec || 0));
-    const m = Math.floor(safe / 60);
-    const s = safe % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-
-  function updateHemaTimer(current = 0, max = 0) {
-    if (!HUD_DOM.hemaTimer) return;
-    const ratio = (max > 0) ? clamp(current / max, 0, 1) : 0;
-    if (HUD_DOM.hemaTimerBar) {
-      HUD_DOM.hemaTimerBar.style.width = `${(ratio * 100).toFixed(1)}%`;
-    }
-    if (HUD_DOM.hemaTimerText) {
-      HUD_DOM.hemaTimerText.textContent = formatHemaTime(current);
-    }
-    HUD_DOM.hemaTimer.classList.toggle('is-critical', ratio < 0.25);
-  }
-
-  function showHemaTimer() {
-    if (HUD_DOM.hemaTimer) HUD_DOM.hemaTimer.hidden = false;
-  }
-
-  function hideHemaTimer() {
-    if (HUD_DOM.hemaTimer) HUD_DOM.hemaTimer.hidden = true;
-  }
-
-  function flashHemaWarning(flag = false) {
-    if (!HUD_DOM.hemaTimer) return;
-    HUD_DOM.hemaTimer.classList.toggle('is-alert', !!flag);
-  }
-
-  function updatePyroL3Timer(current = 0, max = 0) {
-    if (!HUD_DOM.pyroTimer) return;
-    const ratio = (max > 0) ? clamp(current / max, 0, 1) : 0;
-    if (HUD_DOM.pyroTimerBar) {
-      HUD_DOM.pyroTimerBar.style.width = `${(ratio * 100).toFixed(1)}%`;
-    }
-    if (HUD_DOM.pyroTimerText) {
-      HUD_DOM.pyroTimerText.textContent = formatHemaTime(current);
-    }
-    HUD_DOM.pyroTimer.classList.toggle('is-critical', ratio < 0.25);
-  }
-
-  function showPyroL3Timer() {
-    if (HUD_DOM.pyroTimer) HUD_DOM.pyroTimer.hidden = false;
-  }
-
-  function hidePyroL3Timer() {
-    if (HUD_DOM.pyroTimer) HUD_DOM.pyroTimer.hidden = true;
-  }
-
-  function updateCleanerTimer(current = 0, max = 0) {
-    if (!HUD_DOM.cleanerTimer) return;
-    const ratio = (max > 0) ? clamp(current / max, 0, 1) : 0;
-    if (HUD_DOM.cleanerTimerBar) {
-      HUD_DOM.cleanerTimerBar.style.width = `${(ratio * 100).toFixed(1)}%`;
-    }
-    if (HUD_DOM.cleanerTimerText) {
-      HUD_DOM.cleanerTimerText.textContent = formatHemaTime(current);
-    }
-    HUD_DOM.cleanerTimer.classList.toggle('is-critical', ratio < 0.25);
-  }
-
-  function showCleanerTimer() {
-    if (HUD_DOM.cleanerTimer) HUD_DOM.cleanerTimer.hidden = false;
-  }
-
-  function hideCleanerTimer() {
-    if (HUD_DOM.cleanerTimer) HUD_DOM.cleanerTimer.hidden = true;
-  }
-
-  function flashCleanerWarning(flag = false) {
-    if (!HUD_DOM.cleanerTimer) return;
-    HUD_DOM.cleanerTimer.classList.toggle('is-alert', !!flag);
-  }
-
   function updateCarryInfo(carry){
     if (!HUD_DOM.carryBox) return;
     if (carry) {
@@ -561,7 +412,6 @@
     }
 
     // 2) Si llevas una pastilla → entregarla a su paciente
-    const patientList = Array.isArray(G.patients) ? G.patients.filter((p) => !p?.isHematologic) : [];
     const carryingPill = (G.player?.carry?.kind === 'PILL') || (G.carry?.kind === 'PILL');
     if (carryingPill) {
       return 'Objetivo: entrega Pastilla al paciente asignado';
@@ -574,21 +424,21 @@
     }
 
     // 3) Si no llevas → buscar una para un paciente (usa vínculos si existen)
-    const hayPacientes = patientList.length > 0;
+    const hayPacientes = Array.isArray(G.patients) && G.patients.length > 0;
     const hayPills     = Array.isArray(G.pills)     && G.pills.length     > 0;
     if (!carry && hayPacientes) {
       if (hayPills) {
         const linked = G.pills.find(p => p.targetName || p.label) || G.pills[0];
         const pill = linked?.label || 'la pastilla';
-        const who  = linked?.targetName || (patientList[0]?.name || 'el paciente');
+        const who  = linked?.targetName || (G.patients[0]?.name || 'el paciente');
         return `Objetivo: busca ${pill} para ${who}`;
       }
-      const who = patientList[0]?.name || 'el paciente';
+      const who = G.patients[0]?.name || 'el paciente';
       return `Objetivo: busca la pastilla para ${who}`;
     }
 
     // 4) Si ya no quedan pacientes → carro + boss (puerta)
-    const sinPacientes = patientList.length === 0;
+    const sinPacientes = Array.isArray(G.patients) && G.patients.length === 0;
     if (sinPacientes) {
       const puertaAbierta = !!(G.door && (G.door.open === true || G.door.solid === false));
       if (puertaAbierta && G.cart && G.boss) return 'Objetivo: acerca el carro de urgencias al paciente final';
@@ -822,23 +672,9 @@
   };
 
   HUD.drawWorldOverlays = function(ctx, camera, G) {
-    // Los pacientes ya pintan su etiqueta desde el sistema de rigs; evitamos
-    // duplicar el nombre en el overlay HUD.
-    // drawNameTags(ctx, camera, G);
+    drawNameTags(ctx, camera, G);
     drawFloatingMessages(ctx, camera, G);
   };
-
-  HUD.updateHematologicTimer = updateHemaTimer;
-  HUD.showHematologicTimer = showHemaTimer;
-  HUD.hideHematologicTimer = hideHemaTimer;
-  HUD.flashHematologicWarning = flashHemaWarning;
-  HUD.updatePyroL3Timer = updatePyroL3Timer;
-  HUD.showPyroL3Timer = showPyroL3Timer;
-  HUD.hidePyroL3Timer = hidePyroL3Timer;
-  HUD.updateCleanerBossTimer = updateCleanerTimer;
-  HUD.showCleanerBossTimer = showCleanerTimer;
-  HUD.hideCleanerBossTimer = hideCleanerTimer;
-  HUD.flashCleanerBossWarning = flashCleanerWarning;
 
   HUD.showFloatingMessage = showFloatingMessage;
   HUD.setObjectiveText = function (text) {

@@ -5,7 +5,6 @@
   'use strict';
 
   const LOG = () => W.LOG || null;
-  const shouldLogAIInfo = () => !!(W.DEBUG_AI_LOGS || W.DEBUG_AI);
 
   function toKey(name) {
     return String(name || '').trim().toUpperCase();
@@ -29,7 +28,7 @@
       const key = toKey(name);
       if (!key || typeof handler !== 'function') return;
       this._entities.set(key, handler);
-      if (shouldLogAIInfo()) LOG()?.info?.('[AI] register entity', { key });
+      LOG()?.info?.('[AI] register entity', { key });
       this._ensureOrder(key, 'entity');
     },
 
@@ -37,7 +36,7 @@
       const key = toKey(name);
       if (!key || typeof handler !== 'function') return;
       this._systems.set(key, handler);
-      if (shouldLogAIInfo()) LOG()?.info?.('[AI] register system', { key });
+      LOG()?.info?.('[AI] register system', { key });
       this._ensureOrder(key, 'system');
     },
 
@@ -77,7 +76,7 @@
         entities: Array.from(this._entities.keys()),
         systems: Array.from(this._systems.keys()),
       };
-      if (shouldLogAIInfo()) LOG()?.info?.('AI_SUMMARY', active);
+      LOG()?.info?.('AI_SUMMARY', active);
       return active;
     }
   };

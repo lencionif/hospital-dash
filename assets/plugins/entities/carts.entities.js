@@ -35,14 +35,6 @@
     return api.PHYS || api.DEFAULTS || null;
   }
 
-  const CART_WEIGHT_MAP = {
-    food: 'light',
-    med: 'medium',
-    medicine: 'medium',
-    er: 'heavy',
-    urgencias: 'heavy'
-  };
-
   function resolveCartProfile(type){
     const phys = physicsProfiles();
     if (!phys || !phys.cartProfiles) return null;
@@ -106,58 +98,6 @@
     return entity._physProfile;
   }
 
-  function resolveCartTier(type){
-    const key = (type || '').toString().toLowerCase();
-    return CART_WEIGHT_MAP[key] || key || 'medium';
-  }
-
-  function assignCartPhysicsMetadata(entity){
-    if (!entity) return null;
-    const tier = resolveCartTier(entity.cartType || entity.type || '');
-    entity.cartTier = tier;
-    entity.cartClass = tier;
-    entity.cartWeight = tier;
-    const physApi = window.Physics;
-    let meta = null;
-    if (physApi?.assignCartPhysicsMetadata){
-      meta = physApi.assignCartPhysicsMetadata(entity, tier) || null;
-    }
-    if (!meta){
-      const tierCfg = physApi?.PHYS?.cartTypeProfiles?.[tier] || null;
-      if (!tierCfg) return null;
-      const tile = TILE || 32;
-      const maxSpeed = Number.isFinite(tierCfg.maxSpeedPx)
-        ? tierCfg.maxSpeedPx
-        : (Number.isFinite(tierCfg.vmax) ? tierCfg.vmax * tile : null);
-      meta = {
-        type: tier,
-        mass: tierCfg.mass,
-        maxSpeed,
-        restitution: tierCfg.restitution,
-        damagePerHit: tierCfg.damagePerHit,
-        damageThreshold: tierCfg.damageThreshold,
-        fireThreshold: tierCfg.fireThreshold,
-        fireBounces: tierCfg.fireBounces,
-        squashThreshold: tierCfg.squashThreshold,
-        squashBounces: tierCfg.squashBounces,
-        pushImpulse: tierCfg.pushImpulse,
-        hitImpulse: tierCfg.hitImpulse
-      };
-    }
-    entity.cartPhysics = Object.assign({}, meta);
-    entity.physics = Object.assign({}, entity.physics || {}, meta);
-    if (Number.isFinite(meta.mass)){
-      entity.mass = meta.mass;
-      entity.invMass = meta.mass > 0 ? 1 / meta.mass : 0;
-    }
-    if (Number.isFinite(meta.maxSpeed)) entity.maxSpeed = meta.maxSpeed;
-    if (Number.isFinite(meta.restitution)){
-      entity.restitution = Math.max(entity.restitution || 0, meta.restitution);
-      entity.rest = Math.max(entity.rest || 0, meta.restitution);
-    }
-    return entity.cartPhysics;
-  }
-
   // ---------- Fallbacks de motor ----------
   function _AABB(a,b){
     if (typeof window.AABB === 'function') return window.AABB(a,b);
@@ -187,75 +127,6 @@
       let ny=e.y+sy;
       if (_isWallAt(e.x,ny,e.w,e.h)) { ny=e.y; e.vy=-(e.vy||0)*rest; }
       e.y=ny;
-    }
-  }
-  function _getBody(ent){ return (ent && ent.body) ? ent.body : ent; }
-  function _collisionLayer(ent){ return _getBody(ent)?.collisionLayer ?? null; }
-  function _collisionMask(ent){ return _getBody(ent)?.collisionMask ?? null; }
-  function _canCollide(a, b){
-    const la = _collisionLayer(a);
-    const lb = _collisionLayer(b);
-    const ma = _collisionMask(a);
-    const mb = _collisionMask(b);
-    if (la == null || lb == null || ma == null || mb == null) return true;
-    return ((ma & lb) !== 0) && ((mb & la) !== 0);
-  }
-
-  function _isHero(ent){
-    return !!(ent && (ent.isHero || ent.kind === ENT.PLAYER || (ent.role || '').toLowerCase() === 'hero'));
-  }
-
-  function _isHostileNPC(ent){
-    return !!(ent && ent.isNPC && ent.hostile);
-  }
-
-  function checkCartHits(cart){
-    if (!cart || cart.dead) return;
-    const physicsApi = window.PhysicsAPI || window.Physics;
-    const body = _getBody(cart);
-    let hits = [];
-    if (physicsApi?.queryOverlap){
-      try {
-        hits = physicsApi.queryOverlap(body) || [];
-      } catch (_) { hits = []; }
-    }
-    if (!hits || !hits.length){
-      const G = getG();
-      if (Array.isArray(G?.entities)){
-        hits = [];
-        for (const other of G.entities){
-          if (!other || other === cart || other.dead) continue;
-          const otherBody = _getBody(other);
-          if (!otherBody || otherBody === body) continue;
-          if (!_canCollide(body, otherBody)) continue;
-          if (!_AABB(body, otherBody)) continue;
-          if (!otherBody.entity) otherBody.entity = other;
-          hits.push(otherBody);
-        }
-      }
-    }
-    for (const hit of hits){
-      const other = hit?.entity || hit;
-      if (!other || other === cart) continue;
-      if (!_canCollide(cart, other)) continue;
-      if (_isHero(other)){
-        let applied = false;
-        try {
-          if (window.DamageAPI?.applyCrush){ window.DamageAPI.applyCrush(other, cart); applied = true; }
-        } catch (_) {}
-        if (!applied){
-          try {
-            if (window.HeroAPI?.damage){ window.HeroAPI.damage(1); applied = true; }
-            else if (typeof getG().damagePlayer === 'function'){ getG().damagePlayer(1); applied = true; }
-          } catch (_) {}
-        }
-        if (!applied){
-          console.warn('[CollisionWarn] Cart overlap with hero without damage handler', { cart, other });
-        }
-      } else if (_isHostileNPC(other)){
-        try { if (window.DamageAPI?.applyCrush) window.DamageAPI.applyCrush(other, cart); }
-        catch (_) {}
-      }
     }
   }
   function sfx(name, vol=1){ if (name && window.AudioAPI?.play) try{ window.AudioAPI.play(name,{vol}); }catch{} }
@@ -337,7 +208,6 @@
           slip: slideMu
         };
       }
-      assignCartPhysicsMetadata(e);
       e.slide = opts.slide != null ? !!opts.slide : true;
       e._tag = e._tag || 'cart';
       e.canExplode = (e.cartType!==this.TYPES.ER);
@@ -349,17 +219,6 @@
       // callbacks opcionales
       e.onExplode = opts.onExplode || null;
       e.dead = false;
-      e.isCart = true;
-      const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
-      const cartLayer = layers.CART ?? (1 << 2);
-      const mask = (layers.WALL ?? (1 << 3)) | (layers.HERO ?? (1 << 0)) | (layers.NPC ?? (1 << 1)) | (layers.TRIGGER ?? (1 << 4));
-      e.collisionLayer = cartLayer;
-      e.collisionMask = mask;
-      const body = e.body || e;
-      body.collisionLayer = cartLayer;
-      body.collisionMask = mask;
-      body.entity = e;
-      e.body = body;
 
       const rigName = (e.cartType === this.TYPES.ER)
         ? 'cart_emergency'
@@ -439,8 +298,6 @@
         if (Math.abs(e.vy)<0.001) e.vy=0;
 
         _moveWithCollisions(e);
-
-        checkCartHits(e);
 
         // Si queda empotrado en muro, saca un poco
         if (_isWallAt(e.x,e.y,e.w,e.h)){ e.x+=sign(e.vx||1); e.y+=sign(e.vy||1); }

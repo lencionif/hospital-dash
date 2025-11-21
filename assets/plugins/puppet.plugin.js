@@ -9,11 +9,9 @@
   let activityLog = new WeakMap();
   const fallbackErrorLabels = new Set();
   const rigCheckTargets = new Set(['door', 'door_urgencias', 'elevator', 'hazard_fire', 'hazard_water']);
-  const rigOptionalKinds = new Set(['bell', 'timbre', 'hud', 'decor']);
-  const rigOptionalSprites = new Set(['timbre_apagado.png', 'timbre_encendido.png']);
-  const rigAuditSummary = { printed: false };
   let lastActivitySummary = '';
   const debugStatus = { rigs: false, lights: false, activity: false, successAnnounced: false };
+  const rigAuditState = { lastTime: 0, lastCount: 0 };
   const RESET_EVENT = 'reset';
 
   function shouldLogDebug(){
@@ -38,19 +36,19 @@
     return Number.isFinite(num) && num > 0 ? num : 32;
   }
 
-  function resolveCullingRadiusTiles(){
-    const raw = Number(window.G?.cullingRadiusTiles ?? window.G?.culling);
-    return Number.isFinite(raw) && raw > 0 ? raw : 20;
+  function resolveVisualRadiusTiles(){
+    const raw = Number(window.G?.visualRadiusTiles);
+    return Number.isFinite(raw) && raw > 0 ? raw : 8;
   }
 
-  function resolveCullingRadiusPx(){
+  function resolveVisualRadiusPx(){
     const G = window.G || {};
-    const px = Number(G.cullingRadiusPx);
+    const px = Number(G.visualRadiusPx);
     if (Number.isFinite(px) && px > 0) return px;
-    const tiles = resolveCullingRadiusTiles();
+    const tiles = resolveVisualRadiusTiles();
     const tile = getTileSize();
     const computed = Math.max(1, tiles * tile);
-    G.cullingRadiusPx = computed;
+    G.visualRadiusPx = computed;
     return computed;
   }
 
@@ -66,9 +64,9 @@
     return { hero, hx, hy };
   }
 
-  function computeCullingContext(hero){
+  function computeVisualContext(hero){
     const base = computeHeroInfo(hero);
-    const radius = Math.max(1, resolveCullingRadiusPx());
+    const radius = Math.max(1, resolveVisualRadiusPx());
     const radiusSq = radius * radius;
     const now = getNow();
     if (!base) return { hero: null, hx: 0, hy: 0, radius, radiusSq, now };
@@ -82,7 +80,7 @@
     return Number.isFinite(awakeUntil) && awakeUntil > now;
   }
 
-  function withinCullingRadius(entity, heroInfo, details){
+  function withinVisualRadius(entity, heroInfo, details){
     if (!entity) return false;
     if (!heroInfo || !heroInfo.hero) return true;
     if (entity === heroInfo.hero) return true;
@@ -107,7 +105,6 @@
     let activeCount = 0;
     let inactiveCount = 0;
     const distInfo = {};
-    const logActivity = shouldLogDebug() || window.DEBUG_PUPPET_ACTIVITY;
     for (const ent of entities){
       if (!ent) continue;
       let active = true;
@@ -117,7 +114,7 @@
           active = true;
         } else {
           distInfo.distanceSq = null;
-          active = withinCullingRadius(ent, heroInfo, distInfo);
+          active = withinVisualRadius(ent, heroInfo, distInfo);
           if (distInfo.distanceSq != null) distanceSq = distInfo.distanceSq;
         }
       }
@@ -126,14 +123,22 @@
       const prev = activityLog.get(ent);
       if (prev !== active){
         activityLog.set(ent, active);
+        const label = ent.name || ent.id || ent.tag || ent.kindName || ent.rigName || `entity@${entities.indexOf(ent)}`;
+        let extra = '';
+        if (distanceSq != null && heroInfo?.hero && ent !== heroInfo.hero){
+          extra = ` (dist≈${Math.sqrt(distanceSq).toFixed(1)}px)`;
+        }
+        try {
+          console.log(`[Puppet] ${active ? 'Activando' : 'Desactivando'} ${label}${extra}`);
+        } catch (_) {}
       }
     }
     const summaryKey = `${activeCount}|${inactiveCount}`;
-    if (logActivity && summaryKey !== lastActivitySummary){
+    if (summaryKey !== lastActivitySummary){
       lastActivitySummary = summaryKey;
       const radiusPx = heroInfo?.radius ? Math.round(heroInfo.radius) : 0;
       const tileSize = getTileSize();
-      const radiusTiles = radiusPx > 0 && tileSize > 0 ? radiusPx / tileSize : resolveCullingRadiusTiles();
+      const radiusTiles = radiusPx > 0 && tileSize > 0 ? radiusPx / tileSize : resolveVisualRadiusTiles();
       try {
         console.log(`[Puppet] Radio visual ≈ ${radiusTiles.toFixed(1)} tiles (~${radiusPx}px). Activos: ${activeCount}, Inactivos: ${inactiveCount}.`);
       } catch (_) {}
@@ -142,160 +147,22 @@
     }
   }
 
-  function normalizeLookupKey(value){
-    if (typeof value !== 'string') return '';
-    return value.trim().toLowerCase();
-  }
-
-  const RIG_NAME_LOOKUP = {
-    kind: {
-      hero: (ent) => {
-        const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || ent?.id || '');
-        if (key) return `hero_${key}`;
-        return null;
-      },
-      familiar: 'npc_familiar_molesto',
-      familiar_molesto: 'npc_familiar_molesto',
-      cleaner: 'npc_limpiadora',
-      medic: 'npc_medico',
-      medico: 'npc_medico',
-      enfermera: 'npc_enfermera_enamoradiza',
-      supervisora: 'npc_supervisora',
-      jefe_servicio: 'npc_jefe_servicio',
-      furiosa: 'patient_furiosa',
-      patient: 'patient_bed',
-      cart: (ent) => {
-        const type = normalizeLookupKey(ent?.cartType || 'med');
-        if (type === 'er') return 'cart_emergency';
-        if (type === 'food') return 'cart_food';
-        return 'cart_meds';
-      },
-      door: 'door',
-      door_urgencias: 'door_urgencias',
-      elevator: 'elevator',
-      light: 'light',
-      phone: 'phone',
-      hazard_fire: 'hazard_fire',
-      hazard_water: 'hazard_water',
-      pill: 'item_pill_generic',
-      mosquito: 'mosquito',
-      rat: 'rat'
-    },
-    role: {
-      hero: (ent) => {
-        const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || '');
-        return key ? `hero_${key}` : null;
-      },
-      follower: (ent) => {
-        const key = normalizeLookupKey(ent?.hero || ent?.heroKey || ent?.key || '');
-        return key ? `hero_${key}` : null;
-      },
-      medico: 'npc_medico',
-      enfermera: 'npc_enfermera_enamoradiza',
-      supervisora: 'npc_supervisora',
-      jefe_servicio: 'npc_jefe_servicio',
-      familiar: 'npc_familiar_molesto',
-      furiosa: 'patient_furiosa',
-      cleaner: 'npc_limpiadora'
-    },
-    spriteKey: {
-      timbre_apagado: null,
-      timbre_encendido: null,
-      medico: 'npc_medico',
-      medico_png: 'npc_medico',
-      'medico.png': 'npc_medico',
-      supervisora: 'npc_supervisora',
-      supervisora_png: 'npc_supervisora',
-      'supervisora.png': 'npc_supervisora',
-      enfermera_sexy: 'npc_enfermera_enamoradiza',
-      enfermera: 'npc_enfermera_enamoradiza',
-      enfermera_png: 'npc_enfermera_enamoradiza',
-      'enfermera_sexy.png': 'npc_enfermera_enamoradiza',
-      paciente_furiosa: 'patient_furiosa',
-      paciente_furiosa_png: 'patient_furiosa',
-      'paciente_furiosa.png': 'patient_furiosa',
-      familiar_molesto: 'npc_familiar_molesto',
-      familiar_molesto_png: 'npc_familiar_molesto',
-      'familiar_molesto.png': 'npc_familiar_molesto',
-      jefe_servicio: 'npc_jefe_servicio',
-      jefe_servicio_png: 'npc_jefe_servicio',
-      'jefe_servicio.png': 'npc_jefe_servicio',
-      chica_limpieza: 'npc_limpiadora',
-      chica_limpieza_png: 'npc_limpiadora',
-      'chica_limpieza.png': 'npc_limpiadora'
-    }
-  };
-
-  function isRigOptional(ent){
-    const kind = normalizeLookupKey(ent?.kind || ent?.kindName || ent?.type || ent?.tag);
-    if (rigOptionalKinds.has(kind)) return true;
-    const sprite = normalizeLookupKey(ent?.spriteKey || ent?._spriteIdle || ent?._spriteRinging || ent?.skin);
-    if (!sprite) return false;
-    const clean = sprite.replace(/\.png$/i, '');
-    return rigOptionalSprites.has(sprite) || rigOptionalSprites.has(`${clean}.png`);
-  }
-
-  function resolveMappedRig(ent){
-    if (!ent || typeof ent !== 'object') return null;
-    const kinds = [ent.kind, ent.kindName, ent.type, ent.entityType, ent.tag, ent.role, ent.sub];
-    for (const raw of kinds){
-      const key = normalizeLookupKey(raw);
-      if (!key) continue;
-      const entry = RIG_NAME_LOOKUP.kind[key];
-      if (typeof entry === 'function'){
-        const rig = entry(ent);
-        if (rig) return rig;
-      } else if (typeof entry === 'string'){
-        return entry;
-      }
-    }
-    const role = normalizeLookupKey(ent.role || ent.sub || ent.tag);
-    if (role){
-      const entry = RIG_NAME_LOOKUP.role[role];
-      if (typeof entry === 'function'){
-        const rig = entry(ent);
-        if (rig) return rig;
-      } else if (typeof entry === 'string'){
-        return entry;
-      }
-    }
-    const spriteRaw = normalizeLookupKey(ent.spriteKey || ent._spriteIdle || ent._spriteRinging || ent.skin);
-    if (spriteRaw){
-      const clean = spriteRaw.replace(/\.png$/i, '');
-      const entry = RIG_NAME_LOOKUP.spriteKey[spriteRaw] ?? RIG_NAME_LOOKUP.spriteKey[clean];
-      if (typeof entry === 'string') return entry;
-      if (entry === null) return null;
-    }
-    return null;
-  }
-
-  function resolveRigName(name, entity){
+  function resolveRigName(name){
     const key = typeof name === 'string' ? name : null;
-    if (key && (registry[key] || rigs.get(key))) return key;
-    const mapped = resolveMappedRig(entity);
-    if (mapped && (registry[mapped] || rigs.get(mapped))) return mapped;
+    if (key && registry[key]) return key;
     if (key && !missingRigWarnings.has(key)){
       missingRigWarnings.add(key);
-      if (!isRigOptional(entity)){
-        try {
-          console.error(`[RigError] No se encontró rig para kind=${entity?.kind || entity?.kindName || 'desconocido'} / spriteKey=${entity?.spriteKey || entity?.skin || 'none'}`);
-        } catch (_) {}
-      }
+      try {
+        console.warn(`[Puppet] rig "${key}" no registrado, usando fallback 'default'.`);
+      } catch (_) {}
     }
     return 'default';
   }
 
   function registerRig(name, rig){
-    if (!name || !rig){
-      try { console.warn('[Puppet] Registro de rig inválido', { name, hasRig: !!rig }); } catch (_) {}
-      return;
-    }
-    try {
-      rigs.set(name, rig);
-      registry[name] = rig;
-    } catch (err){
-      try { console.error(`[Puppet] No se pudo registrar rig '${name}'`, err); } catch (_) {}
-    }
+    if (!name || !rig) return;
+    rigs.set(name, rig);
+    registry[name] = rig;
   }
 
   function cleanupPuppet(puppet){
@@ -332,7 +199,7 @@
     if (!entity) return null;
     detach(entity);
     const requestedRig = opts.rig || opts.name || entity.rigName;
-    const resolvedRig = resolveRigName(requestedRig, entity);
+    const resolvedRig = resolveRigName(requestedRig);
     const puppet = {
       entity,
       rigName: resolvedRig,
@@ -347,7 +214,6 @@
     if (entity) {
       entity.rigName = puppet.rigName;
       entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
-      if (!entity.rigOk && isRigOptional(entity)) entity.rigOk = true;
       if (puppet.rigName === 'default' && requestedRig && requestedRig !== 'default'){
         const label = describeEntity(entity);
         const kind = entity?.kind ?? entity?.kindName ?? entity?.tag ?? 'desconocido';
@@ -367,30 +233,20 @@
 
   function bind(entity, rigName, opts={}){
     if (!entity) return null;
-    const name = resolveRigName(rigName, entity);
+    const name = resolveRigName(rigName);
     if (name === 'default' && rigName && rigName !== 'default'){
-      entity.rigOk = false;
+      const label = describeEntity(entity);
       try {
-        console.error('[RigError] No se encontró rig para kind=' + (entity?.kind || entity?.kindName || 'desconocido') + ' / spriteKey=' + (entity?.spriteKey || entity?.skin || 'none'));
+        console.warn(`[Puppet.bind] Advertencia: '${label || 'Entidad'}' solicitó rig '${rigName}' pero se está usando 'default'.`);
       } catch (_) {}
-      createRigFallbackSprite(entity);
     }
     const puppet = attach(entity, { ...opts, rig: name });
     const rig = registry[name];
-    if (!rig){
-      entity.rigOk = false;
-      try {
-        console.error('[RigError] No se encontró rig para kind=' + (entity?.kind || entity?.kindName || 'desconocido') + ' / spriteKey=' + (entity?.spriteKey || entity?.skin || 'none'));
-      } catch (_) {}
-      createRigFallbackSprite(entity);
-      return puppet;
-    }
     try {
       if (rig && typeof rig.create === 'function') {
         puppet.state = rig.create(entity, opts) || puppet.state || { e: entity };
       }
       entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
-      if (!entity.rigOk && isRigOptional(entity)) entity.rigOk = true;
     } catch (err) {
       const label = describeEntity(entity);
       try {
@@ -575,22 +431,55 @@
     } catch (_) {}
   }
 
-  function auditRigs(entities){
-    if (rigAuditSummary.printed) return;
+  function auditRigs(force = false){
+    const entities = window.G?.entities;
     if (!Array.isArray(entities) || entities.length === 0) return;
-    var ok = 0;
-    var bad = 0;
-    entities.forEach(function (e) {
-      if (!e) return;
-      if (e.rigOptional) return;
-      if (e.rigOk) ok++; else bad++;
-    });
-    rigAuditSummary.printed = true;
-    console.log('[Puppet] Auditoría de rigs: ' + ok + ' OK, ' + bad + ' sin rig');
-    debugStatus.rigs = bad === 0;
-    if (debugStatus.rigs) {
+    const now = getNow();
+    const count = entities.filter(Boolean).length;
+    if (!force){
+      const interval = 3500;
+      if (now - rigAuditState.lastTime < interval && count === rigAuditState.lastCount) return;
+    }
+    rigAuditState.lastTime = now;
+    rigAuditState.lastCount = count;
+    const messages = [];
+    let fallbackCount = 0;
+    for (let i = 0; i < entities.length; i++){
+      const ent = entities[i];
+      if (!ent) continue;
+      const label = describeEntity(ent, i);
+      let rigName = (ent.rigName || ent.puppet?.rigName || '').toString();
+      let ok = ent.rigOk === true && rigName && rigName !== 'default';
+      if (!ok){
+        const fixed = attemptAutoRig(ent, label);
+        if (fixed){
+          rigName = (ent.rigName || ent.puppet?.rigName || rigName).toString();
+          ok = ent.rigOk === true && rigName && rigName !== 'default';
+        }
+      }
+      if (!ok) fallbackCount++;
+      messages.push(`[Debug] Rigs check: ${label} -> rig=${rigName || 'none'} ${ok ? '✔' : '⚠️'}`);
+    }
+    if (!messages.length) return;
+    const debugLogging = shouldLogDebug();
+    if (!debugLogging && fallbackCount === 0){
+      debugStatus.rigs = true;
+      maybeReportIntegrationSuccess();
+      return;
+    }
+    if (!debugLogging && fallbackCount > 0){
+      debugStatus.rigs = false;
+      debugStatus.successAnnounced = false;
+      return;
+    }
+    try {
+      for (const msg of messages) console.log(msg);
+    } catch (_) {}
+    if (fallbackCount === 0){
+      debugStatus.rigs = true;
       maybeReportIntegrationSuccess();
     } else {
+      debugStatus.rigs = false;
       debugStatus.successAnnounced = false;
     }
   }
@@ -612,7 +501,6 @@
     }
     needsSort = false;
     activityLog = new WeakMap();
-    rigAuditSummary.printed = false;
     if (opts.clearWarnings !== false) missingRigWarnings.clear();
     if (opts.resetFallbacks !== false) fallbackErrorLabels.clear();
     if (shouldLogDebug() || opts.log){
@@ -692,11 +580,11 @@
   function updateAll(state, dt){
     sortPuppets();
     const hero = window.G?.hero || window.G?.player || null;
-    const context = computeCullingContext(hero);
+    const context = computeVisualContext(hero);
     if (window.G) {
       if (hero) {
-        window.G.__cullingInfo = {
-          radiusTiles: resolveCullingRadiusTiles(),
+        window.G.__visualRadiusInfo = {
+          radiusTiles: resolveVisualRadiusTiles(),
           radiusPx: context.radius,
           radiusSq: context.radiusSq,
           hx: context.hx,
@@ -704,7 +592,7 @@
           timestamp: context.now
         };
       } else {
-        window.G.__cullingInfo = null;
+        window.G.__visualRadiusInfo = null;
       }
     }
     refreshEntityActivity(context);
@@ -728,6 +616,7 @@
         }
       }
     }
+    auditRigs();
   }
 
   function drawAll(ctx, cam){
@@ -737,8 +626,8 @@
     const G = window.G || {};
     const player = G.player || null;
     const tileSize = getTileSize();
-    const radiusValue = Number(G.cullingRadiusTiles);
-    const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 20;
+    const radiusValue = Number(G.visibleTilesRadius);
+    const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
     const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
     const applyCull = !!player && !G.isDebugMap && tileSize > 0;
     const playerX = player ? (Number(player.x) || 0) : 0;
@@ -819,36 +708,6 @@
 
   function toggleDebug(){ /* noop placeholder para compat */ }
 
-  function createRigFallbackSprite(entity) {
-    var TILE = window.TILE_SIZE || 64; // usa el tamaño de tile global si existe
-    var canvas = document.createElement('canvas');
-    canvas.width = TILE;
-    canvas.height = TILE;
-    var ctx = canvas.getContext('2d');
-    // Color según tipo de entidad
-    var color = '#ff00ff'; // por defecto
-    if (entity.isHero) color = '#00ff00';
-    else if (entity.isNPC) color = '#0000ff';
-    else if (entity.kind === 'door') color = '#ffaa00';
-    else if (entity.kind === 'cart') color = '#ff0000';
-    ctx.fillStyle = color;
-    ctx.fillRect(0, 0, TILE, TILE);
-    ctx.fillStyle = '#000000';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    var label = (entity.kind || '???').toUpperCase();
-    ctx.fillText(label.slice(0, 4), TILE / 2, TILE / 2);
-    // Adaptar al sistema de sprites actual
-    if (window.Sprite && typeof window.Sprite.fromCanvas === 'function') {
-      entity.sprite = Sprite.fromCanvas(canvas);
-    } else if (entity.sprite && typeof entity.sprite.setTextureFromCanvas === 'function') {
-      entity.sprite.setTextureFromCanvas(canvas);
-    } else {
-      entity.debugCanvas = canvas; // último recurso, para que el renderer pueda usarlo
-    }
-  }
-
   window.PuppetAPI = {
     registerRig,
     attach,
@@ -857,7 +716,6 @@
     reset: resetAll,
     getActiveCount,
     debugListAll,
-    auditRigs,
     updateAll,
     drawAll,
     draw: drawOne,
@@ -869,5 +727,4 @@
   PuppetNS.bind = bind;
   PuppetNS.detach = detach;
   PuppetNS.reset = resetAll;
-  window.auditRigs = auditRigs;
 })();

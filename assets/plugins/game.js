@@ -7,9 +7,6 @@
 (() => {
   'use strict';
 
-  window.pauseGame = function () { window.GAME_PAUSED = true; };
-  window.resumeGame = function () { window.GAME_PAUSED = false; };
-
   // ------------------------------------------------------------
   // Parámetros globales y utilidades
   // ------------------------------------------------------------
@@ -216,8 +213,9 @@
     patientsFurious: 0,
     cycleSeconds: 0,
     TILE_SIZE: TILE,
-    cullingRadiusTiles: 20,
-    cullingRadiusPx: 20 * TILE,
+    visibleTilesRadius: 8,
+    visualRadiusTiles: 8,
+    visualRadiusPx: 8 * TILE,
     isDebugMap: DEBUG_MAP_MODE,
     firstBellDelayMinutes: 5,
     firstBellDelaySeconds: 300,
@@ -276,7 +274,7 @@
     window.ENT = ENT;
   }
 
-  let currentCullingInfo = null;
+  let currentVisualInfo = null;
 
   function detachEntityRig(ent){
     if (!ent) return;
@@ -294,12 +292,12 @@
   }
   window.detachEntityRig = detachEntityRig;
 
-  function resolveCullingRadiusTiles(){
+  function resolveVisualRadiusTiles(){
     const candidates = [
-      Number.isFinite(G?.cullingRadiusTiles) ? G.cullingRadiusTiles : null,
-      G?.levelRules?.level?.culling,
-      G?.levelRules?.globals?.culling,
-      G?.globals?.culling
+      Number.isFinite(G?.visualRadiusTiles) ? G.visualRadiusTiles : null,
+      G?.levelRules?.level?.visualRadius,
+      G?.levelRules?.globals?.visualRadius,
+      G?.globals?.visualRadius
     ];
     for (const value of candidates){
       if (Number.isFinite(value) && value > 0) return value;
@@ -307,17 +305,17 @@
     return null;
   }
 
-  function computeCullingInfo(){
+  function computeVisualRadiusInfo(){
     const hero = G.player;
     if (!hero){
-      currentCullingInfo = null;
-      if (G) G.__cullingInfo = null;
+      currentVisualInfo = null;
+      if (G) G.__visualRadiusInfo = null;
       return null;
     }
-    const radiusTiles = resolveCullingRadiusTiles();
+    const radiusTiles = resolveVisualRadiusTiles();
     if (!Number.isFinite(radiusTiles) || radiusTiles <= 0){
-      currentCullingInfo = null;
-      G.__cullingInfo = null;
+      currentVisualInfo = null;
+      G.__visualRadiusInfo = null;
       return null;
     }
     const tileSize = window.TILE_SIZE || window.TILE || TILE;
@@ -332,8 +330,8 @@
         ? performance.now()
         : Date.now()
     };
-    currentCullingInfo = info;
-    G.__cullingInfo = info;
+    currentVisualInfo = info;
+    G.__visualRadiusInfo = info;
     return info;
   }
 
@@ -350,7 +348,7 @@
       const fn = ent && typeof ent[name] === 'function' ? ent[name] : null;
       if (!fn) continue;
       try {
-        fn.call(ent, G, currentCullingInfo);
+        fn.call(ent, G, currentVisualInfo);
       } catch (err){
         if (window.DEBUG_FORCE_ASCII) console.warn(`[Entity:${name}] error`, err);
       }
@@ -364,7 +362,7 @@
       setEntityActivity(ent, true);
       return true;
     }
-    const info = currentCullingInfo;
+    const info = currentVisualInfo;
     if (!info){
       setEntityActivity(ent, true);
       return true;
@@ -709,6 +707,8 @@
   const fogCtx      = fogCanvas ? fogCanvas.getContext('2d') : null;
   const guideCanvas = document.getElementById('guideCanvas');
   const guideCtx    = guideCanvas ? guideCanvas.getContext('2d') : null;
+  const hudCanvas   = document.getElementById('hudCanvas');
+  const hudCtx      = hudCanvas.getContext('2d');
 
   window.DEBUG_POPULATE = window.DEBUG_POPULATE || { LOG:false, VERBOSE:false };
   // SkyFX listo desde el menú (antes de startGame)
@@ -723,6 +723,7 @@
   });
   if (fogCanvas){ fogCanvas.width = VIEW_W; fogCanvas.height = VIEW_H; }
   if (guideCanvas){ guideCanvas.width = VIEW_W; guideCanvas.height = VIEW_H; }
+  if (hudCanvas){ hudCanvas.width = VIEW_W; hudCanvas.height = VIEW_H; }
 
   // === Sprites (plugin unificado) ===
   Sprites.init({ basePath: './assets/images/', tile: TILE });
@@ -809,6 +810,7 @@
     clearCanvasContext(ctx, canvas?.width, canvas?.height);
     clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
     clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
+    clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
 
     try { window.FogAPI?.reset?.(); } catch (_) {}
     try { window.FogAPI?.clear?.(); } catch (_) {}
@@ -998,7 +1000,7 @@
   // Cámara
   const camera = { x: 0, y: 0, zoom: 0.45 }; // ⬅️ arranca ya alejado
   G.camera = camera;
-  
+
   function getCameraState(){
     const base = G.camera || camera || { x: 0, y: 0, zoom: 1 };
     const zoom = Number.isFinite(base.zoom) && base.zoom > 0 ? base.zoom : 1;
@@ -1009,35 +1011,6 @@
       offsetX: VIEW_W * 0.5 + (shake.x || 0),
       offsetY: VIEW_H * 0.5 + (shake.y || 0)
     };
-  }
-
-  function centerCameraOnPlayer(player = G?.player){
-    if (!player) return;
-    const pw = Number.isFinite(player.w) ? player.w : TILE;
-    const ph = Number.isFinite(player.h) ? player.h : TILE;
-    const baseX = Number(player.x) || 0;
-    const baseY = Number(player.y) || 0;
-    camera.x = baseX + pw * 0.5;
-    camera.y = baseY + ph * 0.5;
-    camera.viewportOffsetX = 0;
-    camera.viewportOffsetY = 0;
-    camera.viewportX = VIEW_W * 0.5;
-    camera.viewportY = VIEW_H * 0.5;
-  }
-
-  function placeHeroAtControlRoom(hero = G?.player){
-    if (!hero || !G?.startControlRoom) return;
-    const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
-    const w = Number.isFinite(hero.w) && hero.w > 0 ? hero.w : tileSize;
-    const h = Number.isFinite(hero.h) && hero.h > 0 ? hero.h : tileSize;
-    hero.x = G.startControlRoom.x - w * 0.5;
-    hero.y = G.startControlRoom.y - h * 0.5;
-    if (Number.isFinite(hero.vx)) hero.vx = 0;
-    if (Number.isFinite(hero.vy)) hero.vy = 0;
-    if (Number.isFinite(hero.ax)) hero.ax = 0;
-    if (Number.isFinite(hero.ay)) hero.ay = 0;
-    hero.prevX = hero.x;
-    hero.prevY = hero.y;
   }
 
   function applyWorldCamera(ctx){
@@ -1479,37 +1452,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           G.entities.push(e); G.door = e;
         },
         placeBoss: (kind,tx,ty)=>{
-          const px = tx * TILE + 8;
-          const py = ty * TILE + 8;
-          let spawnFn = null;
-
-          if (level === 1) {
-            spawnFn = window.Entities?.PatientHematologic?.spawn;
-          } else if (level === 2) {
-            spawnFn = window.Entities?.JefaLimpiadoras?.spawn
-              || window.Entities?.jefa_limpiadoras_lvl2
-              || window.CleanerBossAPI?.spawn;
-          } else if (level === 3) {
-            spawnFn = window.Entities?.PacientePyromana?.spawn
-              || window.Entities?.PyroPatientLvl3?.spawn
-              || window.Entities?.paciente_pyromana_lvl3;
-          }
-
-          if (typeof spawnFn !== 'function') {
-            console.error('[BossLoadError] Boss factory missing for level', level);
-            return;
-          }
-
-          const bossEnt = spawnFn(px, py);
-          if (!bossEnt) {
-            console.error('[BossLoadError] Boss factory returned no entity for level', level);
-            return;
-          }
-
-          G.boss = bossEnt;
-          if (!G.entities.includes(bossEnt)) {
-            G.entities.push(bossEnt);
-          }
+          const b = makeRect(tx*TILE+8, ty*TILE+8, TILE*1.2, TILE*1.2,
+                            ENT.BOSS, COLORS.boss, false, true,
+                            {mass:8, rest:0.1, mu:0.1, static:true});
+          G.entities.push(b); G.boss = b;
         },
         placeEnemy: (kind,tx,ty)=>{
           const cx = tx*TILE+TILE/2;
@@ -1896,29 +1842,16 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     );
   }
   window.AABB = AABB;
-
-  function notifySpawnerOnDeath(entity, population, template){
-    const api = (window.SpawnerAPI && typeof window.SpawnerAPI.notifyDeath === 'function') ? window.SpawnerAPI : null;
-    if (!api || !entity) return;
-    const payload = Object.assign({ entity }, template || {});
-    try { api.notifyDeath(population ? { population, template: payload, entity } : { entity }); }
-    catch (err) { if (window.DEBUG_SPAWNER) console.warn('[SpawnerAPI] notifyDeath error', err); }
-  }
-
+  
   function killEnemy(e, meta){
       if (e.dead) return;
       e.dead = true;
-      if (typeof e.onKilled === 'function') {
-        try { e.onKilled(meta || {}); } catch (_) {}
-      }
       if (window.ScoreAPI){ try{ ScoreAPI.awardForDeath(e, Object.assign({cause:'killEnemy'}, meta||{})); }catch(_){} }
     // saca de las listas
     G.hostiles = G.hostiles.filter(x => x !== e);
     G.entities = G.entities.filter(x => x !== e);
     detachEntityRig(e);
     MovementSystem.unregister(e);
-    if (matchesKind(e, 'MOSQUITO')) notifySpawnerOnDeath(e, 'animals', { kind: 'mosquito' });
-    else if (matchesKind(e, 'RAT')) notifySpawnerOnDeath(e, 'animals', { kind: 'rat' });
     // notificar respawn diferido
     SPAWN.pending = Math.min(SPAWN.pending + 1, SPAWN.max);
     // Planificar respawn si hay spawner de este tipo
@@ -1931,9 +1864,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   function killEntityGeneric(e, meta){
     if (!e || e.dead) return;
     e.dead = true;
-    if (typeof e.onKilled === 'function') {
-      try { e.onKilled(meta || {}); } catch (_) {}
-    }
     if (window.ScoreAPI){ try{ ScoreAPI.awardForDeath(e, Object.assign({cause:'killEntityGeneric'}, meta||{})); }catch(_){} }
 
     // quítalo de todas las listas donde pueda estar
@@ -1944,12 +1874,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     try { window.EntityGroups?.unregister?.(e, G); } catch (_) {}
     G.patients = G.patients.filter(x => x !== e);
     MovementSystem.unregister(e);
-    if (matchesKind(e, 'CART')) {
-      notifySpawnerOnDeath(e, 'carts', { kind: (e.cartType || e.cartTier || 'cart').toString().toLowerCase() });
-    } else if (e.role || matchesKind(e, 'NPC')) {
-      const role = (e.role || e.kindName || e.kind || '').toString().toLowerCase();
-      notifySpawnerOnDeath(e, 'humans', { role, kind: role || undefined });
-    }
 
     // si era enemigo “con vida”, respawn por su sistema
     if (e.kind === ENT.MOSQUITO) {
@@ -2043,17 +1967,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // ------------------------------------------------------------
   // Input + empuje
   // ------------------------------------------------------------
-  const HERO_LOVE_SPEED = 110;
-
-  function findEntityById(id){
-    if (!id || !Array.isArray(G.entities)) return null;
-    for (const ent of G.entities){
-      if (!ent) continue;
-      if (ent.id === id || ent.__id === id) return ent;
-    }
-    return null;
-  }
-
   function softFacingFromKeys(p, dx, dy, dt){
     if (!dx && !dy) return;
     const want = Math.atan2(dy, dx);
@@ -2080,84 +1993,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (newCard !== p.facing){ p.facing = newCard; p._facingHold = 0.08; }
     }
   }
-
-  function handleLovePursuit(p, dt){
-    if (!p || !p.loveLock) return false;
-    const target = findEntityById(p.loveLock);
-    if (!target || target.dead || (target.ai && target.ai.state !== 'love')){
-      p.loveLock = null;
-      return false;
-    }
-    const pcx = p.x + p.w * 0.5;
-    const pcy = p.y + p.h * 0.5;
-    const ncx = target.x + target.w * 0.5;
-    const ncy = target.y + target.h * 0.5;
-    const dx = ncx - pcx;
-    const dy = ncy - pcy;
-    const dist = Math.hypot(dx, dy) || 1;
-    const speed = Math.min(p.maxSpeed || HERO_LOVE_SPEED, HERO_LOVE_SPEED);
-    p.vx = (dx / dist) * speed;
-    p.vy = (dy / dist) * speed;
-    softFacingFromKeys(p, dx, dy, dt);
-    if (dist < TILE * 0.6){
-      p.vx *= 0.4;
-      p.vy *= 0.4;
-    }
-    if (dx || dy){
-      G.lastPushDir = { x: Math.sign(dx) || 0, y: Math.sign(dy) || 0 };
-    }
-    return true;
-  }
-
+  
   function handleInput(dt) {
     const p = G.player;
     if (!p) return;
-
-    if (p.stunTimer && p.stunTimer > 0) {
-      const stunDt = Math.max(0, Number(dt) || 0);
-      p.stunTimer = Math.max(0, p.stunTimer - stunDt);
-      p.isStunned = p.stunTimer > 0;
-      p.vx *= 0.4;
-      p.vy *= 0.4;
-      if (!p.isStunned) {
-        p.stunSource = null;
-      }
-      return;
-    } else if (p.isStunned) {
-      p.isStunned = false;
-    }
-
-    if (handleLovePursuit(p, dt)) {
-      return;
-    }
 
     const R = !!keys['arrowright'], L = !!keys['arrowleft'];
     const D = !!keys['arrowdown'],  U = !!keys['arrowup'];
     let dx = (R ? 1 : 0) - (L ? 1 : 0);
     let dy = (D ? 1 : 0) - (U ? 1 : 0);
-    const confused = (() => {
-      const checker = window.Entities?.Hero?.isConfused;
-      if (typeof checker === 'function') return checker(p);
-      const status = p.status || {};
-      const now = (performance?.now ? performance.now() : Date.now()) / 1000;
-      if (status.confused && (!status.confusedUntil || status.confusedUntil > now)) return true;
-      if (status.confused && status.confusedUntil <= now) {
-        status.confused = false;
-        status.confusedSource = null;
-      }
-      return false;
-    })();
-    if (confused) {
-      dx = -dx;
-      dy = -dy;
-      const wobble = Math.sin((performance?.now ? performance.now() : Date.now()) / 160);
-      dx += wobble * 0.25;
-      dy -= wobble * 0.25;
-    }
-    if (p._doctorInvertControls) {
-      dx = -dx;
-      dy = -dy;
-    }
 
     if (window.DEBUG_FORCE_ASCII) {
       // log discreto solo en debug
@@ -2170,15 +2014,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     softFacingFromKeys(p, dx, dy, dt);
 
     // === NUEVO: aceleración y tope de velocidad ===
-    let accel = (p.accel != null) ? p.accel
-              : (p.speed != null) ? p.speed * 60    // compat viejo
-              : 800;                                  // fallback seguro
-    let maxSp = (p.maxSpeed != null) ? p.maxSpeed
-              : (BALANCE?.physics?.maxSpeedPlayer ?? 165);
-    if (confused) {
-      accel *= 0.9;
-      maxSp *= 0.9;
-    }
+    const accel = (p.accel != null) ? p.accel
+                : (p.speed != null) ? p.speed * 60    // compat viejo
+                : 800;                                  // fallback seguro
+    const maxSp = (p.maxSpeed != null) ? p.maxSpeed
+                : (BALANCE?.physics?.maxSpeedPlayer ?? 165);
 
     // aplicar aceleración por dt
     p.vx += dx * accel * dt;
@@ -2215,13 +2055,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (!pill || pill.dead) return false;
     const carrier = hero || G.player || null;
     if (!carrier) return false;
-    const kindStr = (pill.kind || pill.kindName || '').toString().toLowerCase();
-    const isDoctorPill = kindStr === 'pill_doctor' || pill.source === 'doctor';
-    if (isDoctorPill) {
-      const applied = window.MedicoAPI?.applyDoctorBuff?.(carrier, pill.buff);
-      removePillEntity(pill);
-      return !!applied;
-    }
     if (carrier.carry || G.carry) return false;
     const carry = {
       type: 'PILL',
@@ -2244,29 +2077,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     console.debug('[PILL] Player picked pill', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
     try { window.ObjectiveSystem?.onPillPicked?.(carry); } catch (_) {}
     try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
-    removePillEntity(pill);
-    try {
-      window.HUD?.showFloatingMessage?.(carrier, `Has cogido medicina para ${carry.patientName || 'un paciente'}`, 1.6);
-    } catch (_) {}
-    return true;
-  }
-
-  function removePillEntity(pill) {
-    if (!pill) return;
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
     if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== pill);
     if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== pill);
     detachEntityRig(pill);
     pill.dead = true;
-  }
-
-  function resolveHeroCarry(hero) {
-    if (hero?.currentPill) return hero.currentPill;
-    if (hero?.carry) return hero.carry;
-    if (hero?.inventory?.medicine) return hero.inventory.medicine;
-    if (G.currentPill) return G.currentPill;
-    if (G.carry) return G.carry;
-    return null;
+    try {
+      window.HUD?.showFloatingMessage?.(carrier, `Has cogido medicina para ${carry.patientName || 'un paciente'}`, 1.6);
+    } catch (_) {}
+    return true;
   }
 
   function afterManualDelivery(patient){
@@ -2303,48 +2122,18 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     console.debug('[PILL_DELIVERY_DEBUG]', payload);
   }
 
-  function logPillContactCheck(hero, patient, extra = {}) {
-    if (!hero && !patient) return;
-    const carry = resolveHeroCarry(hero);
-    let dist = extra.distance ?? null;
-    if (!Number.isFinite(dist) && hero && patient) {
-      const hx = hero.x + hero.w * 0.5;
-      const hy = hero.y + hero.h * 0.5;
-      const px = patient.x + (patient.w || 0) * 0.5;
-      const py = patient.y + (patient.h || 0) * 0.5;
-      dist = Math.hypot(px - hx, py - hy);
-    }
-    const safeDist = Number.isFinite(dist) ? Number(dist.toFixed(2)) : null;
-    console.debug('[PILL_CONTACT_CHECK]', {
-      heroId: hero?.id || hero?.heroId || 'player',
-      heroHasPill: !!carry,
-      heroPill: carry || null,
-      patientId: patient?.id || null,
-      patientName: patient?.displayName || patient?.name || null,
-      patientTags: patient?.tags || null,
-      distance: safeDist,
-      reason: extra.reason || null,
-    });
-  }
-
-  function findPatientContact(hero, opts = {}) {
-    if (!hero || !Array.isArray(G.patients)) return null;
-    const patients = G.patients;
-    const maxRange = Number.isFinite(opts.maxRange)
-      ? opts.maxRange
-      : (window.TILE_SIZE || window.TILE || 32) * (opts.rangeMultiplier || 1.2);
-    const padding = Number.isFinite(opts.nearPadding) ? opts.nearPadding : 12;
+  function tryDeliverPillFromAction(hero) {
+    const carrying = hero?.carry || G.carry;
+    if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
+    const patients = Array.isArray(G.patients) ? G.patients : [];
     const hx = hero.x + hero.w * 0.5;
     const hy = hero.y + hero.h * 0.5;
+    const maxRange = (window.TILE_SIZE || window.TILE || 32) * 1.2;
     let target = null;
     let bestDist = Infinity;
     for (const pac of patients) {
-      if (!pac || pac.dead || pac.hidden || pac.attended) continue;
-      if (opts.requireOverlap) {
-        if (!AABB(hero, pac)) continue;
-      } else if (!nearAABB(hero, pac, padding)) {
-        continue;
-      }
+      if (!pac || pac.dead || pac.attended) continue;
+      if (!nearAABB(hero, pac, 12)) continue;
       const px = pac.x + (pac.w || 0) * 0.5;
       const py = pac.y + (pac.h || 0) * 0.5;
       const dist = Math.hypot(px - hx, py - hy);
@@ -2353,29 +2142,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         target = pac;
       }
     }
-    if (!target) return null;
-    return { patient: target, distance: bestDist };
-  }
-
-  function tryDeliverPillFromAction(hero, opts = {}) {
-    const carrying = hero?.carry || G.carry;
-    if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
-    const contact = findPatientContact(hero, {
-      maxRange: opts.maxRange,
-      rangeMultiplier: opts.rangeMultiplier || 1.2,
-      nearPadding: opts.nearPadding ?? 12,
-      requireOverlap: opts.requireOverlap || false,
-    });
-    if (!contact) return false;
-    const target = contact.patient;
-    const bestDist = contact.distance;
-    logPillContactCheck(hero, target, { distance: bestDist, reason: opts.reason || 'action_button' });
-    if (target?.isHematologic) {
-      return window.HematologicPatientAPI?.tryDeliver?.(hero, target) || false;
-    }
-    if (target?.isJefaLimpiadoras) {
-      return window.CleanerBossAPI?.tryTreat?.(hero, target) || false;
-    }
+    if (!target) return false;
     const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
       ? window.PatientsAPI.canDeliver(hero, target)
       : false;
@@ -2386,60 +2153,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (delivered) afterManualDelivery(target);
       return true;
     }
-    if (!opts?.silentOnMismatch) {
-      window.PatientsAPI?.wrongDelivery?.(target);
-    }
+    window.PatientsAPI?.wrongDelivery?.(target);
     return true;
-  }
-
-  function autoDeliverPillIfTouching(hero) {
-    const carry = resolveHeroCarry(hero);
-    if (!carry || (carry.kind !== 'PILL' && carry.type !== 'PILL')) return false;
-    const contact = findPatientContact(hero, {
-      requireOverlap: true,
-      nearPadding: 4,
-      rangeMultiplier: 0.9,
-    });
-    if (!contact) return false;
-    const patient = contact.patient;
-    if (patient?.isHematologic) {
-      return window.HematologicPatientAPI?.tryDeliver?.(hero, patient) || false;
-    }
-    if (patient?.isJefaLimpiadoras) {
-      return window.CleanerBossAPI?.tryTreat?.(hero, patient) || false;
-    }
-    const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
-      ? window.PatientsAPI.canDeliver(hero, patient)
-      : false;
-    const safeDist = Number.isFinite(contact.distance) ? Number(contact.distance.toFixed(2)) : null;
-    logPillDeliveryDebug(hero, patient, { distance: safeDist, canDeliver, reason: canDeliver ? 'auto_match' : 'auto_target_mismatch' });
-    if (!canDeliver) return false;
-    const delivered = window.PatientsAPI?.deliverPill?.(hero, patient);
-    if (delivered) afterManualDelivery(patient);
-    return delivered;
-  }
-
-  function trackHeroPatientContact(hero) {
-    if (!hero) return;
-    const contact = findPatientContact(hero, {
-      requireOverlap: true,
-      nearPadding: 2,
-      rangeMultiplier: 0.8,
-    });
-    if (!contact) {
-      G._lastPillContactPatientId = null;
-      G._lastPillContactHasPill = null;
-      return;
-    }
-    const carry = resolveHeroCarry(hero);
-    const hasPill = !!carry;
-    const patientId = contact.patient?.id || null;
-    if (G._lastPillContactPatientId === patientId && G._lastPillContactHasPill === hasPill) {
-      return;
-    }
-    G._lastPillContactPatientId = patientId;
-    G._lastPillContactHasPill = hasPill;
-    logPillContactCheck(hero, contact.patient, { distance: contact.distance, reason: 'contact_track' });
   }
 
   function isCartEntity(ent){
@@ -2600,9 +2315,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (isCart || isBed){
       const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.6;
       const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.28;
-      const meta = isCart ? (window.Physics?.assignCartPhysicsMetadata?.(target) || target.cartPhysics || null) : null;
-      const pushMul = meta?.pushImpulse ?? 1;
-      impulse = totalForce * boost * pushMul / Math.max(0.25, mass * massFactor);
+      impulse = totalForce * boost / Math.max(0.25, mass * massFactor);
     } else {
       impulse = totalForce / Math.max(1, mass * 0.5);
     }
@@ -2892,7 +2605,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // Paso de IA específica por entidad hostil (antes de la física)
   function runEntityAI(dt){
     const ents = Array.isArray(G.entities) ? G.entities : null;
-    const useCulling = !!currentCullingInfo && Array.isArray(ents);
+    const useCulling = !!currentVisualInfo && Array.isArray(ents);
     const toProcess = useCulling
       ? ents.filter((ent) => ent && !ent.dead && shouldUpdateEntity(ent))
       : (Array.isArray(ents) ? ents : []);
@@ -3013,10 +2726,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
 
-    if (window.SpawnerAPI && typeof SpawnerAPI.update === 'function'){
-      try { SpawnerAPI.update(dt); }
-      catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerAPI.update', err); }
-    } else if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
+    if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
       try { SpawnerManager.update(dt); }
       catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
     }
@@ -3161,9 +2871,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
 
-    trackHeroPatientContact(hero);
-    autoDeliverPillIfTouching(hero);
-
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
@@ -3257,9 +2964,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // Update principal
   // ------------------------------------------------------------
   function update(dt){
-    if (window.GAME_PAUSED) {
-      return; // no avanzar lógica del juego mientras hay diálogo
-    }
     window.SkyFX?.update?.(dt);
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
     try { window.Narrator?.tick?.(dt, G); } catch(e){}
@@ -3269,8 +2973,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
     applyStateVisuals();
     if (!isPlaying || !G.player){
-      currentCullingInfo = null;
-      G.__cullingInfo = null;
+      currentVisualInfo = null;
+      G.__visualRadiusInfo = null;
       return; // <-- evita tocar nada sin jugador
     }
     G.time += dt;
@@ -3294,7 +2998,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (p.pushAnimT>0) p.pushAnimT = Math.max(0, p.pushAnimT - dt);
     }
 
-    computeCullingInfo();
+    computeVisualRadiusInfo();
 
     // Posición del oyente (para paneo/atenuación en SFX posicionales)
     //if (G.player) AudioAPI.setListener(G.player.x + G.player.w/2, G.player.y + G.player.h/2);
@@ -3369,7 +3073,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // mundo
     drawTiles(ctx2d);
     drawEntities(ctx2d);
-    try { window.FireAPI?.renderAll?.(ctx2d, camera); } catch (e) { if (window.DEBUG_FORCE_ASCII) console.warn('[Fire] render error', e); }
 
     ctx2d.restore();
   }
@@ -3381,8 +3084,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
 function drawEntities(c2){
   const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
-  const radiusValue = Number(G?.cullingRadiusTiles);
-  const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 20;
+  const radiusValue = Number(G?.visibleTilesRadius);
+  const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
   const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
   const hasPlayer = !!G.player;
   const applyCull = hasPlayer && !G.isDebugMap && tileSize > 0;
@@ -3505,6 +3208,7 @@ function drawEntities(c2){
       clearCanvasContext(ctx, canvas?.width, canvas?.height);
       clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
       clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
+      clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
       return;
     }
     // actualizar cámara centrada en jugador
@@ -3537,16 +3241,15 @@ function drawEntities(c2){
       try { window.ArrowGuide?.draw(guideCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     }
 
-    // 1) Dibuja el HUD DOM + overlays finales
-    try { window.HUD && HUD.render(null, camera, G); } catch(e){ console.warn('HUD.render', e); }
+    // 1) Dibuja el HUD (esta función hace clearRect del HUD canvas)
+    try { window.HUD && HUD.render(hudCtx, camera, G); } catch(e){ console.warn('HUD.render', e); }
+    if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
 
-    const overlayCtx = guideCtx || ctx;
-    if (!guideCtx && overlayCtx){
-      try { window.ArrowGuide?.draw(overlayCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
+    // 2) Flecha (si no hay canvas dedicado) + overlays finales
+    if (!guideCtx){
+      try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     }
-    if (overlayCtx && window.Sprites?.renderOverlay) {
-      Sprites.renderOverlay(overlayCtx);
-    }
+    if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
   }
 
   // Fixed timestep
@@ -3697,112 +3400,6 @@ function drawEntities(c2){
     return base + '.'.repeat(width - base.length);
   }
 
-  function buildAsciiSnapshotForExport(){
-    const shouldUseDebugAscii = DEBUG_MAP_MODE
-      || G.mode === 'debug'
-      || G.isDebugMap
-      || G.debugMap
-      || (G.debugAsciiSource && !/^procedural/.test(G.debugAsciiSource));
-
-    if (shouldUseDebugAscii && Array.isArray(G.asciiMap) && G.asciiMap.length) {
-      return G.asciiMap.slice();
-    }
-
-    const mapRows = Array.isArray(G.map) ? G.map : [];
-    const height = mapRows.length;
-    const width = mapRows?.[0]?.length || 0;
-    if (!height || !width) return [];
-
-    const asciiGrid = [];
-    for (let y = 0; y < height; y++) {
-      const mapRow = mapRows[y] || [];
-      const row = [];
-      for (let x = 0; x < width; x++) {
-        row.push(mapRow[x] === 1 ? '#' : '.');
-      }
-      asciiGrid.push(row);
-    }
-
-    const priority = {
-      '#': 99,
-      'S': 9,
-      'X': 8,
-      'u': 7,
-      'd': 6,
-      'f': 5,
-      'p': 4,
-      'C': 3,
-      'i': 2,
-      'b': 2,
-      '.': 0
-    };
-    const setChar = (tx, ty, ch) => {
-      if (!ch) return;
-      const row = asciiGrid[ty];
-      if (!row || typeof row[tx] === 'undefined') return;
-      const curr = row[tx];
-      const currP = priority[curr] ?? 0;
-      const nextP = priority[ch] ?? 1;
-      if (nextP >= currP) {
-        row[tx] = ch;
-      }
-    };
-
-    const tileSize = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || TILE;
-    const entities = Array.isArray(G.entities) ? G.entities : [];
-    for (const e of entities) {
-      if (!e || e.dead) continue;
-      const tx = Math.floor((e.x ?? 0) / tileSize);
-      const ty = Math.floor((e.y ?? 0) / tileSize);
-      if (tx < 0 || ty < 0 || ty >= height || tx >= width) continue;
-
-      const isDoor = matchesKind(e, 'DOOR') || e.isDoor || e.type === 'door';
-      const isBossDoor = isDoor && (e.bossDoor || e.isBossDoor || e.tag === 'bossDoor');
-      const isPatient = matchesKind(e, 'PATIENT') || e.isPatient || e.role === 'patient' || e.requiredKeyName;
-      const isCart = matchesKind(e, 'CART') || e.isCart;
-
-      let ch = '';
-      if (matchesKind(e, 'PLAYER') || e.hero || e.isPlayer) {
-        ch = 'S';
-      } else if (matchesKind(e, 'BOSS') || e.isBoss) {
-        ch = 'X';
-      } else if (isDoor) {
-        ch = isBossDoor ? 'u' : 'd';
-      } else if (matchesKind(e, 'PILL') || e.isPill) {
-        ch = 'i';
-      } else if (matchesKind(e, 'BELL') || e.isBell) {
-        ch = 'b';
-      } else if (isPatient) {
-        const furious = e.furious || e.isFuriousPatient || e.angry || e.state === 'furious';
-        ch = furious ? 'f' : 'p';
-      } else if (isCart) {
-        ch = 'C';
-      }
-
-      setChar(tx, ty, ch);
-    }
-
-    return asciiGrid.map((row) => row.join(''));
-  }
-
-  function exportAsciiMapForDebug(){
-    if (G._asciiExportedForLevel) return;
-    const lines = buildAsciiSnapshotForExport();
-    if (!lines.length) return;
-    const asciiText = lines.join('\n');
-    G.lastAsciiExport = asciiText;
-
-    try {
-      if (typeof fetch === 'function') {
-        fetch('debug-export.php', { method: 'POST', body: asciiText });
-      }
-    } catch (err) {
-      console.warn('[debug-export] no se pudo enviar mapa ASCII', err);
-    } finally {
-      G._asciiExportedForLevel = true;
-    }
-  }
-
   function enforceAsciiDimensions(lines, desiredWidth, desiredHeight){
     if (!Array.isArray(lines) || !lines.length) return lines;
     const targetWidth = Number.isFinite(desiredWidth) && desiredWidth > 0
@@ -3828,10 +3425,10 @@ function drawEntities(c2){
     return output;
   }
 
-  function pickCullingRadiusFromRules(ruleSet){
+  function pickVisibleRadiusFromRules(ruleSet){
     const candidates = [
-      Number.isFinite(ruleSet?.level?.culling) ? ruleSet.level.culling : null,
-      Number.isFinite(ruleSet?.globals?.culling) ? ruleSet.globals.culling : null,
+      Number.isFinite(ruleSet?.level?.visibleTilesRadius) ? ruleSet.level.visibleTilesRadius : null,
+      Number.isFinite(ruleSet?.globals?.visibleTilesRadius) ? ruleSet.globals.visibleTilesRadius : null,
     ];
     for (const value of candidates){
       if (Number.isFinite(value) && value > 0) return value;
@@ -3900,7 +3497,7 @@ function drawEntities(c2){
     const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
     const shouldUseDebugAscii = DEBUG_MAP_MODE || !!window.DEBUG_FORCE_ASCII;
     let levelRules = null;
-    let ruleCullingRadius = null;
+    let ruleVisibleRadius = null;
     let targetWidth = null;
     let targetHeight = null;
 
@@ -3909,7 +3506,7 @@ function drawEntities(c2){
         levelRules = await window.XMLRules.load(level);
         targetWidth = Number.isFinite(levelRules?.level?.width) ? levelRules.level.width : null;
         targetHeight = Number.isFinite(levelRules?.level?.height) ? levelRules.level.height : null;
-        ruleCullingRadius = pickCullingRadiusFromRules(levelRules);
+        ruleVisibleRadius = pickVisibleRadiusFromRules(levelRules);
       } catch (err) {
         console.warn('[level_rules] no se pudo cargar level_rules.xml', err);
       }
@@ -3995,7 +3592,7 @@ function drawEntities(c2){
       mode: 'normal',
       meta,
       levelRules,
-      cullingRadiusTiles: ruleCullingRadius,
+      visibleTilesRadius: ruleVisibleRadius,
       width: finalWidth,
       height: finalHeight
     };
@@ -4129,7 +3726,6 @@ function drawEntities(c2){
     G._hasPlaced = false;
     G.mapgenPlacements = [];
     G.mapAreas = null;
-    G.startControlRoom = null;
 
     G.flags = G.flags || {};
     G.flags.DEBUG_FORCE_ASCII = !!(DEBUG_MAP_MODE || window.DEBUG_FORCE_ASCII);
@@ -4137,25 +3733,13 @@ function drawEntities(c2){
     const payload = await resolveAsciiMapForLevel(level);
     if (payload?.levelRules) {
       G.levelRules = payload.levelRules;
-      const hemaSeconds = Number(payload.levelRules?.level?.hematologicTimerSeconds ?? payload.levelRules?.globals?.hematologicTimerSeconds);
-      if (Number.isFinite(hemaSeconds) && hemaSeconds > 0) {
-        G.hematologicTimerSeconds = hemaSeconds;
-      }
-
-      const cleanerBossSeconds = Number(payload.levelRules?.level?.cleanerBossTimerSeconds ?? payload.levelRules?.globals?.cleanerBossTimerSeconds);
-      if (Number.isFinite(cleanerBossSeconds) && cleanerBossSeconds > 0) {
-        G.cleanerBossTimerSeconds = cleanerBossSeconds;
-      }
     }
     const asciiLines = Array.isArray(payload.lines) && payload.lines.length
       ? payload.lines.slice()
       : (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
 
-    if (Number.isFinite(payload?.cullingRadiusTiles) && payload.cullingRadiusTiles > 0) {
-      G.cullingRadiusTiles = payload.cullingRadiusTiles;
-      const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
-      G.cullingRadiusPx = G.cullingRadiusTiles * tileSize;
-      G.culling = G.cullingRadiusTiles;
+    if (Number.isFinite(payload?.visibleTilesRadius) && payload.visibleTilesRadius > 0) {
+      G.visibleTilesRadius = payload.visibleTilesRadius;
     }
 
     ASCII_MAP = asciiLines;
@@ -4169,47 +3753,6 @@ function drawEntities(c2){
     const width = G.mapW || (ASCII_MAP[0]?.length || 0);
     const height = G.mapH || ASCII_MAP.length;
     const asciiString = ASCII_MAP.join('\n');
-
-    const tileSizeForStart = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
-    if (G.mapAreas?.control) {
-      const ctrl = G.mapAreas.control;
-      G.startControlRoom = {
-        x: (ctrl.x + ctrl.w * 0.5) * tileSizeForStart,
-        y: (ctrl.y + ctrl.h * 0.5) * tileSizeForStart,
-      };
-    } else {
-      G.startControlRoom = {
-        x: width * tileSizeForStart * 0.5,
-        y: height * tileSizeForStart * 0.5,
-      };
-    }
-
-    G.ascii = () => asciiString;
-    G.asciiString = asciiString;
-    window.MapAPI = window.MapAPI || {};
-    window.MapAPI.ascii = () => asciiString;
-    try {
-      console.log('[debug-map] mapa ASCII externo cargado');
-      console.log(asciiString);
-    } catch (_) {}
-    if (asciiString && typeof fetch === 'function') {
-      try {
-        fetch('debug-export.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: asciiString,
-        }).catch((err) => {
-          console.error('[debug-map] Error enviando mapa ASCII al servidor', err);
-        });
-      } catch (e) {
-        console.error('[debug-map] Excepción al enviar mapa ASCII', e);
-      }
-    }
-    if (DEBUG_MAP_MODE) {
-      try {
-        console.debug(`[debug-map] ASCII (${width}x${height}):\n${asciiString}`);
-      } catch (_) {}
-    }
 
     const asciiPlacements = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
     if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
@@ -4611,7 +4154,6 @@ function drawEntities(c2){
     G.__placementsApplied = false;
     G._gameOverLogged = false;
     G._levelCompleteLogged = false;
-    G._asciiExportedForLevel = false;
 
     if (window.LOG?.counter) {
       window.LOG.counter('spawns', 0);
@@ -4737,9 +4279,6 @@ function drawEntities(c2){
         window.Minimap?.refresh?.();
       } catch(_){ }
 
-      placeHeroAtControlRoom();
-      centerCameraOnPlayer();
-
       document.getElementById('minimapOverlay')?.classList.add('hidden');
       document.getElementById('minimap')?.classList.remove('expanded');
       window.__setMinimapMode?.('small');
@@ -4775,23 +4314,6 @@ function drawEntities(c2){
         window.PuppetAPI?.debugListAll?.('level-ready');
       } catch (err){
         if (window.DEBUG_FORCE_ASCII) console.warn('[Puppet] level-ready audit error', err);
-      }
-
-      try {
-        const entities = Array.isArray(G.entities) ? G.entities : [];
-        if (typeof window.auditRigs === 'function') {
-          window.auditRigs(entities);
-        } else if (window.PuppetAPI?.auditRigs) {
-          window.PuppetAPI.auditRigs(entities);
-        }
-      } catch (err) {
-        if (window.DEBUG_FORCE_ASCII) console.warn('[Puppet] auditoría de rigs fallida', err);
-      }
-
-      try {
-        exportAsciiMapForDebug();
-      } catch (err) {
-        console.warn('[debug-export] exportAsciiMapForDebug error', err);
       }
 
       setGameState('READY');
@@ -5065,54 +4587,45 @@ function drawEntities(c2){
     if (!G || !G.map || !G.mapW || !G.mapH) { requestAnimationFrame(drawMinimap); return; }
     if (!minimapVisible) { requestAnimationFrame(drawMinimap); return; }
 
-    const tileSize = TILE;
-    const worldWidth = (G.mapW || 0) * tileSize;
-    const worldHeight = (G.mapH || 0) * tileSize;
-    if (!worldWidth || !worldHeight) { requestAnimationFrame(drawMinimap); return; }
-
-    const scaleX = mm.width / worldWidth;
-    const scaleY = mm.height / worldHeight;
-    const scale = Math.min(scaleX, scaleY);
-    const offsetX = (mm.width - worldWidth * scale) * 0.5;
-    const offsetY = (mm.height - worldHeight * scale) * 0.5;
-    const cellSize = tileSize * scale;
+    const w = G.mapW, h = G.mapH;
+    const sx = mm.width  / w;
+    const sy = mm.height / h;
 
     // Mapa base
     mctx.clearRect(0,0,mm.width,mm.height);
-    for (let ty=0; ty<G.mapH; ty++){
-      for (let tx=0; tx<G.mapW; tx++){
+    for (let ty=0; ty<h; ty++){
+      for (let tx=0; tx<w; tx++){
         const v = (G.map[ty] && G.map[ty][tx]) ? 1 : 0; // 1=pared, 0=suelo
         mctx.fillStyle = v ? '#1d1f22' : '#6b7280';
-        mctx.fillRect(offsetX + tx*cellSize, offsetY + ty*cellSize, cellSize, cellSize);
+        mctx.fillRect(tx*sx, ty*sy, sx, sy);
       }
     }
 
     // Entidades (puntitos)
     const ents = (G.entities || []);
     for (const e of ents){
-      const ex = ((e.x || 0) + ((e.w || tileSize) * 0.5));
-      const ey = ((e.y || 0) + ((e.h || tileSize) * 0.5));
+      const ex = (e.x || 0) / TILE;
+      const ey = (e.y || 0) / TILE;
       mctx.fillStyle = colorFor(e);
-      mctx.fillRect(offsetX + ex*scale, offsetY + ey*scale, Math.max(1, cellSize*0.85), Math.max(1, cellSize*0.85));
+      mctx.fillRect(ex*sx, ey*sy, Math.max(1,sx*0.85), Math.max(1,sy*0.85));
     }
 
     // Player
     if (G.player){
-      const px = ((G.player.x||0) + ((G.player.w||tileSize) * 0.5));
-      const py = ((G.player.y||0) + ((G.player.h||tileSize) * 0.5));
+      const px = (G.player.x||0)/TILE, py = (G.player.y||0)/TILE;
       mctx.fillStyle = '#ffffff';
-      mctx.fillRect(offsetX + px*scale, offsetY + py*scale, Math.max(1, cellSize), Math.max(1, cellSize));
+      mctx.fillRect(px*sx, py*sy, Math.max(1,sx), Math.max(1,sy));
     }
 
     // Frustum de cámara (rectángulo)
     const cam = window.camera || {x:0,y:0,zoom:1};
-    const vw = VIEW_W / cam.zoom;
-    const vh = VIEW_H / cam.zoom;
-    const left = cam.x - vw*0.5;
-    const top  = cam.y - vh*0.5;
+    const vwTiles = VIEW_W / (TILE*cam.zoom);
+    const vhTiles = VIEW_H / (TILE*cam.zoom);
+    const leftTiles = (cam.x/TILE) - vwTiles*0.5;
+    const topTiles  = (cam.y/TILE) - vhTiles*0.5;
     mctx.strokeStyle = '#ffffff';
     mctx.lineWidth = 1;
-    mctx.strokeRect(offsetX + left*scale, offsetY + top*scale, vw*scale, vh*scale);
+    mctx.strokeRect(leftTiles*sx, topTiles*sy, vwTiles*sx, vhTiles*sy);
 
     requestAnimationFrame(drawMinimap);
   }

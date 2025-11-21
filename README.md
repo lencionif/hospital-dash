@@ -50,7 +50,3 @@ El parámetro `map=debug` activa el flujo de victoria completo: entrega la pasti
 
 - `d`: puerta normal.
 - `u`: puerta de urgencias / boss (se abre al atender a todos los pacientes).
-
-## Patrón de diálogos tipo test
-
-Todos los NPC con preguntas usan ahora `DialogUtils.openRiddleDialog` (véase `assets/plugins/entities/dialog-utils.js`), que abre diálogos con hasta tres botones de respuesta y bloquea el movimiento del héroe mientras están activos. Los acertijos se describen con objetos `{ key, ask, options, correctIndex, hint }` y se delegan las callbacks `onSuccess`, `onFail` y `onClose` para aplicar recompensas, penalizaciones o reanudar el control.

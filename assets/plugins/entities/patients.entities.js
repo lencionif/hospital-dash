@@ -76,8 +76,7 @@
     'pastilla_luzon.png',
     'pastilla_patoplast.png',
     'pastilla_tillaout.png',
-    'pastilla_zenidina.png',
-    'pill_generic.png'
+    'pastilla_zenidina.png'
   ];
 
   function isBlockedRect(x, y, w, h) {
@@ -210,20 +209,8 @@
       skin: skinName,
       bellId: null,
       pillId: null,
-      ringing: false,
-      isNPC: true
+      ringing: false
     };
-
-    const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
-    const npcLayer = layers.NPC ?? (1 << 1);
-    const mask = (layers.WALL ?? (1 << 3)) | (layers.HERO ?? (1 << 0)) | (layers.CART ?? (1 << 2));
-    patient.collisionLayer = npcLayer;
-    patient.collisionMask = mask;
-    const body = patient.body || patient;
-    body.collisionLayer = npcLayer;
-    body.collisionMask = mask;
-    body.entity = patient;
-    patient.body = body;
 
     if (!patient.id) patient.id = (Math.random() * 1e9) | 0;
     patient.state = patient.state || 'idle_bed';
@@ -332,7 +319,7 @@
       forPatientId: patient.id,
       patientId: patient.id,
       patientName: patient.displayName,
-      spriteKey: 'pill_generic',
+      spriteKey: 'pill.generic',
       skin: pillSkin
     };
     try {
@@ -389,37 +376,10 @@
   }
 
   function deliverPill(hero, patient) {
-    const carrier = hero || G.player || null;
-    const carry = getCarry(carrier);
-    const hx = hero ? hero.x + hero.w * 0.5 : (carrier ? carrier.x + carrier.w * 0.5 : null);
-    const hy = hero ? hero.y + hero.h * 0.5 : (carrier ? carrier.y + carrier.h * 0.5 : null);
-    const px = patient ? patient.x + (patient.w || 0) * 0.5 : null;
-    const py = patient ? patient.y + (patient.h || 0) * 0.5 : null;
-    const distance = (Number.isFinite(hx) && Number.isFinite(hy) && Number.isFinite(px) && Number.isFinite(py))
-      ? Math.hypot(px - hx, py - hy)
-      : null;
-    console.debug('[PILL_DELIVERY_ENTER]', {
-      heroId: hero?.id || carrier?.id || null,
-      heroPos: hero ? { x: hero.x, y: hero.y } : (carrier ? { x: carrier.x, y: carrier.y } : null),
-      heroCurrentPill: carry || null,
-      patientId: patient?.id || null,
-      patientName: patient?.displayName || patient?.name || null,
-      patientPos: patient ? { x: patient.x, y: patient.y } : null,
-      distance: Number.isFinite(distance) ? Number(distance.toFixed(2)) : null,
-    });
-    const targetId = resolveCarryTargetId(carrier);
-    const hasPill = !!carry;
-    console.debug('[PILL_DELIVERY_CONDITION]', {
-      hasPill,
-      targetId: targetId || null,
-      patientId: patient?.id || null,
-      equalIds: !!patient && !!targetId && patient.id === targetId,
-      patientAttended: !!patient?.attended,
-    });
     if (!patient || patient.attended) return false;
-    if (!hasPill || !targetId || patient.id !== targetId) return false;
+    const carrier = hero || G.player || null;
     if (!canDeliver(carrier, patient)) return false;
-    console.debug('[PILL_DELIVERY_MATCH]', { patientId: patient.id, patientName: patient.displayName || patient.name || null });
+    const carry = getCarry(carrier);
     if (carry?.id && Array.isArray(G.pills)) {
       G.pills = G.pills.filter((p) => p && p.id !== carry.id);
     }
@@ -496,11 +456,8 @@
 
   function convertToFuriosa(patient) {
     if (!patient || patient.furious || patient.attended) return null;
-    const keepCarryForFuriosa = !!W.Entities?.PatientFuriosa?.supportsPillCures;
-    if (!keepCarryForFuriosa) {
-      removePillForKey(patient.keyName);
-      dropCarriedPillIfMatches(patient.keyName);
-    }
+    removePillForKey(patient.keyName);
+    dropCarriedPillIfMatches(patient.keyName);
     try { W.BellsAPI?.removeBellForPatient?.(patient, { reason: 'patient_furious' }); } catch (_) {}
     try { W.BellsAPI?.cleanupOrphanBells?.({ reason: 'furiosa' }); } catch (_) {}
     patient.furious = true;
@@ -519,9 +476,6 @@
     let furiosa = null;
     if (W.FuriousAPI && typeof W.FuriousAPI.spawnFromPatient === 'function') {
       try { furiosa = W.FuriousAPI.spawnFromPatient(patient); } catch (e) { console.warn('FuriousAPI.spawnFromPatient', e); }
-    }
-    if (!furiosa && W.Entities?.PatientFuriosa?.spawnFromPatient) {
-      try { furiosa = W.Entities.PatientFuriosa.spawnFromPatient(patient); } catch (err) { console.warn('PatientFuriosa.spawnFromPatient', err); }
     }
     if (!furiosa) {
       furiosa = {
@@ -542,13 +496,13 @@
         showNameTag: true
       };
       addEntity(furiosa);
-      try {
-        const puppet = window.Puppet?.bind?.(furiosa, 'patient_furiosa', { z: 0, scale: 1, data: { skin: furiosa.skin } })
-          || W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: furiosa.skin } });
-        furiosa.rigOk = furiosa.rigOk === true || !!puppet;
-      } catch (_) {
-        furiosa.rigOk = furiosa.rigOk === true;
-      }
+    }
+    try {
+      const puppet = window.Puppet?.bind?.(furiosa, 'patient_furiosa', { z: 0, scale: 1, data: { skin: furiosa.skin } })
+        || W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: furiosa.skin } });
+      furiosa.rigOk = furiosa.rigOk === true || !!puppet;
+    } catch (_) {
+      furiosa.rigOk = furiosa.rigOk === true;
     }
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
     return furiosa;

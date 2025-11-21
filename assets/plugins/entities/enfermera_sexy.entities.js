@@ -1,445 +1,575 @@
 // filename: enfermera_sexy.entities.js
-// ENFERMERA ENAMORADIZA — NPC que patrulla, enamora y lanza acertijos tipo test.
-// Todo el rig cabe en 1 tile y usa PuppetAPI con el rig "npc_enfermera_enamoradiza".
+// NPC Aliado — Enfermera Sexy (IA avanzada cooperativa)
+// ------------------------------------------------------
+// • Patrulla con pathfinding sobre G.map / G.collisionGrid.
+// • Evita peligros (fuego/charco) y zonas bloqueadas.
+// • Abre puertas si el motor lo permite (Entities.Door.*).
+// • Luz propia (rosa) y cura al jugador/pacientes cercanos.
+// • "Perfume" que repele enemigos (ratas/mosquitos/furiosas).
+// • Interacción (E): Curar o dar Turbo.
+// • Seguro ante ausencia de APIs: todo con guards.
+//
+// Integración típica:
+//   <script src="enfermera_sexy.entities.js"></script>
+//   // Se auto-registra en G.systems; puedes llamar:
+//   Entities.NurseSexy.spawn(x,y,{tile:true})  // x,y en tiles si tile:true
+//   // o via placement.api -> Entities.NPC.spawn('enfermera_sexy', x,y, p)
 
 (function (W) {
   'use strict';
 
-  const Entities = W.Entities || (W.Entities = {});
-  if (typeof Entities.define !== 'function') {
-    Entities.define = function define(name, factory) {
-      Entities[name] = factory;
-    };
-  }
-
+  // ====== Entorno y constantes =========================================================
   const G = W.G || (W.G = {});
-  const ENT = (function ensureEnt() {
+  const ENT = (function () {
     const e = W.ENT || (W.ENT = {});
-    if (typeof e.PLAYER === 'undefined') e.PLAYER = 1;
-    if (typeof e.ENFERMERA_SEXY === 'undefined') e.ENFERMERA_SEXY = 812;
+    e.ENFERMERA_SEXY   = e.ENFERMERA_SEXY   || 812;
+    e.ENEMY_RAT        = e.ENEMY_RAT        || 301;
+    e.ENEMY_MOSQUITO   = e.ENEMY_MOSQUITO   || 302;
+    e.PACIENTE_FURIOSO = e.PACIENTE_FURIOSO || 401;
+    e.DOOR             = e.DOOR             || 30;
+    e.WALL             = e.WALL             || 31;
+    e.PATIENT          = e.PATIENT          || 51;
     return e;
   })();
 
   const TILE = (typeof W.TILE_SIZE === 'number') ? W.TILE_SIZE : (W.TILE || 32);
-  const DEBUG = () => (W.DEBUG_NURSE_LOVE || W.DEBUG_FORCE_ASCII);
 
-  const DEFAULT_PATROL_POINTS = [
-    { x: 0, y: 0 },
-    { x: 2, y: 1 },
-    { x: 4, y: -1 },
-    { x: 1, y: -3 },
-    { x: -2, y: -1 },
-    { x: -3, y: 2 },
-  ];
+  function tryAttachFlashlight(e){
+    if (!e || e.flashlight === false || e._flashlightAttached) return;
+    const attach = W.Entities?.attachFlashlight;
+    if (typeof attach !== 'function') return;
+    try {
+      const radius = Number.isFinite(e.flashlightRadius) ? e.flashlightRadius : TILE * 4.8;
+      const intensity = Number.isFinite(e.flashlightIntensity) ? e.flashlightIntensity : 0.55;
+      const color = e.flashlightColor || '#fff2c0';
+      const id = attach(e, { color, radius, intensity });
+      if (id != null){
+        e._flashlightAttached = true;
+        e._flashlightId = id;
+      }
+    } catch (err){
+      try { console.warn('[NurseSexy] No se pudo adjuntar linterna', err); } catch (_) {}
+    }
+  }
 
-  const LoveNurseRiddles = [
-    { id: 'nurse_q1', question: '¿Cuál es la zona correcta para pinchar una heparina subcutánea?', options: [
-      'En la cara anterior del muslo', 'En la zona periumbilical del abdomen', 'En la palma de la mano'
-    ], correctIndex: 1 },
-    { id: 'nurse_q2', question: 'Antes de administrar un antibiótico IV, ¿qué es lo más importante comprobar?', options: [
-      'El color favorito del paciente', 'La fecha y hora del último baño', 'La alergia del paciente a ese fármaco'
-    ], correctIndex: 2 },
-    { id: 'nurse_q3', question: '¿Cada cuánto hay que cambiar una vía periférica salvo complicaciones?', options: [
-      'Cada 96 horas', 'Una vez al mes', 'Nunca si no molesta'
-    ], correctIndex: 0 },
-    { id: 'nurse_q4', question: 'Para medir la tensión arterial correctamente el brazo debe estar…', options: [
-      'Por encima del nivel del corazón', 'A nivel del corazón', 'Colgando hacia el suelo'
-    ], correctIndex: 1 },
-    { id: 'nurse_q5', question: '¿Qué indica una saturación de oxígeno menor al 90% de forma mantenida?', options: [
-      'Hipoxia', 'Estado óptimo', 'Solo nervios'
-    ], correctIndex: 0 },
-    { id: 'nurse_q6', question: '¿Qué hay que confirmar antes de administrar insulina rápida?', options: [
-      'La marca del tensiómetro', 'La glucemia capilar', 'El color del pijama'
-    ], correctIndex: 1 },
-    { id: 'nurse_q7', question: 'Al mover a un paciente encamado para evitar úlceras, ¿cada cuánto se recomienda cambiar de posición?', options: [
-      'Cada 2-3 horas', 'Una vez al día', 'Solo si se queja'
-    ], correctIndex: 0 },
-    { id: 'nurse_q8', question: '¿Qué debe hacerse antes de manipular una sonda vesical?', options: [
-      'Usar guantes y técnica aséptica', 'Solo preguntar al paciente', 'Nada, no hace falta'
-    ], correctIndex: 0 },
-    { id: 'nurse_q9', question: '¿Qué vacuna se revisa especialmente en personal sanitario expuesto a sangre?', options: [
-      'Vacuna del sarampión', 'Vacuna de la hepatitis B', 'Vacuna de la varicela'
-    ], correctIndex: 1 },
-    { id: 'nurse_q10', question: 'Para calcular goteo de suero por gravedad se usa la fórmula…', options: [
-      'Volumen (ml) / tiempo (h) x 20', 'Peso / 2', 'Altura x 10'
-    ], correctIndex: 0 },
-    { id: 'nurse_q11', question: '¿Qué es un “ISBAR” en comunicación clínica?', options: [
-      'Un tipo de suero', 'Un método estructurado de pase de información', 'Un dispositivo de oxígeno'
-    ], correctIndex: 1 },
-    { id: 'nurse_q12', question: '¿Cuál es el rango normal de frecuencia cardíaca en reposo en adultos?', options: [
-      '30-40 lpm', '60-100 lpm', '120-150 lpm'
-    ], correctIndex: 1 },
-    { id: 'nurse_q13', question: '¿Qué se debe comprobar antes de usar un desfibrilador?', options: [
-      'Que la cama esté hecha', 'Que las palas tengan gel y nadie toque al paciente', 'Que haya música puesta'
-    ], correctIndex: 1 },
-    { id: 'nurse_q14', question: 'En una escala de Glasgow, ¿qué puntaje indica apertura ocular espontánea?', options: [
-      '1', '2', '4'
-    ], correctIndex: 2 },
-    { id: 'nurse_q15', question: '¿Qué valor aproximado se considera fiebre en adultos?', options: [
-      '≥ 38ºC', '35ºC', '36ºC'
-    ], correctIndex: 0 },
-  ];
+  // ====== Utilidades ==================================================================
+  const clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
+  const randf = (a, b) => a + Math.random() * (b - a);
+  const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+  const toTx = (px) => Math.max(0, Math.floor(px / TILE));
+  const toTy = (py) => Math.max(0, Math.floor(py / TILE));
+  const toPx = (tx) => tx * TILE;
+  const toPy = (ty) => ty * TILE;
+  const nowSec = () => (performance.now() / 1000);
 
-  W.LoveNurseRiddles = LoveNurseRiddles;
+  function push(list, e){ if (list && e && !list.includes?.(e)) list.push(e); }
 
-  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-  const dist2 = (ax, ay, bx, by) => { const dx = ax - bx; const dy = ay - by; return dx * dx + dy * dy; };
-  const center = (ent) => ({ x: ent.x + ent.w * 0.5, y: ent.y + ent.h * 0.5 });
-  const randRange = (a, b) => a + Math.random() * (b - a);
+  // Grids
+  function getGrid(){
+    // 1=pared, 0=suelo: compat con tu core
+    return G.collisionGrid || G.map || [];
+  }
+  function inb(g, x, y) { const H=g.length, Wd=g[0]?.length||0; return y>=0 && y<H && x>=0 && x<Wd; }
+  function isWallAtPx(px, py, w, h) {
+    const g = getGrid(); if (!g.length) return false;
+    const ax = toTx(px), ay = toTy(py), bx = toTx(px + (w||TILE) - 1), by = toTy(py + (h||TILE) - 1);
+    for (let ty = ay; ty <= by; ty++) for (let tx = ax; tx <= bx; tx++) {
+      if (!inb(g, tx, ty)) return true;
+      if (g[ty][tx] === 1) return true;
+    }
+    return false;
+  }
 
-  function getHero() { return G.player; }
-  function toTileX(px) { return Math.max(0, Math.floor(px / TILE)); }
-  function toTileY(py) { return Math.max(0, Math.floor(py / TILE)); }
-  function toPx(tx) { return tx * TILE; }
-  function toPy(ty) { return ty * TILE; }
+  // Hazards (opt.)
+  function isFireTile(tx, ty){
+    // Si existe HazardsAPI o mapa de peligros, úsalo:
+    if (W.HazardsAPI?.isFireTile) return !!W.HazardsAPI.isFireTile(tx,ty);
+    // Fallback: si guardas “fuego” en G.hazards.fireTiles como Set<string> "x,y"
+    const key = tx+','+ty;
+    if (G.hazards?.fireTiles?.has?.(key)) return true;
+    return false;
+  }
+  function isWetTile(tx, ty){
+    if (W.HazardsAPI?.isWetTile) return !!W.HazardsAPI.isWetTile(tx,ty);
+    const key = tx+','+ty;
+    if (G.hazards?.wetTiles?.has?.(key)) return true;
+    return false;
+  }
 
-  function bfsPath(start, goal) {
-    const grid = G.collisionGrid || G.map || [];
-    const H = grid.length; const Wd = grid[0]?.length || 0;
+  // ====== Pathfinder (BFS en 4-dir con costes blandos para evitar hazards) =============
+  const N4 = [[1,0],[-1,0],[0,1],[0,-1]];
+  function bfsPath(start, goal, opts={}){
+    const g = getGrid(); const H=g.length, Wd=g[0]?.length||0;
     if (!H || !Wd) return null;
-    const inb = (x, y) => y >= 0 && y < H && x >= 0 && x < Wd;
-    const sx = clamp(start.x | 0, 0, Wd - 1);
-    const sy = clamp(start.y | 0, 0, H - 1);
-    const tx = clamp(goal.x | 0, 0, Wd - 1);
-    const ty = clamp(goal.y | 0, 0, H - 1);
-    if (grid[ty]?.[tx] === 1) return null;
-    const key = (x, y) => (y << 16) | x;
-    const queue = [[sx, sy]];
-    const visited = new Set([key(sx, sy)]);
-    const prev = new Map();
-    const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    while (queue.length) {
-      const [cx, cy] = queue.shift();
-      if (cx === tx && cy === ty) break;
-      for (const [dx, dy] of N4) {
-        const nx = cx + dx, ny = cy + dy;
-        if (!inb(nx, ny) || grid[ny]?.[nx] === 1) continue;
-        const k = key(nx, ny);
-        if (visited.has(k)) continue;
-        visited.add(k);
-        prev.set(k, key(cx, cy));
-        queue.push([nx, ny]);
-        if (nx === tx && ny === ty) { queue.length = 0; break; }
+    const s = { x: clamp(start.x|0, 0, Wd-1), y: clamp(start.y|0, 0, H-1) };
+    const t = { x: clamp(goal.x|0, 0, Wd-1), y: clamp(goal.y|0, 0, H-1) };
+    if (g[t.y]?.[t.x] === 1) return null; // objetivo bloqueado
+
+    // cola y visited con “coste” (preferimos tiles seguros)
+    const q = [s], prev = new Map(); // key "x,y" -> anterior "x,y"
+    const cost = Array.from({length:H},()=>Array(Wd).fill(Infinity));
+    cost[s.y][s.x] = 0;
+
+    function k(x,y){ return x+','+y; }
+    while(q.length){
+      const cur = q.shift();
+      if (cur.x===t.x && cur.y===t.y) break;
+
+      for (const [dx,dy] of N4){
+        const nx = cur.x+dx, ny = cur.y+dy;
+        if (!inb(g, nx, ny) || g[ny][nx]===1) continue;
+
+        // Penaliza peligros: evita fuego (mucha penalización) y charco (algo)
+        let step = 1;
+        if (isFireTile(nx,ny)) step += 50;      // casi prohibido
+        if (isWetTile(nx,ny))  step += 4;       // mejor evitar
+        // (puedes añadir más capas aquí)
+
+        const nc = cost[cur.y][cur.x] + step;
+        if (nc < cost[ny][nx]){
+          cost[ny][nx] = nc;
+          prev.set(k(nx,ny), k(cur.x,cur.y));
+          q.push({x:nx,y:ny});
+        }
       }
     }
-    const tgtKey = key(tx, ty);
-    if (!prev.has(tgtKey) && !(sx === tx && sy === ty)) return null;
+
+    if (!prev.has(k(t.x,t.y))) return null; // sin camino
     const path = [];
-    let cur = tgtKey;
-    path.push({ x: tx, y: ty });
-    while (cur !== key(sx, sy)) {
-      const prevKey = prev.get(cur);
-      if (prevKey == null) break;
-      const px = prevKey & 0xFFFF; const py = prevKey >> 16;
-      path.push({ x: px, y: py });
-      cur = prevKey;
+    let curK = k(t.x,t.y);
+    while (curK !== k(s.x,s.y)){
+      const [cx,cy] = curK.split(',').map(n=>+n);
+      path.push({x:cx,y:cy});
+      curK = prev.get(curK);
     }
     path.reverse();
     return path;
   }
 
-  function applyAnim(ent, anim) {
-    ent.anim = anim;
-    if (!ent.puppetState) ent.puppetState = {};
-    ent.puppetState.anim = anim;
+  // ====== Config de IA ================================================================
+  const CFG = {
+    speedPx: 86,
+    interactRadiusPx: TILE * 1.6,
+    healThreshold: 0.60,     // si el jugador ≤ 60% se prioriza curar
+    healAmt: 1,
+    talkCooldown: 10,
+    helpCooldown: 12,
+    replanEvery: 0.8,        // seg entre recalcular camino
+    stuckRepath: 1.2,        // seg sin avanzar -> repath
+    light: { color: 'rgba(255,120,180,0.66)', radius: TILE * 3.6 },
+    perfume: {
+      radius: TILE * 3.2,
+      pushPerSecond: 170,
+      cooldown: 0.6,
+      affectsKinds: [ENT.ENEMY_RAT, ENT.ENEMY_MOSQUITO, ENT.PACIENTE_FURIOSO]
+    },
+    doorOpenRadius: 1.1,         // en tiles
+    avoidPlayerDoorBlock: true,  // no quedarse en cuellos
+    // prioridades
+    prio: {
+      assistPlayer: true,
+      assistPatients: true,
+      patrol: true
+    }
+  };
+
+  // ====== Estado interno ==============================================================
+  const S = {
+    nurses: [],
+    lightIds: new Map()
+  };
+
+  // ====== Núcleo de entidad ===========================================================
+  function create(x, y, props={}){
+    const px = props.tile ? toPx(x) + 2 : Math.round(x);
+    const py = props.tile ? toPy(y) + 2 : Math.round(y);
+    const e = {
+      id: 'nurse_' + Math.random().toString(36).slice(2),
+      kind: ENT.ENFERMERA_SEXY,
+      x: px, y: py, w: Math.round(TILE * 0.88), h: Math.round(TILE * 0.92),
+      vx: 0, vy: 0,
+      spriteKey: 'nurse_sexy',
+      color: '#ff6aa2',
+      skin: 'enfermera_sexy.png',
+      pushable: false,
+      mass: 1.0, rest: 0.10, mu: 0.12,
+      // IA
+      ai: {
+        mode: 'patrol',       // 'patrol' | 'assist_player' | 'assist_patient'
+        targetTx: toTx(px), targetTy: toTy(py),
+        spawnTx:  toTx(px), spawnTy:  toTy(py),
+        patrolR:  Math.max(4, props.patrolRadiusTiles|0 || 5),
+        path: null, pathIdx: 0,
+        nextPlanAt: 0,
+        lastPos: {x:px, y:py, t:nowSec()},
+        lastPerfume: 0,
+        talkCD: 0, helpCD: 0
+      },
+      aiId: 'NURSE',
+      // Interacción
+      onInteract: (player) => onTalk(e, player)
+    };
+    try { window.AI?.attach?.(e, 'NURSE'); } catch (_) {}
+    return e;
   }
 
-  function updateLoveNurseAnim(ent) {
-    const ai = ent.ai || {};
-    const st = ent.puppetState || (ent.puppetState = {});
-    const speed = Math.hypot(ent.vx || 0, ent.vy || 0);
-    if (ai.state === 'dead') { st.anim = ai.deathAnim || 'die_hit'; return; }
-    if (ai.state === 'talk') { st.anim = 'talk'; return; }
-    if (ai.state === 'love') { st.anim = 'extra'; return; }
-    if (speed > 0.01) {
-      if (Math.abs(ent.vx) > Math.abs(ent.vy)) st.anim = 'walk_side';
-      else if (ent.vy < 0) st.anim = 'walk_up';
-      else st.anim = 'walk_down';
-    } else {
-      st.anim = 'idle';
+  function ensureOnArrays(e){
+    push(G.entities || (G.entities=[]), e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
+  }
+
+  // ====== Luz / iluminación ===========================================================
+  function attachLight(e){
+    if (!W.LightingAPI || !CFG.light) return;
+    try{
+      const id = W.LightingAPI.addLight({
+        x: e.x + e.w/2, y: e.y + e.h/2,
+        radius: CFG.light.radius,
+        color: CFG.light.color,
+        owner: e.id
+      });
+      S.lightIds.set(e.id, id);
+      e._onDestroy = e._onDestroy || [];
+      e._onDestroy.push(()=>{ try{ W.LightingAPI.removeLight(id); }catch(_){}; });
+    }catch(_){}
+  }
+  function updateLight(e){
+    if (!e || e._inactive) return;
+    const id = S.lightIds.get(e.id);
+    if (id!=null && W.LightingAPI) {
+      try{ W.LightingAPI.updateLight(id, {x:e.x+e.w/2, y:e.y+e.h/2}); }catch(_){}
     }
   }
 
-  function onLoveNurseDialogFinished(nurse, result) {
-    const ai = nurse.ai || (nurse.ai = {});
-    ai.state = 'cooldown';
-    ai.loveCooldown = nurse.loveCooldownTime * 0.5;
-    ai.dialogActive = false;
-    nurse.vx = nurse.vy = 0;
-    if (DEBUG()) console.debug('[NURSE_TALK] end dialog', { nurseId: nurse.id, result });
-  }
-
-  function startRiddleDialog(nurse) {
-    const ai = nurse.ai || (nurse.ai = {});
-    const riddle = LoveNurseRiddles[ai.riddleIndex % LoveNurseRiddles.length];
-    ai.riddleIndex = (ai.riddleIndex + 1) % LoveNurseRiddles.length;
-    if (!riddle) { onLoveNurseDialogFinished(nurse, { missing: true }); return; }
-    ai.dialogActive = true;
-    if (DEBUG()) console.debug('[NURSE_TALK] start riddle', { nurseId: nurse.id, riddleIndex: ai.riddleIndex });
-    if (typeof pauseGame === 'function') pauseGame();
-
-    const finish = (payload) => {
-      if (typeof resumeGame === 'function') resumeGame();
-      onLoveNurseDialogFinished(nurse, payload);
-    };
-
-    const resolve = (correct) => {
-      if (correct) W.DialogAPI?.system?.('¡Correcto! ❤️', { ms: 1400 });
-      else W.DialogAPI?.system?.('Ups, repasa tus apuntes.', { ms: 1400 });
-      finish({ correct });
-    };
-
-    const opened = W.DialogUtils?.openRiddleDialog?.({
-      id: riddle.id,
-      title: 'Enfermera Enamoradiza',
-      ask: riddle.question,
-      options: riddle.options,
-      correctIndex: riddle.correctIndex,
-      portraitCssVar: '--sprite-enfermera-sexy',
-      onSuccess: () => resolve(true),
-      onFail: () => resolve(false),
-      onClose: (correct) => finish({ correct })
-    });
-
-    if (!opened) finish({ opened: false });
-  }
-
-  function onLoveNurseTouchHero(nurse, hero) {
-    const ai = nurse.ai || (nurse.ai = {});
-    if (ai.state === 'dead' || ai.state === 'love' || ai.state === 'talk') return;
-    ai.state = 'talk';
-    ai.riddleIndex = ai.riddleIndex || 0;
-    nurse.vx = nurse.vy = 0;
-    if (DEBUG()) console.debug('[NURSE_TALK] start', { nurseId: nurse.id });
-    const talkAPI = W.DialogueAPI || W.DialogAPI;
-    talkAPI?.startRiddleDialog?.('love_nurse', nurse.id);
-    startRiddleDialog(nurse);
-  }
-
-  function enterLove(ent) {
-    const ai = ent.ai || (ent.ai = {});
-    const hero = getHero();
-    if (!hero) return;
-    ai.state = 'love';
-    ai.loveTimer = ent.loveDuration;
-    ai.loveCooldown = ent.loveCooldownTime;
-    ent.vx = ent.vy = 0;
-    hero.loveLock = ent.id;
-    if (DEBUG()) console.debug('[NURSE_LOVE] enter love', { nurseId: ent.id, heroId: hero.id });
-  }
-
-  function leaveLove(ent) {
-    const ai = ent.ai || (ent.ai = {});
-    ai.state = 'patrol';
-    ai.loveTimer = 0;
-    const hero = getHero();
-    if (hero && hero.loveLock === ent.id) hero.loveLock = null;
-    if (DEBUG()) console.debug('[NURSE_LOVE] leave love', { nurseId: ent.id });
-  }
-
-  function buildPatrolRoute(ent) {
-    const ai = ent.ai || (ent.ai = {});
-    const base = Array.isArray(ai.patrolPoints) && ai.patrolPoints.length ? ai.patrolPoints : DEFAULT_PATROL_POINTS;
-    const absolute = ai.patrolAbsolute === true;
-    const route = [];
-    for (const p of base) {
-      if (!p) continue;
-      const dx = Number(p.x) || 0; const dy = Number(p.y) || 0;
-      const tx = absolute ? dx : ai.spawnTx + dx;
-      const ty = absolute ? dy : ai.spawnTy + dy;
-      route.push({ x: tx, y: ty });
+  // ====== Puertas (abrir si bloquean) =================================================
+  function tryOpenNearbyDoor(e){
+    if (!W.Entities?.Door?.open && !W.Entities?.Door?.toggle) return;
+    const tx = toTx(e.x + e.w/2), ty = toTy(e.y + e.h/2);
+    const rad = Math.ceil(CFG.doorOpenRadius);
+    for (let dy=-rad; dy<=rad; dy++){
+      for (let dx=-rad; dx<=rad; dx++){
+        const nx=tx+dx, ny=ty+dy;
+        const d = findDoorAt(nx, ny);
+        if (d){
+          if (typeof W.Entities.Door.open === 'function') W.Entities.Door.open(d, {by:'nurse'});
+          else if (typeof W.Entities.Door.toggle === 'function') W.Entities.Door.toggle(d, {by:'nurse'});
+        }
+      }
     }
-    return route.length ? route : [{ x: ai.spawnTx, y: ai.spawnTy }];
+  }
+  function findDoorAt(tx,ty){
+    const ex = toPx(tx), ey = toPy(ty);
+    for (const o of (G.entities||[])){
+      if (o.kind===ENT.DOOR){
+        if (o.x<=ex+1 && o.y<=ey+1 && (o.x+o.w)>=ex+TILE-1 && (o.y+o.h)>=ey+TILE-1) return o;
+      }
+    }
+    return null;
   }
 
-  function ensurePath(ai, from, goal) {
-    ai.path = bfsPath(from, goal) || null;
-    ai.pathIndex = 0;
-    ai.repathTimer = 1.15;
+  // ====== Percepción =================================================================
+  function nearestPatientNeedingHelp(e, maxTiles=8){
+    const r2 = Math.pow(maxTiles*TILE, 2);
+    let best=null, bd=Infinity;
+    for (const o of (G.patients||G.entities||[])){
+      if (!o || o.kind!==ENT.PATIENT) continue;
+      // Si tienes sistema de “furiosa”, evita acercarse y deja al perfume actuar
+      const dx=(o.x+o.w/2)-(e.x+e.w/2), dy=(o.y+o.h/2)-(e.y+e.h/2);
+      const d2=dx*dx+dy*dy; if(d2>r2) continue;
+      if (d2<bd){ bd=d2; best=o; }
+    }
+    return best;
+  }
+  function playerNeedsHeal(){
+    const p = G.player; if (!p || p.dead) return false;
+    const hp = (p.hp!=null ? p.hp : (p.hearts ?? p.heartsMax));
+    const hm = (p.hpMax!=null ? p.hpMax : (p.heartsMax ?? 5));
+    if (!hm) return false;
+    const ratio = hp / hm;
+    return ratio <= CFG.healThreshold;
   }
 
-  function moveAlongPath(ent, dt) {
-    const ai = ent.ai;
-    if (!ai?.path || ai.pathIndex >= ai.path.length) return false;
-    const step = ai.path[ai.pathIndex];
-    const gx = toPx(step.x) + TILE * 0.5;
-    const gy = toPy(step.y) + TILE * 0.5;
-    const c = center(ent);
-    const dx = gx - c.x;
-    const dy = gy - c.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const speed = ent.speed * TILE * 1.6;
-    ent.vx = (dx / dist) * speed;
-    ent.vy = (dy / dist) * speed;
-    if (dist < 4) ai.pathIndex++;
+  // ====== Planner de alto nivel ======================================================
+  function plan(e){
+    const ai = e.ai;
+    const t = nowSec();
+    if (t < ai.nextPlanAt) return;
+    ai.nextPlanAt = t + CFG.replanEvery;
+
+    // 1) ¿Jugador necesita ayuda?
+    if (CFG.prio.assistPlayer && playerNeedsHeal()){
+      ai.mode = 'assist_player';
+      ai.path = null;
+      return;
+    }
+
+    // 2) ¿Algún paciente cercano al que acercarse?
+    if (CFG.prio.assistPatients){
+      const p = nearestPatientNeedingHelp(e, 10);
+      if (p){
+        ai.mode = 'assist_patient';
+        ai.targetTx = toTx(p.x+p.w/2); ai.targetTy = toTy(p.y+p.h/2);
+        ai.path = null;
+        return;
+      }
+    }
+
+    // 3) Patrulla alrededor de su spawn
+    ai.mode = 'patrol';
+    const ang = randf(0, Math.PI*2);
+    const rad = (ai.patrolR * TILE) * randf(0.35, 0.95);
+    ai.targetTx = toTx(ai.spawnTx*TILE + Math.cos(ang)*rad);
+    ai.targetTy = toTy(ai.spawnTy*TILE + Math.sin(ang)*rad);
+    ai.path = null;
+  }
+
+  // ====== Path y movimiento ===========================================================
+  function ensurePath(e, destTx, destTy){
+    const ai=e.ai;
+    const sx=toTx(e.x+e.w/2), sy=toTy(e.y+e.h/2);
+    ai.path = bfsPath({x:sx,y:sy}, {x:destTx,y:destTy}) || null;
+    ai.pathIdx = 0;
+  }
+  function stepAlongPath(e, dt){
+    const ai=e.ai;
+    if (!ai.path || ai.pathIdx>=ai.path.length) return false;
+    const step = ai.path[ai.pathIdx];
+    const tx = step.x, ty = step.y;
+    const gx = tx*TILE + TILE/2, gy = ty*TILE + TILE/2;
+    const done = moveTowardsPx(e, gx, gy, dt);
+    if (done || dist2(e.x+e.w/2, e.y+e.h/2, gx, gy) < 9*9) ai.pathIdx++;
+    // si nos atascamos mucho, replan
+    const t = nowSec();
+    const dMove = Math.hypot(e.x - ai.lastPos.x, e.y - ai.lastPos.y);
+    if (t - ai.lastPos.t > CFG.stuckRepath){
+      if (dMove < 2) ai.path = null;
+      ai.lastPos.x = e.x; ai.lastPos.y = e.y; ai.lastPos.t = t;
+    }
     return true;
   }
+  function moveTowardsPx(e, gx, gy, dt){
+    const dx = gx - (e.x+e.w/2);
+    const dy = gy - (e.y+e.h/2);
+    const L = Math.max(1, Math.hypot(dx,dy));
+    const sp = CFG.speedPx;
+    const vx = (dx/L)*sp*dt;
+    const vy = (dy/L)*sp*dt;
 
-  function updatePatrol(ent, dt) {
-    const ai = ent.ai;
-    if (!ai.patrolRoute || !ai.patrolRoute.length) ai.patrolRoute = buildPatrolRoute(ent);
-    if (ai.waitTimer > 0) {
-      ai.waitTimer = Math.max(0, ai.waitTimer - dt);
-      ent.vx *= 0.2; ent.vy *= 0.2;
-      applyAnim(ent, ai.waitTimer > 0.4 ? 'extra' : 'idle');
-      return;
-    }
-
-    const target = ai.patrolRoute[ai.patrolIndex % ai.patrolRoute.length];
-    const c = center(ent);
-    const here = { x: toTileX(c.x), y: toTileY(c.y) };
-    const goal = { x: target.x, y: target.y };
-    ai.repathTimer = Math.max(0, (ai.repathTimer || 0) - dt);
-    if (!ai.path || ai.repathTimer <= 0) ensurePath(ai, here, goal);
-    const moved = moveAlongPath(ent, dt);
-    if (!moved) {
-      const dx = (goal.x * TILE + TILE * 0.5) - c.x;
-      const dy = (goal.y * TILE + TILE * 0.5) - c.y;
-      const L = Math.hypot(dx, dy) || 1;
-      if (L < TILE * 0.35) {
-        ai.patrolIndex = (ai.patrolIndex + 1) % ai.patrolRoute.length;
-        ai.waitTimer = randRange(1.0, 2.0);
-        ai.path = null;
+    let nx = e.x + vx, ny = e.y;
+    if (isWallAtPx(nx, ny, e.w, e.h)) {
+      nx = e.x;
+      ny = e.y + vy;
+      if (isWallAtPx(nx, ny, e.w, e.h)) {
+        // busca “peinar” bordes
+        const sx = Math.sign(vx || 0.0001);
+        const sy = Math.sign(vy || 0.0001);
+        if (!isWallAtPx(e.x + sx, e.y, e.w, e.h)) e.x += sx;
+        if (!isWallAtPx(e.x, e.y + sy, e.w, e.h)) e.y += sy;
       } else {
-        ent.vx = (dx / L) * ent.speed * TILE * 1.5;
-        ent.vy = (dy / L) * ent.speed * TILE * 1.5;
+        e.y = ny;
       }
+    } else {
+      e.x = nx;
+      ny = e.y + vy;
+      if (!isWallAtPx(e.x, ny, e.w, e.h)) e.y = ny;
     }
-
-    if (Math.abs(ent.vx) > Math.abs(ent.vy)) ai.dir = ent.vx > 0 ? 'right' : 'left';
-    else ai.dir = ent.vy > 0 ? 'down' : 'up';
+    return (L < 1.5);
   }
 
-  function updateLove(ent, dt) {
-    const ai = ent.ai;
-    ent.vx = 0; ent.vy = 0;
-    ai.loveTimer = Math.max(0, ai.loveTimer - dt);
-    ai.loveCooldown = Math.max(0, ai.loveCooldown - dt);
-    applyAnim(ent, 'extra');
-    if (ai.loveTimer <= 0) leaveLove(ent);
+  // ====== Perfume (repelente) =========================================================
+  function perfumeRepel(e, dt){
+    const ai = e.ai;
+    const t = nowSec();
+    if (t < ai.lastPerfume + CFG.perfume.cooldown) return;
+    const r = CFG.perfume.radius, r2 = r*r, push = CFG.perfume.pushPerSecond;
+
+    let did=false;
+    for (const o of (G.entities||[])){
+      if (!o || o===e) continue;
+      if (!CFG.perfume.affectsKinds.includes(o.kind)) continue;
+      const dx=(o.x+o.w/2)-(e.x+e.w/2), dy=(o.y+o.h/2)-(e.y+e.h/2);
+      const d2=dx*dx+dy*dy; if (d2>r2 || d2<1) continue;
+      const L=Math.sqrt(d2), ux=dx/L, uy=dy/L;
+      o.vx = (o.vx||0) + ux * push * dt;
+      o.vy = (o.vy||0) + uy * push * dt;
+      did=true;
+    }
+    if (did){
+      ai.lastPerfume = t;
+      try { G.Audio?.playSfx?.('perfume'); } catch(_){}
+    }
   }
 
-  function updateLoveNurse(ent, dt) {
-    const ai = ent.ai;
-    if (!ai || ai.state === 'dead') return;
-
-    const hero = getHero();
-    if (!hero && ai.state === 'love') leaveLove(ent);
-    if (hero && hero.loveLock && hero.loveLock === ent.id && ai.state !== 'love') hero.loveLock = null;
-
-    ai.loveCooldown = Math.max(0, (ai.loveCooldown || 0) - dt);
-
-    if (ai.state === 'talk') {
-      ent.vx = ent.vy = 0;
-      applyAnim(ent, 'talk');
-      if (!ai.dialogActive) startRiddleDialog(ent);
-      updateLoveNurseAnim(ent);
-      return;
+  // ====== Curación & Turbo ============================================================
+  function tryAmbientHeal(e){
+    const p = G.player; if (!p) return;
+    const r2 = (CFG.interactRadiusPx*CFG.interactRadiusPx);
+    if (dist2(p.x+p.w/2, p.y+p.h/2, e.x+e.w/2, e.y+e.h/2) <= r2){
+      giveHeal(e, p);
     }
-    if (ai.state === 'love') { updateLove(ent, dt); updateLoveNurseAnim(ent); return; }
+  }
+  function giveHeal(e, p){
+    if (!p || p.dead) return;
+    // HUD estándar (hp/hpMax) o sistema de corazones (hearts/heartsMax)
+    if (p.hpMax!=null){
+      p.hp = clamp((p.hp ?? p.hpMax) + CFG.healAmt, 0, p.hpMax);
+    } else if (p.heartsMax!=null) {
+      p.hearts = clamp((p.hearts ?? p.heartsMax) + CFG.healAmt, 0, p.heartsMax);
+    }
+    try { G.Audio?.playSfx?.('heal'); } catch(_){}
+  }
+  function giveSpeed(e, p) {
+    if (!p) return;
+    try { G.Audio?.playSfx?.('powerup'); } catch(_){}
+    const now = nowSec();
+    p._tempBuffs = p._tempBuffs || {};
+    p._tempBuffs.speedMul = { value: 1.35, until: now + 12 };
+  }
 
-    if (ai.cooldownTimer > 0) ai.cooldownTimer = Math.max(0, ai.cooldownTimer - dt);
+  // ====== Interacción (E) =============================================================
+  let _keyE=false;
+  W.addEventListener('keydown', ev => { if (ev.key==='e'||ev.key==='E') _keyE=true;  }, {passive:true});
+  W.addEventListener('keyup',   ev => { if (ev.key==='e'||ev.key==='E') _keyE=false; }, {passive:true});
+  function isActionPressed(){ return _keyE || !!(G.keys && (G.keys.e||G.keys.E)); }
 
-    updatePatrol(ent, dt);
+  function onTalk(e, player){
+    const ai = e.ai; if (ai.talkCD>0) return;
+    ai.talkCD = CFG.talkCooldown;
 
-    if (hero && !hero.dead) {
-      const overlap = hero.x < ent.x + ent.w && hero.x + hero.w > ent.x && hero.y < ent.y + ent.h && hero.y + hero.h > ent.y;
-      if (overlap) { onLoveNurseTouchHero(ent, hero); updateLoveNurseAnim(ent); return; }
+    const line = '¿Necesitas mimos sanitarios? 💕 Puedo curarte o darte turbo.';
+    const doHeal = ()=> giveHeal(e, player);
+    const doTurbo= ()=> giveSpeed(e, player);
 
-      const ec = center(ent); const hc = center(hero);
-      const d2 = dist2(ec.x, ec.y, hc.x, hc.y);
-      const loveRadiusPx2 = (ent.loveRadius * TILE) * (ent.loveRadius * TILE);
-      if (ai.loveCooldown <= 0 && (ai.state === 'patrol' || ai.state === 'cooldown' || ai.state === 'idle') && d2 < loveRadiusPx2) {
-        enterLove(ent);
+    if (W.DialogAPI?.open){
+      W.DialogAPI.open({
+        title:'Enfermera',
+        text: line,
+        buttons: [
+          {id:'heal',  label:'Curita ❤️', action:doHeal},
+          {id:'turbo', label:'Turbo 💨',  action:doTurbo},
+          {id:'ok',    label:'Gracias ✨', action:()=>W.DialogAPI.close?.()}
+        ],
+        pauseGame:true
+      });
+    } else {
+      const c = W.prompt('[Enfermera]\n1) Curita ❤️\n2) Turbo 💨\n3) Gracias', '1');
+      const n = parseInt(c||'3',10);
+      if (n===1) doHeal(); else if (n===2) doTurbo();
+    }
+  }
+
+  function tryInteractNearest(){
+    const p = G.player; if (!p) return false;
+    let best=null, bd2=Infinity;
+    for (const e of S.nurses){
+      const d2 = dist2(p.x+p.w/2,p.y+p.h/2, e.x+e.w/2, e.y+e.h/2);
+      if (d2<bd2){ bd2=d2; best=e; }
+    }
+    if (!best) return false;
+    const r2 = CFG.interactRadiusPx*CFG.interactRadiusPx;
+    if (bd2<=r2){ onTalk(best, p); return true; }
+    return false;
+  }
+
+  // ====== Update general del sistema =================================================
+  function update(dt){
+    if (G.state && G.state!=='PLAYING') return;
+    for (const e of S.nurses){
+      if (!e || e._inactive) continue;
+      const ai = e.ai;
+      // perfumito contra amenazas
+      perfumeRepel(e, dt);
+      // curación pasiva si el jugador está cerca
+      tryAmbientHeal(e);
+      // interacción manual
+      if (ai.talkCD>0) ai.talkCD -= dt;
+      if (ai.helpCD>0) ai.helpCD -= dt;
+      if (isActionPressed()){
+        // solo abre diálogo si realmente estás cerca
+        const p=G.player;
+        if (p && dist2(p.x+p.w/2,p.y+p.h/2, e.x+e.w/2, e.y+e.h/2) <= (CFG.interactRadiusPx*CFG.interactRadiusPx)){
+          onTalk(e, p);
+        }
       }
+
+      // planificar alto nivel
+      plan(e);
+
+      // comportamiento según modo
+      if (ai.mode === 'assist_player' && G.player){
+        const gx = toTx(G.player.x+G.player.w/2), gy = toTy(G.player.y+G.player.h/2);
+        if (!ai.path) ensurePath(e, gx, gy);
+        if (!stepAlongPath(e, dt)) moveTowardsPx(e, G.player.x+G.player.w/2, G.player.y+G.player.h/2, dt);
+        tryOpenNearbyDoor(e);
+      }
+      else if (ai.mode === 'assist_patient'){
+        if (!ai.path) ensurePath(e, ai.targetTx, ai.targetTy);
+        if (!stepAlongPath(e, dt)) moveTowardsPx(e, ai.targetTx*TILE+TILE/2, ai.targetTy*TILE+TILE/2, dt);
+        tryOpenNearbyDoor(e);
+      }
+      else { // patrol
+        if (!ai.path) ensurePath(e, ai.targetTx, ai.targetTy);
+        if (!stepAlongPath(e, dt)){
+          // llegó — el planner ya asignará otra diana
+        }
+        tryOpenNearbyDoor(e);
+      }
+
+      updateLight(e);
     }
-
-    updateLoveNurseAnim(ent);
   }
 
-  function attachRig(ent) {
-    try {
-      const rig = W.Puppet?.bind?.(ent, 'npc_enfermera_enamoradiza')
-        || W.PuppetAPI?.attach?.(ent, { rig: 'npc_enfermera_enamoradiza', z: 0, scale: 1 });
-      if (rig) ent.rigOk = true;
-    } catch (_) { ent.rigOk = false; }
-  }
-
-  function createLoveNurse(pos, opts = {}) {
-    const base = (typeof Entities.createBaseHuman === 'function')
-      ? Entities.createBaseHuman(pos, opts)
-      : {
-          x: (pos?.x ?? (Array.isArray(pos) ? pos[0] : 0)) || 0,
-          y: (pos?.y ?? (Array.isArray(pos) ? pos[1] : 0)) || 0,
-          w: TILE * 0.9,
-          h: TILE * 0.95,
-          vx: 0, vy: 0,
-          solid: true,
-          pushable: false,
-          mass: 1,
-          mu: 0.16,
-          puppetState: { anim: 'idle' },
-        };
-
-    const ent = base;
-    ent.id = ent.id || `love_nurse_${Math.random().toString(36).slice(2, 8)}`;
-    ent.kind = 'npc_enfermera_enamoradiza';
-    ent.role = 'love_nurse';
-    ent.speed = opts.speed ?? 2.6;
-    ent.touchDamage = 0;
-    ent.isStunning = false;
-    ent.loveRadius = opts.loveRadius ?? 2.5;
-    ent.loveDuration = opts.loveDuration ?? 4.0;
-    ent.loveCooldownTime = opts.loveCooldownTime ?? 10;
-    ent.skin = ent.skin || opts.skin || 'enfermera_sexy.png';
-    ent.anim = ent.anim || 'idle';
-    ent.puppetState = ent.puppetState || { anim: 'idle' };
-    ent.ai = Object.assign({
-      state: 'patrol',
-      dir: 'down',
-      patrolIndex: 0,
-      patrolRoute: null,
-      path: null,
-      pathIndex: 0,
-      repathTimer: 0,
-      spawnTx: toTileX(ent.x + ent.w * 0.5),
-      spawnTy: toTileY(ent.y + ent.h * 0.5),
-      waitTimer: randRange(0.5, 1.2),
-      loveTimer: 0,
-      loveCooldown: 0,
-      riddleIndex: 0,
-      cooldownTimer: 0,
-    }, opts.ai || {});
-    ent.ai.patrolRoute = ent.ai.patrolRoute || buildPatrolRoute(ent);
-    ent.update = function update(dt) { updateLoveNurse(ent, dt || 1 / 60); };
-    ent.onCollide = function onCollide(other) {
-      if (other && other.kind === ENT.PLAYER) onLoveNurseTouchHero(ent, other);
-    };
-
-    if (!Array.isArray(G.entities)) G.entities = [];
-    if (!G.entities.includes(ent)) G.entities.push(ent);
-    if (!Array.isArray(G.movers)) G.movers = [];
-    if (!G.movers.includes(ent)) G.movers.push(ent);
-    ent.group = ent.group || 'human';
-    try { W.EntityGroups?.assign?.(ent); } catch (_) {}
-    try { W.EntityGroups?.register?.(ent, G); } catch (_) {}
-
-    attachRig(ent);
-    return ent;
-  }
-
-  Entities.define('enfermera_enamoradiza', createLoveNurse);
-  Entities.define('npc_enfermera_enamoradiza', createLoveNurse);
-
-  W.EnfermeraSexyAPI = {
-    spawnEnfermera(tx, ty, props = {}) {
-      return createLoveNurse({ x: toPx(tx), y: toPy(ty) }, Object.assign({ tile: true }, props));
+  // ====== API público ================================================================
+  const API = {
+    init(GIn){
+      if (GIn && GIn!==G) Object.assign(G, GIn);
+      if (!G.systems) G.systems = [];
+      if (!G._nurseSexySystem){
+        G.systems.push({ id:'nurse_sexy', update:(dt)=>update(dt) });
+        G._nurseSexySystem = true;
+      }
+      return this;
     },
+    update,
+    spawn(x,y,props={}){
+      const e = create(x,y,props);
+      ensureOnArrays(e);
+      try {
+        const puppet = window.Puppet?.bind?.(e, 'npc_enfermera_sexy', { z: 0, scale: 1, data: { skin: e.skin } })
+          || window.PuppetAPI?.attach?.(e, { rig: 'npc_enfermera_sexy', z: 0, scale: 1, data: { skin: e.skin } });
+        e.rigOk = e.rigOk === true || !!puppet;
+      } catch (_) {
+        e.rigOk = e.rigOk === true;
+      }
+      tryAttachFlashlight(e);
+      attachLight(e);
+      return e;
+    },
+    getAll(){ return S.nurses.slice(); },
+    tryInteractNearest
   };
 
-  W.LoveNurseAPI = {
-    spawn(pos, opts) { return createLoveNurse(pos, opts); },
-    list() { return (G.entities || []).filter((e) => e && e.kind === 'npc_enfermera_enamoradiza'); },
-  };
+  // ====== Registro en window.Entities ===============================================
+  W.Entities = W.Entities || {};
+  W.Entities.NurseSexy = API;
+
+  // Hook seguro para placement.api → Entities.NPC.spawn('enfermera_sexy', …)
+  (function hookNPCSpawn(){
+    W.Entities.NPC = W.Entities.NPC || {};
+    const prev = W.Entities.NPC.spawn;
+    W.Entities.NPC.spawn = function(sub, x, y, p){
+      const key = String(sub || p?.sub || '').toLowerCase();
+      if (key==='enfermera_sexy' || key==='nurse_sexy' || key==='enfermera'){
+        return W.Entities.NurseSexy.spawn(x, y, { tile: !(p && p._units==='px') });
+      }
+      if (typeof prev === 'function') return prev.call(this, sub, x, y, p);
+      return null;
+    };
+  })();
+
+  // Auto-init
+  API.init(G);
 
 })(this);

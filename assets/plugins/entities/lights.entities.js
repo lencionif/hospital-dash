@@ -138,11 +138,7 @@
     const heroKey = (owner.skin || owner.heroId || W.selectedHeroKey || '');
     const color   = opts.color || flashlightColorForHero(heroKey);
 
-    const tileSize = (typeof TILE === 'number' && TILE > 0) ? TILE : 32;
-    const desiredRadius = opts.radius   || tileSize * 6.5;
-    const cullTiles = Number.isFinite(W?.G?.cullingRadiusTiles) && W.G.cullingRadiusTiles > 0 ? W.G.cullingRadiusTiles : null;
-    const maxRadiusPx = cullTiles ? Math.max(tileSize, (cullTiles - 1) * tileSize) : null;
-    const radius = maxRadiusPx ? Math.min(desiredRadius, maxRadiusPx) : desiredRadius;
+    const radius = opts.radius   || TILE * 6.5;
     const intensity = (typeof opts.intensity === 'number' ? opts.intensity : 0.90);
     const offsetX = Number.isFinite(opts.offsetX) ? opts.offsetX
       : (Number.isFinite(owner.flashlightOffsetX) ? owner.flashlightOffsetX : 0);
@@ -162,7 +158,7 @@
     try {
       const label = owner.displayName || owner.name || owner.heroId || owner.kindName || owner.kind || 'entidad';
       const radiusTiles = (radius / TILE).toFixed(2);
-      // console.log(`[Debug] Flashlight attached to ${label}: color=${color}, radius=${radius.toFixed(1)}px (${radiusTiles} tiles), intensity=${intensity.toFixed(2)}.`);
+      console.log(`[Debug] Flashlight attached to ${label}: color=${color}, radius=${radius.toFixed(1)}px (${radiusTiles} tiles), intensity=${intensity.toFixed(2)}.`);
     } catch (_) {}
     try { W.Puppet?.__notifyLightsReady?.(); } catch (_) {}
 

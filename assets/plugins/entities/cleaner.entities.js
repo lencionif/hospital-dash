@@ -13,37 +13,6 @@
   const ENT = W.ENT || (W.ENT = { PLAYER:1, CLEANER:101, WET:102, WALL:999 });
   const TILE = (W.TILE_SIZE || W.TILE || G.TILE_SIZE || 32)|0;
 
-  const THINK_INTERVAL = 1.2;
-  const CLEAN_DURATION = 2.5;
-  const SMALL_ENEMY_KINDS = new Set(['enemy_rat', 'enemy_mosquito']);
-
-  const CLEANER_RIDDLES = [
-    {
-      key: 'riddle_cleaner_1',
-      ask: '¿Cuántas esquinas tiene un hospital con planta cuadrada?',
-      options: ['Cuatro', 'Tres', 'Cinco'],
-      correctIndex: 0,
-      hint: 'Piensa en las paredes exteriores.'
-    },
-    {
-      key: 'riddle_cleaner_2',
-      ask: '¿Qué planeta es conocido como el “planeta rojo”?',
-      options: ['Venus', 'Marte', 'Saturno'],
-      correctIndex: 1,
-      hint: 'Lo ves rojizo en fotografías del espacio.'
-    },
-    {
-      key: 'riddle_cleaner_3',
-      ask: 'Si tienes dos cubos y cada uno pesa 3 kg, ¿cuánto pesan juntos?',
-      options: ['5 kg', '6 kg', '9 kg'],
-      correctIndex: 2,
-      hint: 'Suma ambos pesos.'
-    }
-  ];
-
-  const DEBUG_CLEANER = () => Boolean(W.DEBUG_CLEANER_AI || G.DEBUG_CLEANER_AI || W.DEBUG_NPCS || W.DEBUG);
-  const logCleanerDebug = (tag, payload) => { if (DEBUG_CLEANER()) { try { console.debug(tag, payload); } catch (_) {} } };
-
   function tryAttachFlashlight(e){
     if (!e || e.flashlight === false || e._flashlightAttached) return;
     const attach = W.Entities?.attachFlashlight;
@@ -229,19 +198,10 @@
   }
 
   // Aplica efecto “resbaladizo” a una entidad que pisa charco
-  function applyWetToEntity(e, dt = 1/60){
+  function applyWetToEntity(e, dt){
     const B = BAL().wet;
     if (!e || e.static) return;
-    const onWet = isWetAtPx(e.x + (e.w||TILE)/2, e.y + (e.h||TILE)/2);
-    if (!onWet){
-      e._wetSlipTimer = Math.max(0, (e._wetSlipTimer || 0) - dt);
-      e._wetOnPuddle = false;
-      return;
-    }
-    if (!e._wetOnPuddle){
-      applySlipEffect(e, { duration: 0.7, force: 1.2 });
-    }
-    e._wetOnPuddle = true;
+    if (!isWetAtPx(e.x + (e.w||TILE)/2, e.y + (e.h||TILE)/2)) return;
 
     // 1) Menos fricción (⚠️ si tu física usa e.mu como “fricción extra” >0,
     //    aquí usamos un mu NEGATIVO para “quitar” fricción)
@@ -256,19 +216,6 @@
     if (e.pushMul == null) e.pushMul = 1.0;
     e.pushMul = Math.max(e.pushMul, B.pushMul);
     e._wetSlipTimer = Math.max(e._wetSlipTimer || 0, 0.6);
-  }
-
-  function applySlipEffect(entity, opts = {}){
-    if (!entity) return;
-    const duration = Number.isFinite(opts.duration) ? opts.duration : 0.7;
-    const force = Number.isFinite(opts.force) ? opts.force : 1.2;
-    const angle = rng() * Math.PI * 2;
-    const slipMagnitude = force * TILE * 0.35;
-    entity.vx = (entity.vx || 0) + Math.cos(angle) * slipMagnitude;
-    entity.vy = (entity.vy || 0) + Math.sin(angle) * slipMagnitude;
-    entity.slipping = Math.max(entity.slipping || 0, duration);
-    entity.controlLockTimer = Math.max(entity.controlLockTimer || 0, duration * 0.8);
-    try { W.EffectsAPI?.applyTimedEffect?.(entity, { secs: duration, slip: true }); } catch (_) {}
   }
 
   // Overlay: dibuja charcos (opcional)
@@ -324,186 +271,126 @@
   // Limpiadoras
   // -----------------------
   const cleaners = []; // referencia dentro de G.entities, pero llevamos cache
-  let CLEANER_UID = 1;
 
   function spawn(x, y, opts={}){
     const B = BAL().cleaner;
-    const width = Math.floor(TILE*0.8);
-    const height = Math.floor(TILE*0.9);
-    const ent = {
-      id: opts.id || `npc_limpiadora_${CLEANER_UID++}`,
-      kind: 'npc_limpiadora',
-      kindId: ENT.CLEANER,
-      role: 'cleaner',
+    const e = {
+      id: "CLR"+((Math.random()*1e8)|0),
+      kind: ENT.CLEANER,
       x: x|0, y: y|0,
-      w: width, h: height,
+      w: Math.floor(TILE*0.8), h: Math.floor(TILE*0.9),
       vx: 0, vy: 0,
-      speed: 1.0,
-      walkSpeedPx: B.speed,
-      accel: B.accel,
-      hp: 70,
-      maxHp: 70,
-      isNeutral: true,
+      dirX: (rng()<0.5?-1:1), dirY: 0,
+      speed: B.speed, accel: B.accel,
       mode: opts.mode || B.mode,
       emitsLight: true,
       lightColor: B.lightColor,
-      spriteKey: 'npc_limpiadora',
+      // visual
+      spriteKey: "chica_limpieza",
       skin: 'chica_limpieza.png',
-      ai: createCleanerAiState(),
+      // timers IA
+      nextTurnAt: performance.now() + B.turnEveryMs * (0.5 + 0.8*rng()),
+      nextDropAt: performance.now() + BAL().wet.dropEveryMs * (0.5 + 0.8*rng()),
+      nextBurstAt: performance.now() + BAL().wet.burstEveryMs * (0.5 + 0.8*rng()),
+      nextThinkAt: performance.now() + 120,
+      speakReadyAt: 0,
+      // flags
       static: false,
       pushable: true,
       aiId: 'CLEANER'
     };
-    try { window.AI?.attach?.(ent, 'CLEANER'); } catch (_) {}
+    try { window.AI?.attach?.(e, 'CLEANER'); } catch (_) {}
 
-    if (hitsWallRect(ent.x,ent.y,ent.w,ent.h)) {
-      const p = findFreeSpotNear(ent.x,ent.y, 6);
-      if (p){ ent.x=p.x; ent.y=p.y; }
+    // evitar nacer dentro de pared
+    if (hitsWallRect(e.x,e.y,e.w,e.h)) {
+      const p = findFreeSpotNear(e.x,e.y, 6);
+      if (p){ e.x=p.x; e.y=p.y; }
     }
 
-    (G.entities || (G.entities=[])).push(ent);
-    ent.group = 'human';
-    try { window.EntityGroups?.assign?.(ent); } catch (_) {}
-    try { window.EntityGroups?.register?.(ent, G); } catch (_) {}
-    cleaners.push(ent);
+    (G.entities || (G.entities=[])).push(e);
+    e.group = 'human';
+    try { window.EntityGroups?.assign?.(e); } catch (_) {}
+    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
+    cleaners.push(e);
     try {
-      const puppet = window.Puppet?.bind?.(ent, 'npc_limpiadora', { z: 0, scale: 1, data: { skin: ent.skin } })
-        || window.PuppetAPI?.attach?.(ent, { rig: 'npc_limpiadora', z: 0, scale: 1, data: { skin: ent.skin } });
-      ent.rigOk = ent.rigOk === true || !!puppet;
-      ent.puppetState = puppet?.state || ent.puppetState || { anim: 'idle' };
+      const puppet = window.Puppet?.bind?.(e, 'npc_chica_limpieza', { z: 0, scale: 1, data: { skin: e.skin } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_chica_limpieza', z: 0, scale: 1, data: { skin: e.skin } });
+      e.rigOk = e.rigOk === true || !!puppet;
     } catch (_) {
-      ent.rigOk = ent.rigOk === true;
+      e.rigOk = e.rigOk === true;
     }
-    tryAttachFlashlight(ent);
-    return ent;
+    tryAttachFlashlight(e);
+    return e;
   }
 
-  function createCleanerAiState(){
-    return {
-      state: 'patrol',
-      dir: 'down',
-      targetTile: null,
-      thinkTimer: THINK_INTERVAL,
-      cleanTimer: 0,
-      talkCooldown: 0,
-      riddleIndex: 0
-    };
-  }
-
-  function updateCleaner(ent, dt = 1/60){
-    if (!ent || ent._inactive) return;
-    const ai = ent.ai || (ent.ai = createCleanerAiState());
-    ai.thinkTimer -= dt;
-    ai.talkCooldown = Math.max(0, ai.talkCooldown - dt);
-
-    if (ent.hp <= 0 || ent.dead){
-      ent.dead = true;
-      ai.state = 'dead';
-      ent.vx *= 0.6;
-      ent.vy *= 0.6;
-      if (ent.puppetState){
-        const cause = (ent.deathCause || ent.lastDamageCause || '').toLowerCase();
-        ent.puppetState.anim = cause.includes('fire') ? 'die_fire'
-          : (cause.includes('crush') ? 'die_crush' : 'die_hit');
-      }
-      moveEntity(ent, dt);
-      return;
-    }
-
-    if (ai.state !== 'talk' && ai.state !== 'dead' && ai.thinkTimer <= 0){
-      ai.thinkTimer = THINK_INTERVAL;
-      if (ai.state !== 'clean' || !ai.targetTile){
-        const dirtyTile = findClosestDirtyTile(ent);
-        if (dirtyTile){
-          ai.state = 'clean';
-          ai.targetTile = { x: dirtyTile.x|0, y: dirtyTile.y|0 };
-          ai.cleanTimer = CLEAN_DURATION;
-          logCleanerDebug('[CLEANER_AI] start clean', { id: ent.id, tile: ai.targetTile });
-        } else if (!ai.targetTile) {
-          ai.state = 'patrol';
-          ai.targetTile = getRandomPatrolTile(ent);
-        }
-        logCleanerDebug('[CLEANER_AI] state', { id: ent.id, state: ai.state, targetTile: ai.targetTile });
-      }
-    }
-
-    if (ai.state === 'talk'){
-      if (ent.puppetState) ent.puppetState.anim = 'talk';
-      ent.vx *= 0.2;
-      ent.vy *= 0.2;
-      moveEntity(ent, dt);
-      return;
-    }
-
-    if (ai.state === 'clean'){
-      const tile = ai.targetTile;
-      if (!tile){
-        ai.state = 'patrol';
-      } else if (!isNearTile(ent, tile.x, tile.y, 0.2)) {
-        moveTowardsTile(ent, tile.x, tile.y, ent.walkSpeedPx, dt);
-        setCleanerWalkAnim(ent, ai);
-      } else {
-        ent.vx = 0; ent.vy = 0;
-        ai.cleanTimer -= dt;
-        if (ent.puppetState) ent.puppetState.anim = 'extra';
-        if (ai.cleanTimer <= 0){
-          markTileAsClean(tile);
-          spawnWaterPuddle(tile.x, tile.y);
-          ai.state = 'patrol';
-          ai.targetTile = null;
-          ai.cleanTimer = 0;
-        }
-      }
-    } else if (ai.state === 'patrol') {
-      if (!ai.targetTile || isNearTile(ent, ai.targetTile.x, ai.targetTile.y, 0.25)){
-        ai.targetTile = getRandomPatrolTile(ent);
-        logCleanerDebug('[CLEANER_AI] state', { id: ent.id, state: ai.state, targetTile: ai.targetTile });
-      }
-      if (ai.targetTile){
-        moveTowardsTile(ent, ai.targetTile.x, ai.targetTile.y, ent.walkSpeedPx * 0.9, dt);
-        setCleanerWalkAnim(ent, ai);
-      } else {
-        ent.vx *= 0.8; ent.vy *= 0.8;
-        if (ent.puppetState) ent.puppetState.anim = 'idle';
-      }
-    } else {
-      ent.vx *= 0.8; ent.vy *= 0.8;
-      if (ent.puppetState) ent.puppetState.anim = 'idle';
-    }
-
-    moveEntity(ent, dt);
-
-    if (ai.state === 'clean') maybeExtinguishFireNear(ent);
-    applyWetToEntity(ent, dt);
-
-    const smallEnemies = findNearbySmallEnemies(ent, 0.6);
-    for (const enemy of smallEnemies){
-      if (SMALL_ENEMY_KINDS.has(enemy.kind)){
-        killEnemyWithCleanHit(enemy);
-        if (ent.puppetState) ent.puppetState.anim = 'attack';
-        logCleanerDebug('[CLEANER_ANIMALS] kill small enemy', { cleaner: ent.id, enemy: enemy.id, kind: enemy.kind });
-      }
-    }
-
-    const hero = G.player;
-    if (hero && !hero.dead && ai.state !== 'dead' && ai.state !== 'talk' && ai.talkCooldown <= 0 && collides(ent, hero)){
-      startCleanerRiddleDialog(ent, hero);
-    }
-
-    if (ai.state === 'patrol' || ai.state === 'clean'){
-      const speed = Math.hypot(ent.vx, ent.vy);
-      if (ai.state === 'clean' && ai.targetTile && isNearTile(ent, ai.targetTile.x, ai.targetTile.y, 0.25)){
-        if (ent.puppetState) ent.puppetState.anim = 'extra';
-      } else if (speed > 0.01) {
-        setCleanerWalkAnim(ent, ai);
-      } else if (ent.puppetState) {
-        ent.puppetState.anim = 'idle';
-      }
-    }
-  }
-
-  function updateAll(dt = 1/60){
+  function updateCleaner(e, dt){
+    if (!e || e._inactive) return;
     const now = performance.now();
+    const BC = BAL().cleaner;
+    const BW = BAL().wet;
+
+    // 0) Pensar cada 120–200ms: cambia dir o reacciona al jugador/hazards
+    if (now >= e.nextThinkAt){
+      e.nextThinkAt = now + 120 + 80*rng();
+      think(e);
+    }
+
+    // 1) Girar de vez en cuando aunque no haya bloqueo (para patrullar pasillos)
+    if (now >= e.nextTurnAt){
+      e.nextTurnAt = now + BC.turnEveryMs * (0.6 + 0.9*rng());
+      randomTurn(e);
+    }
+
+    // 2) Evitar paredes con un probe corto (raycast de caja)
+    steerToAvoidWalls(e);
+
+    // 3) Integración con física del proyecto si existe
+    if (typeof W.moveWithCollisions === "function"){
+      // “target velocity” con lerp
+      const tvx = e.dirX * e.speed, tvy = e.dirY * e.speed;
+      e.vx += (tvx - e.vx) * Math.min(1, dt*e.accel);
+      e.vy += (tvy - e.vy) * Math.min(1, dt*e.accel);
+      W.moveWithCollisions(e);
+    } else {
+      // Fallback simple AABB
+      const tvx = e.dirX * e.speed * dt, tvy = e.dirY * e.speed * dt;
+      const nx = e.x + tvx, ny = e.y + tvy;
+      if (!hitsWallRect(nx, e.y, e.w, e.h)) e.x = nx; else e.dirX *= -1;
+      if (!hitsWallRect(e.x, ny, e.w, e.h)) e.y = ny; else e.dirY *= -1;
+    }
+
+    // 4) Dejar agua al caminar
+    if (now >= e.nextDropAt){
+      e.nextDropAt = now + BW.dropEveryMs * (0.6 + 0.9*rng());
+      leaveWetAtPx(e.x + e.w*0.5, e.y + e.h*0.8);
+    }
+
+    // 5) Ráfagas de fregado (cruz / entorno)
+    if (now >= e.nextBurstAt){
+      e.nextBurstAt = now + BW.burstEveryMs * (0.8 + 0.7*rng());
+      const T = [[0,0],[1,0],[-1,0],[0,1],[0,-1]];
+      for (let i=0;i<Math.min(BW.burstDrops,T.length);i++){
+        const [dx,dy] = T[i];
+        leaveWetAtPx(e.x + e.w*0.5 + dx*TILE, e.y + e.h*0.5 + dy*TILE, BW.ttlMs*1.1);
+      }
+      say(e, pick(BAL().lines.mop));
+    }
+
+    // 6) Efecto físico del charco (sobre la propia limpiadora también)
+    applyWetToEntity(e, dt);
+    maybeExtinguishFireNear(e);
+
+    // 7) Frase contextual si pasa junto al jugador
+    const p = G.player;
+    if (p && nearRect(e, p, TILE*1.2) && now >= e.speakReadyAt){
+      e.speakReadyAt = now + BC.speakCooldownMs;
+      say(e, pick(BAL().lines.near));
+    }
+  }
+
+  function updateAll(dt){
+    // Evaporación de charcos
+    const now = performance.now(), BW = BAL().wet;
     for (const [key, it] of WetMap){
       if (now >= it.expires){
         WetMap.delete(key);
@@ -517,19 +404,56 @@
       if (now - fx.born >= fx.ttl) SteamFx.splice(i,1);
     }
 
+    // IA / movimiento limpiadoras
     for (let i=0;i<cleaners.length;i++){
       const e = cleaners[i];
       if (!e || e.dead || e._inactive) continue;
       updateCleaner(e, dt);
     }
+  }
 
-    const hero = G.player;
-    if (hero && !hero.dead) applyWetToEntity(hero, dt);
-    const entities = Array.isArray(G.entities) ? G.entities : [];
-    for (const ent of entities){
-      if (!ent || ent.dead || ent === hero || ent.kind === 'npc_limpiadora') continue;
-      if (ent.static || ent.ignoreWet) continue;
-      applyWetToEntity(ent, dt);
+  // -----------------------
+  // IA helpers
+  // -----------------------
+  function randomTurn(e){
+    // 80% mantiene eje predominante; 20% cambia
+    if (rng() < 0.20){
+      if (Math.abs(e.dirX) > Math.abs(e.dirY)) { e.dirY = rng()<0.5?-1:1; e.dirX = 0; }
+      else { e.dirX = rng()<0.5?-1:1; e.dirY = 0; }
+    }
+  }
+
+  function steerToAvoidWalls(e){
+    const probe = BAL().cleaner.avoidProbe;
+    const lookX = e.x + e.dirX * probe;
+    const lookY = e.y + e.dirY * probe;
+    if (hitsWallRect(lookX, e.y, e.w, e.h)) { e.dirX *= -1; e.dirY = 0; }
+    if (hitsWallRect(e.x, lookY, e.w, e.h)) { e.dirY *= -1; e.dirX = 0; }
+    // corregir si se queda a 0, elige eje aleatorio
+    if (!e.dirX && !e.dirY){
+      if (rng()<0.5) e.dirX = rng()<0.5?-1:1;
+      else           e.dirY = rng()<0.5?-1:1;
+    }
+  }
+
+  function think(e){
+    // Si el modo es "shy", evita al jugador; si es "agro", se aproxima (para “molestar”)
+    const p = G.player;
+    if (!p) return;
+    const dx = (p.x - e.x), dy = (p.y - e.y);
+    const dist2 = dx*dx + dy*dy, R = (TILE*7)*(TILE*7);
+    if (dist2 > R) return; // fuera de rango de reacción
+
+    if (e.mode === "shy"){
+      // huye: elige dirección opuesta al vector al jugador
+      if (Math.abs(dx) > Math.abs(dy)){ e.dirX = dx>0 ? -1:1; e.dirY = 0; }
+      else { e.dirY = dy>0 ? -1:1; e.dirX = 0; }
+    } else if (e.mode === "agro"){
+      // se acerca un poco (para “molestar” en pasillos)
+      if (Math.abs(dx) > Math.abs(dy)){ e.dirX = dx>0 ? 1:-1; e.dirY = 0; }
+      else { e.dirY = dy>0 ? 1:-1; e.dirX = 0; }
+    } else {
+      // neutral: no cambia nada aquí
     }
   }
 
@@ -551,290 +475,6 @@
     } else {
       console.log("[Cleaner]", text);
     }
-  }
-
-  function getEntityCenter(ent){
-    return {
-      x: (ent?.x || 0) + (ent?.w || TILE) * 0.5,
-      y: (ent?.y || 0) + (ent?.h || TILE) * 0.5
-    };
-  }
-
-  function moveEntity(ent, dt = 1/60){
-    if (typeof W.moveWithCollisions === 'function'){ W.moveWithCollisions(ent, dt); return; }
-    ent.x += (ent.vx || 0) * dt;
-    ent.y += (ent.vy || 0) * dt;
-  }
-
-  function moveTowardsTile(ent, tileX, tileY, speed, dt = 1/60){
-    if (!ent) return false;
-    const center = getEntityCenter(ent);
-    const targetX = tileX * TILE + TILE * 0.5;
-    const targetY = tileY * TILE + TILE * 0.5;
-    const dx = targetX - center.x;
-    const dy = targetY - center.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const maxSpeed = speed ?? ent.walkSpeedPx ?? (ent.speed || 1) * TILE;
-    const accel = maxSpeed * (dt > 0 ? dt * 2.1 : 1);
-    ent.vx += (dx / len) * accel;
-    ent.vy += (dy / len) * accel;
-    const vel = Math.hypot(ent.vx, ent.vy);
-    if (vel > maxSpeed){
-      const s = maxSpeed / vel;
-      ent.vx *= s;
-      ent.vy *= s;
-    }
-    return Math.hypot(dx, dy) <= TILE * 0.2;
-  }
-
-  function isNearTile(ent, tileX, tileY, radiusTiles = 0.25){
-    if (!ent) return false;
-    const center = getEntityCenter(ent);
-    const txPx = tileX * TILE + TILE * 0.5;
-    const tyPx = tileY * TILE + TILE * 0.5;
-    return Math.hypot(center.x - txPx, center.y - tyPx) <= TILE * radiusTiles;
-  }
-
-  function setCleanerWalkAnim(ent, ai){
-    if (!ent) return;
-    const vx = ent.vx || 0;
-    const vy = ent.vy || 0;
-    const absX = Math.abs(vx);
-    const absY = Math.abs(vy);
-    if (!ent.puppetState) ent.puppetState = { anim: 'idle' };
-    if (absX > absY + 0.05){
-      ent.puppetState.anim = 'walk_side';
-      if (ai) ai.dir = 'side';
-      ent.flipX = vx < 0 ? -1 : 1;
-    } else if (vy < 0){
-      ent.puppetState.anim = 'walk_up';
-      if (ai) ai.dir = 'up';
-    } else {
-      ent.puppetState.anim = 'walk_down';
-      if (ai) ai.dir = 'down';
-    }
-  }
-
-  function findClosestDirtyTile(ent){
-    const center = getEntityCenter(ent);
-    const candidates = getDirtyTileCandidates();
-    let best = null;
-    let bestDist = Infinity;
-    for (const tile of candidates){
-      const dx = tile.x * TILE + TILE * 0.5 - center.x;
-      const dy = tile.y * TILE + TILE * 0.5 - center.y;
-      const dist2 = dx*dx + dy*dy;
-      if (dist2 < bestDist){
-        bestDist = dist2;
-        best = tile;
-      }
-    }
-    return best;
-  }
-
-  function getDirtyTileCandidates(){
-    const list = [];
-    const seen = new Set();
-    const pushTile = (tile) => {
-      if (!tile) return;
-      const key = `${tile.x|0},${tile.y|0}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      list.push({ x: tile.x|0, y: tile.y|0 });
-    };
-    const sources = [];
-    try {
-      const apiTiles = typeof W.WorldAPI?.getDirtyTiles === 'function' ? W.WorldAPI.getDirtyTiles() : null;
-      if (Array.isArray(apiTiles)) sources.push(apiTiles);
-    } catch (_) {}
-    const extraSources = [G.dirtyTiles, G.mapDirtyTiles, G.rooms?.dirtyTiles];
-    for (const src of extraSources) if (src) sources.push(src);
-    for (const src of sources){
-      if (!src) continue;
-      for (const item of src){
-        const normalized = normalizeTileCandidate(item);
-        pushTile(normalized);
-      }
-    }
-    return list;
-  }
-
-  function normalizeTileCandidate(item){
-    if (!item) return null;
-    if (Array.isArray(item) && item.length >= 2){
-      return { x: item[0]|0, y: item[1]|0 };
-    }
-    if (typeof item === 'string' && item.includes(',')){
-      const parts = item.split(',').map(Number);
-      return { x: parts[0]|0, y: parts[1]|0 };
-    }
-    if (typeof item === 'object'){
-      const txVal = Number.isFinite(item.tx) ? item.tx : item.x;
-      const tyVal = Number.isFinite(item.ty) ? item.ty : item.y;
-      if (Number.isFinite(txVal) && Number.isFinite(tyVal)){
-        return { x: txVal|0, y: tyVal|0 };
-      }
-    }
-    return null;
-  }
-
-  function getRandomPatrolTile(ent){
-    const mapW = G.mapW || 32;
-    const mapH = G.mapH || 32;
-    const hero = G.player;
-    const base = hero && rng() < 0.55 ? hero : ent;
-    const center = base ? getEntityCenter(base) : { x: TILE, y: TILE };
-    let txBase = Math.max(0, Math.min(mapW - 1, tx(center.x)));
-    let tyBase = Math.max(0, Math.min(mapH - 1, ty(center.y)));
-    const radius = 3 + Math.floor(rng() * 5);
-    const tileX = Math.max(0, Math.min(mapW - 1, txBase + Math.round((rng()*2 - 1) * radius)));
-    const tileY = Math.max(0, Math.min(mapH - 1, tyBase + Math.round((rng()*2 - 1) * radius)));
-    return { x: tileX, y: tileY };
-  }
-
-  function markTileAsClean(tile){
-    if (!tile) return;
-    const txv = tile.x|0;
-    const tyv = tile.y|0;
-    try { W.WorldAPI?.markTileClean?.(txv, tyv); } catch (_) {}
-    const collections = [G.dirtyTiles, G.mapDirtyTiles, G.rooms?.dirtyTiles];
-    for (const collection of collections){
-      if (!Array.isArray(collection)) continue;
-      const idx = collection.findIndex((it) => {
-        const norm = normalizeTileCandidate(it);
-        return norm && norm.x === txv && norm.y === tyv;
-      });
-      if (idx >= 0) collection.splice(idx, 1);
-    }
-  }
-
-  function spawnWaterPuddle(txVal, tyVal){
-    if (!Number.isFinite(txVal) || !Number.isFinite(tyVal)) return null;
-    leaveWetAtPx(txVal * TILE + TILE * 0.5, tyVal * TILE + TILE * 0.8, BAL().wet.ttlMs * 1.1);
-    logCleanerDebug('[CLEANER_AI] spawn puddle', { x: txVal, y: tyVal });
-    return { x: txVal, y: tyVal };
-  }
-
-  function findNearbySmallEnemies(ent, radiusTiles = 0.6){
-    const res = [];
-    if (!ent) return res;
-    const entities = Array.isArray(G.entities) ? G.entities : [];
-    const center = getEntityCenter(ent);
-    const radius = radiusTiles * TILE;
-    for (const other of entities){
-      if (!other || other === ent || other.dead) continue;
-      if (!SMALL_ENEMY_KINDS.has(other.kind)) continue;
-      const oc = getEntityCenter(other);
-      if (Math.hypot(center.x - oc.x, center.y - oc.y) <= radius){
-        res.push(other);
-      }
-    }
-    return res;
-  }
-
-  function killEnemyWithCleanHit(enemy){
-    if (!enemy || enemy.dead) return;
-    const dmg = enemy.hp || 5;
-    if (typeof enemy.takeDamage === 'function'){
-      try { enemy.takeDamage(dmg, { cause: 'cleaner', kind: 'mop' }); return; } catch (_) {}
-    }
-    enemy.hp = 0;
-    enemy.dead = true;
-    enemy.deathCause = 'cleaner_mop';
-    enemy.remove = true;
-    if (typeof enemy.onKilled === 'function'){
-      try { enemy.onKilled({ killer: 'npc_limpiadora', cause: 'cleaner_mop' }); } catch (_) {}
-    }
-  }
-
-  function collides(a, b){
-    if (!a || !b) return false;
-    return !(a.x + a.w < b.x || a.x > b.x + (b.w||TILE) || a.y + a.h < b.y || a.y > b.y + (b.h||TILE));
-  }
-
-  function startCleanerRiddleDialog(ent, hero){
-    const ai = ent.ai || (ent.ai = createCleanerAiState());
-    ai.state = 'talk';
-    ai.talkCooldown = 10;
-    ai.cleanTimer = 0;
-    ent.vx = 0; ent.vy = 0;
-    if (!ent.puppetState) ent.puppetState = { anim: 'talk' }; else ent.puppetState.anim = 'talk';
-    if (hero){
-      hero.vx = 0; hero.vy = 0;
-      hero.isTalking = true;
-      try { W.Entities?.Hero?.setTalking?.(hero, true); } catch (_) {}
-    }
-    logCleanerDebug('[CLEANER_TALK] start riddle', { id: ent.id });
-
-    const riddle = CLEANER_RIDDLES[ai.riddleIndex % CLEANER_RIDDLES.length];
-    ai.riddleIndex = (ai.riddleIndex + 1) % CLEANER_RIDDLES.length;
-    if (typeof pauseGame === 'function') pauseGame();
-
-    const finish = (success) => {
-      if (typeof resumeGame === 'function') resumeGame();
-      onCleanerDialogEnd(ent, hero, success);
-      logCleanerDebug('[CLEANER_TALK] end dialog', { id: ent.id, success });
-    };
-
-    if (!riddle){ finish(false); return; }
-
-    const resolve = (correct) => {
-      if (correct) applySmallReward(hero);
-      else applySmallPenalty(hero);
-      finish(correct);
-    };
-
-    const opened = W.DialogUtils?.openRiddleDialog?.({
-      id: riddle.key,
-      title: 'Limpiadora',
-      ask: riddle.ask,
-      hint: riddle.hint || '',
-      options: riddle.options,
-      correctIndex: riddle.correctIndex,
-      portraitCssVar: '--sprite-cleaner',
-      onSuccess: () => resolve(true),
-      onFail: () => resolve(false),
-      onClose: () => finish(false)
-    });
-
-    if (!opened){
-      finish(false);
-    }
-  }
-
-  function onCleanerDialogEnd(ent, hero, success){
-    const ai = ent.ai || (ent.ai = createCleanerAiState());
-    ai.state = 'patrol';
-    ai.targetTile = null;
-    ai.thinkTimer = 0.2;
-    if (hero){
-      hero.isTalking = false;
-      try { W.Entities?.Hero?.setTalking?.(hero, false); } catch (_) {}
-    }
-    if (success){
-      try { W.HUD?.showFloatingMessage?.(hero || ent, '¡Bien contestado!', 1.4); } catch (_) {}
-    } else {
-      try { W.HUD?.showFloatingMessage?.(hero || ent, 'Inténtalo de nuevo', 1.4); } catch (_) {}
-    }
-  }
-
-  function applySmallReward(hero){
-    if (!hero) return;
-    if (typeof hero.hp === 'number'){
-      const maxHp = hero.maxHp || hero.hpMax || hero.hp;
-      hero.hp = Math.min(maxHp, hero.hp + 4);
-    }
-    if (typeof G.score === 'number') G.score += 12;
-    try { W.ScoreAPI?.addPoints?.(12); } catch (_) {}
-    try { W.EffectsAPI?.applyTimedEffect?.(hero, { secs: 6, speedMul: 1.05, pushMul: 1.05 }); } catch (_) {}
-  }
-
-  function applySmallPenalty(hero){
-    if (!hero) return;
-    if (typeof hero.hp === 'number') hero.hp = Math.max(1, hero.hp - 3);
-    if (typeof G.score === 'number') G.score = Math.max(0, G.score - 8);
-    try { W.ScoreAPI?.addPoints?.(-8); } catch (_) {}
-    try { W.EffectsAPI?.applyTimedEffect?.(hero, { secs: 5, speedMul: 0.9, pushMul: 0.9, dmgHalves: 1 }); } catch (_) {}
   }
 
   function spawnSteamFx(px, py, opts={}){
@@ -900,8 +540,6 @@
     applyWetToEntity, isWetAtPx, isWetAtTile,
     evaporateWetAtTile,
     spawnSteamFx,
-    spawnWaterPuddle,
-    applySlipEffect,
     // Calidad de vida: deja charco a demanda
     leaveWetAtPx
   };

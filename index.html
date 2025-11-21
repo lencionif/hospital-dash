@@ -19,12 +19,12 @@
   </script>
 </head>
 <body>
-  <img src="assets/images/pill_generic.png" style="display:none" alt="pill preload">
   <div id="game-container" aria-label="Contenedor del juego">
     <!-- Lienzo principal que dibuja TODO el juego -->
     <canvas id="gameCanvas" width="960" height="540" aria-label="Lienzo del juego"></canvas>
     <canvas id="fogCanvas"></canvas>
     <canvas id="guideCanvas"></canvas>
+    <canvas id="hudCanvas"></canvas>
 
     <!-- START -->
     <div id="start-screen" class="overlay hidden">
@@ -140,19 +140,15 @@
   <script defer src="./assets/plugins/ai/human_ai.plugin.js"></script>
 
   <!-- 3) entities (orden único) -->
-  <script defer src="./assets/plugins/entities/dialog-utils.js"></script>
   <script defer src="./assets/plugins/entities/heroes.entities.js"></script>
   <script defer src="./assets/plugins/entities/patients.entities.js"></script>
-  <script defer src="./assets/plugins/entities/patient_hematologic.entities.js"></script>
-  <script defer src="./assets/plugins/entities/patient_furiosa.entities.js"></script>
-  <script defer src="./assets/plugins/entities/jefa_limpiadoras_desmayada.entities.js"></script>
   <script defer src="./assets/plugins/entities/objects.entities.js"></script>
   <script defer src="./assets/plugins/entities/carts.entities.js"></script>
   <script defer src="./assets/plugins/entities/doors.entities.js"></script>
   <script defer src="./assets/plugins/entities/elevators.entities.js"></script>
   <script defer src="./assets/plugins/entities/lights.entities.js"></script>
   <script defer src="./assets/plugins/entities/hazards.entities.js"></script>
-  <script defer src="./assets/plugins/entities/fire.entities.js"></script>
+  <script defer src="./assets/plugins/entities/fire.plugin.js"></script>
   <script defer src="./assets/plugins/entities/spawner.entities.js"></script>
   <script defer src="./assets/plugins/entities/mosquito.entities.js"></script>
   <script defer src="./assets/plugins/entities/rats.entities.js"></script>

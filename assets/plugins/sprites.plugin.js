@@ -170,8 +170,8 @@
       let maxY = mapH - 1;
 
       if (!G.isDebugMap && G.player) {
-        const radiusValue = Number(G.cullingRadiusTiles);
-        const radius = Math.max(0, Math.ceil(Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 20));
+        const radiusValue = Number(G.visibleTilesRadius);
+        const radius = Math.max(0, Math.ceil(Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8));
         const playerTileX = Math.max(0, Math.min(mapW - 1, Math.floor((Number(G.player.x) || 0) / tile)));
         const playerTileY = Math.max(0, Math.min(mapH - 1, Math.floor((Number(G.player.y) || 0) / tile)));
         minX = Math.max(0, playerTileX - radius);

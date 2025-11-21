@@ -112,16 +112,18 @@
       G.TILE_SIZE = globals.tileSize;
     }
     G.globals = { ...(G.globals || {}), ...globals };
-    const cullingRaw = Number(globals.culling);
-    const fallbackCulling = Number.isFinite(G.cullingRadiusTiles) && G.cullingRadiusTiles > 0
-      ? G.cullingRadiusTiles
-      : 20;
-    const cullingTiles = Number.isFinite(cullingRaw) && cullingRaw > 0 ? cullingRaw : fallbackCulling;
-    G.cullingRadiusTiles = cullingTiles;
-    G.culling = cullingTiles;
+    const vrRaw = Number(globals.visualRadius);
+    const vrTiles = Number.isFinite(vrRaw) && vrRaw > 0 ? vrRaw : 8;
+    G.visualRadiusTiles = vrTiles;
+    const visibleRaw = Number(globals.visibleTilesRadius);
+    if (Number.isFinite(visibleRaw) && visibleRaw > 0) {
+      G.visibleTilesRadius = visibleRaw;
+    } else if (!Number.isFinite(G.visibleTilesRadius) || G.visibleTilesRadius <= 0) {
+      G.visibleTilesRadius = 8;
+    }
     const tile = TILE_SIZE();
     const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
-    G.cullingRadiusPx = cullingTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
+    G.visualRadiusPx = vrTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     if (typeof globals.defaultHero === 'string' && !G.selectedHero) {
       G.selectedHero = globals.defaultHero;
     }
@@ -426,16 +428,12 @@
   function handleDoorRule(rule, context, placements){
     const tile = resolveDoorTile(rule, context);
     if (!tile) return;
-    const kind = rule.kind || 'door';
-    const bossDoor = rule.bossDoor === true
-      || String(rule.bossDoor || '').toLowerCase() === 'true'
-      || String(kind).toLowerCase().includes('urgencias');
     placements.push({
       type: 'door',
       tx: tile.tx,
       ty: tile.ty,
-      sub: kind,
-      bossDoor
+      sub: rule.kind || 'door',
+      bossDoor: String(rule.kind || '').toLowerCase().includes('urgencias')
     });
     markOccupied(context, tile.tx, tile.ty);
   }
@@ -754,13 +752,9 @@
     }
 
     applyGlobals(globals, G);
-    const levelCullingRaw = Number(level.culling);
-    if (Number.isFinite(levelCullingRaw) && levelCullingRaw > 0) {
-      G.cullingRadiusTiles = levelCullingRaw;
-      G.culling = levelCullingRaw;
-      const tile = TILE_SIZE();
-      const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
-      G.cullingRadiusPx = levelCullingRaw * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
+    const levelVisibleRaw = Number(level.visibleTilesRadius);
+    if (Number.isFinite(levelVisibleRaw) && levelVisibleRaw > 0) {
+      G.visibleTilesRadius = levelVisibleRaw;
     }
 
     const rng = (typeof root.MapGen?.createRNG === 'function')
@@ -1586,11 +1580,10 @@
     'supervisora.png': 'npc_supervisora',
     'tcae.png': 'npc_tcae',
     'celador.png': 'npc_celador',
-    'guardia.png': 'npc_guardia_seguridad',
-    'enfermera_sexy.png': 'npc_enfermera_enamoradiza',
+    'guardia.png': 'npc_guardia',
+    'enfermera_sexy.png': 'npc_enfermera_sexy',
     'familiar_molesto.png': 'npc_familiar_molesto',
-    'chica_limpieza.png': 'npc_limpiadora',
-    'jefe_servicio.png': 'npc_jefe_servicio',
+    'chica_limpieza.png': 'npc_chica_limpieza',
     'paciente_furiosa.png': 'patient_furiosa'
   };
 
@@ -1671,66 +1664,42 @@
     const size = tile * 0.9;
     const px = x - size * 0.5;
     const py = y - size * 0.5;
-    const stub = {
-      x: px,
-      y: py,
-      w: size,
-      h: size,
-      vx: 0,
-      vy: 0,
-      dead: false,
-      kind: 'PATIENT'
-    };
-
-    let stubAttached = false;
-    const attachStub = () => {
-      if (stubAttached) return;
-      stubAttached = true;
-      if (Array.isArray(G?.entities)) G.entities.push(stub);
-      if (Array.isArray(G?.patients)) G.patients.push(stub);
-    };
-    const detachStub = () => {
-      if (!stubAttached) return;
-      stubAttached = false;
-      if (Array.isArray(G?.patients)) {
-        const idx = G.patients.indexOf(stub);
-        if (idx >= 0) G.patients.splice(idx, 1);
-      }
-      if (Array.isArray(G?.entities)) {
-        const idx = G.entities.indexOf(stub);
-        if (idx >= 0) {
-          try {
-            if (typeof root.detachEntityRig === 'function') {
-              root.detachEntityRig(stub);
-            } else {
-              root.PuppetAPI?.detach?.(stub);
-            }
-          } catch (_) {}
-          G.entities.splice(idx, 1);
-        }
-      }
-    };
-
     if (root.FuriousAPI?.spawnFromPatient) {
+      const stub = {
+        x: px,
+        y: py,
+        w: size,
+        h: size,
+        vx: 0,
+        vy: 0,
+        dead: false,
+        kind: 'PATIENT'
+      };
       try {
-        attachStub();
+        if (Array.isArray(G?.entities)) G.entities.push(stub);
+        if (Array.isArray(G?.patients)) G.patients.push(stub);
         const spawned = root.FuriousAPI.spawnFromPatient(stub, { skipCounters: true });
         if (spawned) return spawned;
       } catch (err) {
         try { console.warn('[Placement] FuriousAPI.spawnFromPatient', err); } catch (_) {}
       } finally {
-        detachStub();
-      }
-    }
-    if (root.Entities?.PatientFuriosa?.spawnFromPatient) {
-      try {
-        attachStub();
-        const created = root.Entities.PatientFuriosa.spawnFromPatient(stub, { skipCounters: true });
-        if (created) return created;
-      } catch (err) {
-        console.warn('[Placement] PatientFuriosa.spawnFromPatient', err);
-      } finally {
-        detachStub();
+        if (Array.isArray(G?.patients)) {
+          const idx = G.patients.indexOf(stub);
+          if (idx >= 0) G.patients.splice(idx, 1);
+        }
+        if (Array.isArray(G?.entities)) {
+          const idx = G.entities.indexOf(stub);
+          if (idx >= 0) {
+            try {
+              if (typeof root.detachEntityRig === 'function') {
+                root.detachEntityRig(stub);
+              } else {
+                root.PuppetAPI?.detach?.(stub);
+              }
+            } catch (_) {}
+            G.entities.splice(idx, 1);
+          }
+        }
       }
     }
     const furious = {
@@ -1819,20 +1788,6 @@
         entity = root.Entities.Cart.spawn(normalized, world.x, world.y, payload);
         if (entity) {
           placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 8 });
-        }
-      } else if (type === 'boss') {
-        const payload = { ...(entry || {}) };
-        const bossHint = String(entry?.sub || entry?.boss || '').toLowerCase();
-        const prefersHema = bossHint.includes('hema') || (!bossHint && (!payload.tier || payload.tier === 1));
-        if (prefersHema && root.Entities?.PatientHematologic?.spawn) {
-          entity = root.Entities.PatientHematologic.spawn(world.x, world.y, payload);
-        }
-        if (!entity && root.Entities?.BossRush?.spawnHematologico) {
-          entity = root.Entities.BossRush.spawnHematologico(world.x, world.y, payload);
-        }
-        if (entity) {
-          if (!G.boss) G.boss = entity;
-          placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 4 });
         }
       } else if (type === 'door' && root.Entities?.Door?.spawn) {
         entity = root.Entities.Door.spawn(world.x, world.y, entry || {});

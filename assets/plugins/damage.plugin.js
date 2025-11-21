@@ -127,10 +127,16 @@
     const entities = Array.isArray(state.entities) ? state.entities : [];
     const now = getNow();
 
+    if (window.FireAPI?.update){
+      try { window.FireAPI.update(dt); }
+      catch (err) {
+        if (window.DEBUG_FORCE_ASCII) console.warn('[Fire] update error', err);
+      }
+    }
+
     for (const ent of entities){
       if (!ent || ent.dead) continue;
       if (!isHostile(ent)) continue;
-      if (ent.disableAutoDamage || ent.skipAutoDamage) continue;
       if (!aabb(player, ent)) continue;
 
       const key = getId(ent);
@@ -150,6 +156,34 @@
       }
     }
 
+    const fires = window.FireAPI?.getActive?.();
+    if (Array.isArray(fires) && fires.length){
+      for (const fire of fires){
+        if (!fire || fire.dead) continue;
+        if (!aabb(player, fire)){
+          fire._damageTimer = 0;
+          continue;
+        }
+        const tick = typeof fire.tick === 'number' ? Math.max(0.05, fire.tick) : 0.4;
+        fire._damageTimer = (fire._damageTimer || 0) + dt;
+        if (fire._damageTimer < tick) continue;
+        const amount = typeof fire.damage === 'number'
+          ? fire.damage
+          : (typeof fire.dps === 'number' ? fire.dps * tick : 0.5);
+        const invuln = (typeof fire.invuln === 'number') ? Math.max(0, fire.invuln) : Math.max(0.2, tick * 0.75);
+        const applied = applyDamageToPlayer(state, amount, {
+          attacker: fire,
+          attackerId: fire.id || 'FIRE',
+          source: 'fire',
+          invuln
+        });
+        if (applied){
+          fire._damageTimer -= tick;
+        } else {
+          fire._damageTimer = tick; // intenta de nuevo al acabar la invulnerabilidad
+        }
+      }
+    }
   };
 
   window.DamageSystem = Damage;
