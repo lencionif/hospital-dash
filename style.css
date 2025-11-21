@@ -293,6 +293,17 @@ canvas {
   image-rendering: pixelated;
   filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4));
 }
+#hud .hud-hero-face{
+  width: 52px;
+  height: 52px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 12px;
+  border: 2px solid rgba(255,255,255,0.18);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  margin-bottom: 10px;
+}
 
 #hud .hud-objective{
   font-size: clamp(0.9rem, 2vh, 1.05rem);

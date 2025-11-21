@@ -554,6 +554,7 @@
     if (S.zoomPhase === 0) {
       const t = clamp(S.zoomTimer / zoomToBossMs, 0, 1);
       const bossC = centerOf(S.boss);
+      if (!Number.isFinite(bossC.x) || !Number.isFinite(bossC.y)) { S.zooming = false; return; }
       cam.x = cam.x + (bossC.x - cam.x) * easeOutQuad(t);
       cam.y = cam.y + (bossC.y - cam.y) * easeOutQuad(t);
       cam.zoom = lerp(cam.zoom || 1.0, Math.max((cam.zoom || 1.0) * 1.6, 1.6), easeOutQuad(t));
@@ -568,6 +569,8 @@
       cam.zoom = lerp(cam.zoom, snap.zoom, easeInOutQuad(t));
       if (t >= 1) { S.zooming = false; }
     }
+
+    cam.zoom = clamp(Number.isFinite(cam.zoom) ? cam.zoom : 1, 0.5, 3);
   }
 
   function snapshotCamera() {

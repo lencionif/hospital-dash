@@ -32,6 +32,7 @@
     right: null,
     heartsCanvas: null,
     heartsCtx: null,
+    heroFace: null,
     patientsValue: null,
     pendingValue: null,
     furiousValue: null,
@@ -93,6 +94,11 @@
     const heartsCtx = heartsCanvas.getContext('2d');
     left.appendChild(heartsCanvas);
 
+    const heroFace = document.createElement('div');
+    heroFace.className = 'hud-hero-face';
+    heroFace.title = 'Héroe seleccionado';
+    left.appendChild(heroFace);
+
     const patientsStat = createHudStat('Pacientes', 'hud-patients');
     const pendingStat = createHudStat('Pendientes', 'hud-pending');
     const furiousStat = createHudStat('Furiosas activas', 'hud-furious');
@@ -147,12 +153,15 @@
     root.appendChild(bellsPanel);
     container.appendChild(root);
 
+    setHeroFace(window.START_HERO_ID || window.selectedHeroKey || 'enrique');
+
     HUD_DOM.root = root;
     HUD_DOM.left = left;
     HUD_DOM.center = center;
     HUD_DOM.right = right;
     HUD_DOM.heartsCanvas = heartsCanvas;
     HUD_DOM.heartsCtx = heartsCtx;
+    HUD_DOM.heroFace = heroFace;
     HUD_DOM.patientsValue = patientsStat.value;
     HUD_DOM.pendingValue = pendingStat.value;
     HUD_DOM.furiousValue = furiousStat.value;
@@ -335,10 +344,20 @@
     }
   }
 
+  function setHeroFace(heroId){
+    if (!HUD_DOM.heroFace) return;
+    const key = (heroId || 'enrique').toLowerCase();
+    const cssVar = `--sprite-player-${key}`;
+    HUD_DOM.heroFace.style.backgroundImage = `var(${cssVar})`;
+    HUD_DOM.heroFace.dataset.hero = key;
+  }
+
   function updateDomHud(G){
     if (!G) return;
     ensureHudDom();
     if (!HUD_DOM.root) return;
+    const heroId = (G?.player?.heroId || G?.player?.hero || G?.selectedHero || window.START_HERO_ID || 'enrique');
+    setHeroFace(heroId);
     const counters = getPatientCounters(G);
     if (HUD_DOM.patientsValue) HUD_DOM.patientsValue.textContent = `${counters.cured}/${counters.total}`;
     if (HUD_DOM.pendingValue) HUD_DOM.pendingValue.textContent = `${counters.pending}`;

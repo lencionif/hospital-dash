@@ -10,7 +10,9 @@
   // ------------------------------------------------------------
   // Parámetros globales y utilidades
   // ------------------------------------------------------------
-  const SEARCH_PARAMS = new URLSearchParams(location.search || '');
+  const RAW_SEARCH = location.search || '';
+  const NORMALIZED_SEARCH = RAW_SEARCH.replace(/;/g, '&');
+  const SEARCH_PARAMS = new URLSearchParams(NORMALIZED_SEARCH);
   const DEBUG_MAP_MODE = /(?:\?|&)map=debug\b/i.test(location.search || '');
   const DEFAULT_DEBUG_MAP_PATH = 'assets/config/debug-map.txt';
   const DEBUG_MAP_FILE_PARAM = (() => {
@@ -28,8 +30,9 @@
   window.DEBUG_MAP_FILE_PARAM = DEBUG_MAP_FILE_PARAM;
   window.DEBUG_MAP_FILE = DEBUG_MAP_FILE;
   const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
-  const LEVEL_PARAM_RAW = SEARCH_PARAMS.get('level');
-  const MAP_DEBUG_LEVEL_PARAM_RAW = getParamCaseInsensitive('MapDebug');
+  const LEVEL_PARAM_RAW = getParamCaseInsensitive('level') || getParamCaseInsensitive('nivel');
+  const MAP_DEBUG_LEVEL_PARAM_RAW = getParamCaseInsensitive('MapDebug')
+    || (DEBUG_MAP_MODE ? getParamCaseInsensitive('nivel') : null);
   const DEFAULT_LEVEL_ID = 'level1';
   const NORMALIZED_LEVEL_ID = normalizeLevelParam(LEVEL_PARAM_RAW);
   const NORMALIZED_MAP_DEBUG_LEVEL = normalizeLevelParam(MAP_DEBUG_LEVEL_PARAM_RAW);
@@ -812,6 +815,8 @@
     clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
     clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
 
+    if (camera) camera.zoom = 1;
+
     try { window.FogAPI?.reset?.(); } catch (_) {}
     try { window.FogAPI?.clear?.(); } catch (_) {}
     try { window.LightingAPI?.reset?.(); } catch (_) {}
@@ -848,7 +853,7 @@
     if (G.levelState !== 'READY_TO_START') {
       resetGameWorld({ levelState: 'READY_TO_START', pendingLevel: nextLevel, reason: 'queue-level', keepPendingLevel: true });
     }
-    requestAnimationFrame(() => startGame(nextLevel));
+    requestAnimationFrame(() => startGame({ level: nextLevel, heroId: window.START_HERO_ID }));
   }
 
   function fitStartScreen(){
@@ -911,7 +916,8 @@
         const first = document.querySelector('#start-screen .char-card[data-hero]');
         window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
       }
-      window.G.selectedHero = window.selectedHeroKey || 'francesco';
+      window.START_HERO_ID = window.selectedHeroKey || 'francesco';
+      window.G.selectedHero = window.START_HERO_ID;
     });
   })();
 
@@ -993,6 +999,7 @@
     window.selectedHeroKey = key;
     window.G = window.G || {};
     window.G.selectedHero = key;
+    window.START_HERO_ID = key;
     return key;
   }
   const metrics = document.getElementById('metricsOverlay') || document.createElement('pre'); // por si no existe
@@ -1115,7 +1122,7 @@ function __onKeyDown__(e){
     if (k === 'r'){
       if (G.state === 'GAMEOVER' || G.state === 'COMPLETE'){
         e.preventDefault();
-        startGame(G.level || 1);
+        startGame({ level: G.level || 1, heroId: window.START_HERO_ID });
         return;
       } else {
         window.camera.zoom = clamp(window.camera.zoom + 0.1, 0.6, 2.5);
@@ -1330,13 +1337,14 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   function makePlayer(x, y) {
     // Lee la selección (si no la hay, cae en 'enrique')
     const key =
+      (window.START_HERO_ID) ||
       (window.selectedHeroKey) ||
       ((window.G && G.selectedHero) ? G.selectedHero : null) ||
       'enrique';
 
     // Camino correcto: usa la API de héroes (aplica corazones y stats)
     if (window.Entities?.Hero?.spawnPlayer) {
-      const p = window.Entities.Hero.spawnPlayer(x, y, { skin: key });
+      const p = window.Entities.Hero.spawnPlayer(x, y, { skin: key, heroId: key });
       // 🛡️ Defaults “sanos” si la skin no los define:
       p.mass     = (p.mass     != null) ? p.mass     : 1.00;
       p.rest     = (p.rest     != null) ? p.rest     : 0.10;
@@ -1410,6 +1418,52 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     return e;
   }
 
+  function spawnBossForLevel(level, x, y) {
+    const lvl = Number(level) || 1;
+    const px = Number.isFinite(x) ? x : ((G.mapW || 0) * TILE * 0.5 + TILE * 0.5);
+    const py = Number.isFinite(y) ? y : ((G.mapH || 0) * TILE * 0.5 + TILE * 0.5);
+
+    let spawnFn = null;
+    if (lvl === 1) {
+      spawnFn = window.Entities?.PatientHematologic?.spawn;
+    } else if (lvl === 2) {
+      spawnFn = window.Entities?.JefaLimpiadoras?.spawn
+        || window.Entities?.jefa_limpiadoras_lvl2
+        || window.CleanerBossAPI?.spawn
+        || window.Entities?.JefaLimpiadorasDesmayada?.spawn;
+    } else if (lvl === 3) {
+      spawnFn = window.Entities?.PacientePyromana?.spawn
+        || window.Entities?.PyroPatientLvl3?.spawn
+        || window.Entities?.paciente_pyromana_lvl3;
+    }
+
+    if (typeof spawnFn !== 'function') {
+      console.error('[BossLoadError] Boss factory missing for level', lvl);
+      if (lvl !== 1) return spawnBossForLevel(1, x, y);
+      return null;
+    }
+
+    let bossEnt = null;
+    try {
+      bossEnt = spawnFn(px, py, { level: lvl });
+    } catch (err) {
+      console.warn('[BossLoadError] spawn error', err);
+      try { bossEnt = spawnFn(px, py); } catch (_) {}
+    }
+
+    if (!bossEnt) {
+      console.error('[BossLoadError] Boss factory returned no entity for level', lvl);
+      if (lvl !== 1) return spawnBossForLevel(1, x, y);
+      return null;
+    }
+
+    G.boss = bossEnt;
+    if (!G.entities.includes(bossEnt)) {
+      G.entities.push(bossEnt);
+    }
+    return bossEnt;
+  }
+
   function loadLevelWithMapGen(level=1) {
     if (!window.MapGen) return false;            // fallback al ASCII si no está el plugin
 
@@ -1438,9 +1492,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       place: true,                                // que coloque entidades vía callbacks
       callbacks: {
         placePlayer: (tx,ty) => {
-          const key = (window.selectedHeroKey || (window.G && G.selectedHero) || null);
+          const key = (window.START_HERO_ID || window.selectedHeroKey || (window.G && G.selectedHero) || null);
           const p =
-            (window.Entities?.Hero?.spawnPlayer?.(tx*TILE+4, ty*TILE+4, { skin: key })) ||
+            (window.Entities?.Hero?.spawnPlayer?.(tx*TILE+4, ty*TILE+4, { skin: key, heroId: key })) ||
             makePlayer(tx*TILE+4, ty*TILE+4);
           G.player = p;
           if (!G.entities.includes(p)) G.entities.push(p);
@@ -3362,8 +3416,11 @@ function drawEntities(c2){
           G.entities.push(e); G.door = e;
         }
         else if (p.type === 'boss') {
-          const e = makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
-          G.entities.push(e); G.boss = e;
+          const bossEnt = spawnBossForLevel(G.level || 1, p.x|0, p.y|0);
+          if (!bossEnt) {
+            const e = makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
+            G.entities.push(e); G.boss = e;
+          }
         }
         else if (p.type === 'cart') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.CART, '#b0956c', true, true, {mass:3.5,rest:0.12,mu:0.02});
@@ -4038,7 +4095,7 @@ function drawEntities(c2){
           const proceed = () => {
             const advanced = window.GameFlowAPI?.nextLevel?.();
             if (advanced === false) return;
-            if (!advanced) startGame((G.level || 1) + 1);
+            if (!advanced) startGame({ level: (G.level || 1) + 1, heroId: window.START_HERO_ID });
           };
           if (window.PresentationAPI?.levelComplete){
             try {
@@ -4141,9 +4198,13 @@ function drawEntities(c2){
     logThrough('info', '[startGame] estado global reseteado', { debug: DEBUG_MAP_MODE });
   }
 
-  function startGame(levelNumber){
+  function startGame(levelInput){
+    const opts = (levelInput && typeof levelInput === 'object' && !Array.isArray(levelInput)) ? levelInput : {};
+    const requestedLevel = typeof levelInput === 'number'
+      ? levelInput
+      : (Number.isFinite(opts.level) ? opts.level : opts.levelNumber);
     const fallbackLevel = Number.isFinite(G.currentLevelNumber) ? G.currentLevelNumber : (G.level || 1);
-    const targetLevel = typeof levelNumber === 'number' ? levelNumber : fallbackLevel;
+    const targetLevel = Number.isFinite(requestedLevel) ? requestedLevel : fallbackLevel;
     const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
     G.level = targetLevel;
     G.currentLevelNumber = targetLevel;
@@ -4161,8 +4222,13 @@ function drawEntities(c2){
       window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
     }
 
-    const heroKey = ensureHeroSelected();
+    camera.zoom = 1;
+    camera.zoom = clamp(Number.isFinite(camera.zoom) ? camera.zoom : 1, 0.5, 3);
+
+    const heroKey = opts.heroId || opts.hero || window.START_HERO_ID || ensureHeroSelected();
     if (heroKey) {
+      window.START_HERO_ID = heroKey;
+      window.selectedHeroKey = heroKey;
       G.selectedHero = heroKey;
     }
 
@@ -4287,6 +4353,10 @@ function drawEntities(c2){
 
       configureLevelSystems();
 
+      if (DEBUG_MAP_MODE && !G.boss) {
+        spawnBossForLevel(targetLevel);
+      }
+
       window.LOG?.event?.('LEVEL_READY', {
         level: targetLevel,
         debug: DEBUG_MAP_MODE,
@@ -4381,12 +4451,13 @@ function drawEntities(c2){
     const startBtn = document.getElementById('start-button');
     if (startBtn){
       startBtn.addEventListener('click', () => {
-        ensureHeroSelected();
-        requestAnimationFrame(() => startGame());
+        const heroId = ensureHeroSelected();
+        window.START_HERO_ID = heroId;
+        requestAnimationFrame(() => startGame({ heroId }));
       });
     }
     document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
-    document.getElementById('restartBtn')?.addEventListener('click', () => startGame());
+    document.getElementById('restartBtn')?.addEventListener('click', () => startGame({ heroId: window.START_HERO_ID }));
 
     const narratorToggle = document.getElementById('opt-narrator');
     if (narratorToggle) {
@@ -4440,7 +4511,7 @@ function drawEntities(c2){
     if (p.get('autoplay') === '1') {
       ensureHeroSelected();
       window.LOG?.debug?.('[autostart] autoplay=1 → start automático');
-      requestAnimationFrame(() => startGame());
+      requestAnimationFrame(() => startGame({ heroId: window.START_HERO_ID }));
     } else if (DEBUG_MAP_MODE) {
       window.LOG?.debug?.('[debug] map=debug → sin autostart; esperar botón');
     }
