@@ -14,7 +14,6 @@
   const rigAuditSummary = { printed: false };
   let lastActivitySummary = '';
   const debugStatus = { rigs: false, lights: false, activity: false, successAnnounced: false };
-  const rigAuditState = { lastTime: 0, lastCount: 0 };
   const RESET_EVENT = 'reset';
 
   function shouldLogDebug(){
@@ -370,16 +369,22 @@
     if (!entity) return null;
     const name = resolveRigName(rigName, entity);
     if (name === 'default' && rigName && rigName !== 'default'){
-      const label = describeEntity(entity);
-      if (!isRigOptional(entity)){
-        try {
-          console.error(`[RigError] No se encontró rig para kind=${entity?.kind || entity?.kindName || 'desconocido'} / spriteKey=${entity?.spriteKey || entity?.skin || 'none'}`);
-        } catch (_) {}
-      }
       entity.rigOk = false;
+      try {
+        console.error('[RigError] No se encontró rig para kind=' + (entity?.kind || entity?.kindName || 'desconocido') + ' / spriteKey=' + (entity?.spriteKey || entity?.skin || 'none'));
+      } catch (_) {}
+      createRigFallbackSprite(entity);
     }
     const puppet = attach(entity, { ...opts, rig: name });
     const rig = registry[name];
+    if (!rig){
+      entity.rigOk = false;
+      try {
+        console.error('[RigError] No se encontró rig para kind=' + (entity?.kind || entity?.kindName || 'desconocido') + ' / spriteKey=' + (entity?.spriteKey || entity?.skin || 'none'));
+      } catch (_) {}
+      createRigFallbackSprite(entity);
+      return puppet;
+    }
     try {
       if (rig && typeof rig.create === 'function') {
         puppet.state = rig.create(entity, opts) || puppet.state || { e: entity };
@@ -570,63 +575,22 @@
     } catch (_) {}
   }
 
-  function auditRigs(force = false){
-    const entities = window.G?.entities;
+  function auditRigs(entities){
+    if (rigAuditSummary.printed) return;
     if (!Array.isArray(entities) || entities.length === 0) return;
-    const now = getNow();
-    const count = entities.filter(Boolean).length;
-    if (!force){
-      const interval = 3500;
-      if (now - rigAuditState.lastTime < interval && count === rigAuditState.lastCount) return;
-    }
-    rigAuditState.lastTime = now;
-    rigAuditState.lastCount = count;
-    const messages = [];
-    let fallbackCount = 0;
-    let okCount = 0;
-    for (let i = 0; i < entities.length; i++){
-      const ent = entities[i];
-      if (!ent) continue;
-      const label = describeEntity(ent, i);
-      let rigName = (ent.rigName || ent.puppet?.rigName || '').toString();
-      let ok = ent.rigOk === true && rigName && rigName !== 'default';
-      if (!ok){
-        const fixed = attemptAutoRig(ent, label);
-        if (fixed){
-          rigName = (ent.rigName || ent.puppet?.rigName || rigName).toString();
-          ok = ent.rigOk === true && rigName && rigName !== 'default';
-        }
-      }
-      if (!ok && !isRigOptional(ent)) fallbackCount++;
-      else if (ok) okCount++;
-      messages.push(`[Debug] Rigs check: ${label} -> rig=${rigName || 'none'} ${ok ? '✔' : '⚠️'}`);
-    }
-    if (!rigAuditSummary.printed){
-      rigAuditSummary.printed = true;
-      try {
-        console.info(`[Puppet] Auditoría de rigs: ${okCount} OK, ${fallbackCount} sin rig`);
-      } catch (_) {}
-    }
-    if (!messages.length) return;
-    const debugLogging = shouldLogDebug();
-    if (!debugLogging && fallbackCount === 0){
-      debugStatus.rigs = true;
-      maybeReportIntegrationSuccess();
-      return;
-    }
-    if (!debugLogging && fallbackCount > 0){
-      debugStatus.rigs = false;
-      debugStatus.successAnnounced = false;
-      return;
-    }
-    try {
-      for (const msg of messages) console.log(msg);
-    } catch (_) {}
-    if (fallbackCount === 0){
-      debugStatus.rigs = true;
+    var ok = 0;
+    var bad = 0;
+    entities.forEach(function (e) {
+      if (!e) return;
+      if (e.rigOptional) return;
+      if (e.rigOk) ok++; else bad++;
+    });
+    rigAuditSummary.printed = true;
+    console.log('[Puppet] Auditoría de rigs: ' + ok + ' OK, ' + bad + ' sin rig');
+    debugStatus.rigs = bad === 0;
+    if (debugStatus.rigs) {
       maybeReportIntegrationSuccess();
     } else {
-      debugStatus.rigs = false;
       debugStatus.successAnnounced = false;
     }
   }
@@ -764,7 +728,6 @@
         }
       }
     }
-    auditRigs();
   }
 
   function drawAll(ctx, cam){
@@ -856,6 +819,36 @@
 
   function toggleDebug(){ /* noop placeholder para compat */ }
 
+  function createRigFallbackSprite(entity) {
+    var TILE = window.TILE_SIZE || 64; // usa el tamaño de tile global si existe
+    var canvas = document.createElement('canvas');
+    canvas.width = TILE;
+    canvas.height = TILE;
+    var ctx = canvas.getContext('2d');
+    // Color según tipo de entidad
+    var color = '#ff00ff'; // por defecto
+    if (entity.isHero) color = '#00ff00';
+    else if (entity.isNPC) color = '#0000ff';
+    else if (entity.kind === 'door') color = '#ffaa00';
+    else if (entity.kind === 'cart') color = '#ff0000';
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, TILE, TILE);
+    ctx.fillStyle = '#000000';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var label = (entity.kind || '???').toUpperCase();
+    ctx.fillText(label.slice(0, 4), TILE / 2, TILE / 2);
+    // Adaptar al sistema de sprites actual
+    if (window.Sprite && typeof window.Sprite.fromCanvas === 'function') {
+      entity.sprite = Sprite.fromCanvas(canvas);
+    } else if (entity.sprite && typeof entity.sprite.setTextureFromCanvas === 'function') {
+      entity.sprite.setTextureFromCanvas(canvas);
+    } else {
+      entity.debugCanvas = canvas; // último recurso, para que el renderer pueda usarlo
+    }
+  }
+
   window.PuppetAPI = {
     registerRig,
     attach,
@@ -864,6 +857,7 @@
     reset: resetAll,
     getActiveCount,
     debugListAll,
+    auditRigs,
     updateAll,
     drawAll,
     draw: drawOne,
@@ -875,4 +869,5 @@
   PuppetNS.bind = bind;
   PuppetNS.detach = detach;
   PuppetNS.reset = resetAll;
+  window.auditRigs = auditRigs;
 })();

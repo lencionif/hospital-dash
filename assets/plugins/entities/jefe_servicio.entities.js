@@ -262,7 +262,7 @@
       case 'patrol':
       default:
         if (ai.logTimer <= 0) {
-          console.debug('[CHIEF_AI] patrol step', { id: e.id, state: ai.state });
+          // console.debug('[CHIEF_AI] patrol step', { id: e.id, state: ai.state });
           ai.logTimer = 1.0;
         }
         pursueTarget(e, dt, false);
