@@ -574,7 +574,7 @@
       window.G = window.G || {};
       const q = new URLSearchParams(location.search);
       const qs = (q.get('hero') || '').toLowerCase();
-      const k = (p?.skin || p?.sub || qs || G.selectedHero || 'francesco').toLowerCase();
+      const k = (p?.heroId || p?.hero || p?.skin || p?.sub || window.START_HERO_ID || qs || G.selectedHero || 'enrique').toLowerCase();
       G.selectedHero = k; // persistimos la selección para el resto del motor
       return k;
     },
