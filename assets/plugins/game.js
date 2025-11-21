@@ -3321,6 +3321,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // mundo
     drawTiles(ctx2d);
     drawEntities(ctx2d);
+    try { window.FireAPI?.renderAll?.(ctx2d, camera); } catch (e) { if (window.DEBUG_FORCE_ASCII) console.warn('[Fire] render error', e); }
 
     ctx2d.restore();
   }
