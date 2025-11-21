@@ -125,6 +125,17 @@
     };
     door.open = door.state.open;
 
+    const layers = window.CollisionLayers || window.COLLISION_LAYERS || {};
+    const triggerLayer = layers.TRIGGER ?? (1 << 4);
+    const mask = (layers.HERO ?? (1 << 0)) | (layers.CART ?? (1 << 2));
+    door.collisionLayer = triggerLayer;
+    door.collisionMask = mask;
+    const body = door.body || door;
+    body.collisionLayer = triggerLayer;
+    body.collisionMask = mask;
+    body.entity = door;
+    door.body = body;
+
     attachPuppet(door);
     window.MovementSystem?.register?.(door);
     state.entities.push(door);
