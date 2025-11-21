@@ -657,7 +657,6 @@
         st.targetX = null; st.targetY = null;
         st.vx = 0; st.vy = 0; st.intentVx = 0; st.intentVy = 0;
         if (e) {
-          e.speed = 0;
           if (typeof e.setAnimation === 'function') {
             try { e.setAnimation('idle'); } catch (_) {}
           } else if (e.state) {
@@ -668,9 +667,14 @@
       }
 
       const len = Math.hypot(dx, dy) || 1;
-      const desiredSpeed = Number.isFinite(e.speed)
+      if (Number.isFinite(e.speed) && e.speed > 0) {
+        st.baseSpeed = e.speed;
+      }
+      const desiredSpeed = (Number.isFinite(e.speed) && e.speed > 0)
         ? e.speed
-        : (Number.isFinite(e.maxSpeed) ? e.maxSpeed : 160);
+        : (Number.isFinite(st.baseSpeed) && st.baseSpeed > 0)
+          ? st.baseSpeed
+          : (Number.isFinite(e.maxSpeed) ? e.maxSpeed : 160);
       const ndx = dx / len;
       const ndy = dy / len;
       st.vx = ndx * desiredSpeed;
