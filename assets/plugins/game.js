@@ -1025,6 +1025,21 @@
     camera.viewportY = VIEW_H * 0.5;
   }
 
+  function placeHeroAtControlRoom(hero = G?.player){
+    if (!hero || !G?.startControlRoom) return;
+    const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
+    const w = Number.isFinite(hero.w) && hero.w > 0 ? hero.w : tileSize;
+    const h = Number.isFinite(hero.h) && hero.h > 0 ? hero.h : tileSize;
+    hero.x = G.startControlRoom.x - w * 0.5;
+    hero.y = G.startControlRoom.y - h * 0.5;
+    if (Number.isFinite(hero.vx)) hero.vx = 0;
+    if (Number.isFinite(hero.vy)) hero.vy = 0;
+    if (Number.isFinite(hero.ax)) hero.ax = 0;
+    if (Number.isFinite(hero.ay)) hero.ay = 0;
+    hero.prevX = hero.x;
+    hero.prevY = hero.y;
+  }
+
   function applyWorldCamera(ctx){
     if (!ctx) return;
     const state = getCameraState();
@@ -4114,6 +4129,7 @@ function drawEntities(c2){
     G._hasPlaced = false;
     G.mapgenPlacements = [];
     G.mapAreas = null;
+    G.startControlRoom = null;
 
     G.flags = G.flags || {};
     G.flags.DEBUG_FORCE_ASCII = !!(DEBUG_MAP_MODE || window.DEBUG_FORCE_ASCII);
@@ -4154,10 +4170,41 @@ function drawEntities(c2){
     const height = G.mapH || ASCII_MAP.length;
     const asciiString = ASCII_MAP.join('\n');
 
+    const tileSizeForStart = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
+    if (G.mapAreas?.control) {
+      const ctrl = G.mapAreas.control;
+      G.startControlRoom = {
+        x: (ctrl.x + ctrl.w * 0.5) * tileSizeForStart,
+        y: (ctrl.y + ctrl.h * 0.5) * tileSizeForStart,
+      };
+    } else {
+      G.startControlRoom = {
+        x: width * tileSizeForStart * 0.5,
+        y: height * tileSizeForStart * 0.5,
+      };
+    }
+
     G.ascii = () => asciiString;
     G.asciiString = asciiString;
     window.MapAPI = window.MapAPI || {};
     window.MapAPI.ascii = () => asciiString;
+    try {
+      console.log('[debug-map] mapa ASCII externo cargado');
+      console.log(asciiString);
+    } catch (_) {}
+    if (asciiString && typeof fetch === 'function') {
+      try {
+        fetch('debug-export.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: asciiString,
+        }).catch((err) => {
+          console.error('[debug-map] Error enviando mapa ASCII al servidor', err);
+        });
+      } catch (e) {
+        console.error('[debug-map] Excepción al enviar mapa ASCII', e);
+      }
+    }
     if (DEBUG_MAP_MODE) {
       try {
         console.debug(`[debug-map] ASCII (${width}x${height}):\n${asciiString}`);
@@ -4690,6 +4737,7 @@ function drawEntities(c2){
         window.Minimap?.refresh?.();
       } catch(_){ }
 
+      placeHeroAtControlRoom();
       centerCameraOnPlayer();
 
       document.getElementById('minimapOverlay')?.classList.add('hidden');
@@ -5017,48 +5065,54 @@ function drawEntities(c2){
     if (!G || !G.map || !G.mapW || !G.mapH) { requestAnimationFrame(drawMinimap); return; }
     if (!minimapVisible) { requestAnimationFrame(drawMinimap); return; }
 
-    const w = G.mapW, h = G.mapH;
-    const scale = Math.min(mm.width / w, mm.height / h);
-    const offsetX = (mm.width - w * scale) * 0.5;
-    const offsetY = (mm.height - h * scale) * 0.5;
-    const cellSize = scale;
+    const tileSize = TILE;
+    const worldWidth = (G.mapW || 0) * tileSize;
+    const worldHeight = (G.mapH || 0) * tileSize;
+    if (!worldWidth || !worldHeight) { requestAnimationFrame(drawMinimap); return; }
+
+    const scaleX = mm.width / worldWidth;
+    const scaleY = mm.height / worldHeight;
+    const scale = Math.min(scaleX, scaleY);
+    const offsetX = (mm.width - worldWidth * scale) * 0.5;
+    const offsetY = (mm.height - worldHeight * scale) * 0.5;
+    const cellSize = tileSize * scale;
 
     // Mapa base
     mctx.clearRect(0,0,mm.width,mm.height);
-    for (let ty=0; ty<h; ty++){
-      for (let tx=0; tx<w; tx++){
+    for (let ty=0; ty<G.mapH; ty++){
+      for (let tx=0; tx<G.mapW; tx++){
         const v = (G.map[ty] && G.map[ty][tx]) ? 1 : 0; // 1=pared, 0=suelo
         mctx.fillStyle = v ? '#1d1f22' : '#6b7280';
-        mctx.fillRect(offsetX + tx*scale, offsetY + ty*scale, cellSize, cellSize);
+        mctx.fillRect(offsetX + tx*cellSize, offsetY + ty*cellSize, cellSize, cellSize);
       }
     }
 
     // Entidades (puntitos)
     const ents = (G.entities || []);
     for (const e of ents){
-      const ex = ((e.x || 0) + ((e.w || TILE) * 0.5)) / TILE;
-      const ey = ((e.y || 0) + ((e.h || TILE) * 0.5)) / TILE;
+      const ex = ((e.x || 0) + ((e.w || tileSize) * 0.5));
+      const ey = ((e.y || 0) + ((e.h || tileSize) * 0.5));
       mctx.fillStyle = colorFor(e);
       mctx.fillRect(offsetX + ex*scale, offsetY + ey*scale, Math.max(1, cellSize*0.85), Math.max(1, cellSize*0.85));
     }
 
     // Player
     if (G.player){
-      const px = ((G.player.x||0) + ((G.player.w||TILE) * 0.5))/TILE;
-      const py = ((G.player.y||0) + ((G.player.h||TILE) * 0.5))/TILE;
+      const px = ((G.player.x||0) + ((G.player.w||tileSize) * 0.5));
+      const py = ((G.player.y||0) + ((G.player.h||tileSize) * 0.5));
       mctx.fillStyle = '#ffffff';
       mctx.fillRect(offsetX + px*scale, offsetY + py*scale, Math.max(1, cellSize), Math.max(1, cellSize));
     }
 
     // Frustum de cámara (rectángulo)
     const cam = window.camera || {x:0,y:0,zoom:1};
-    const vwTiles = VIEW_W / (TILE*cam.zoom);
-    const vhTiles = VIEW_H / (TILE*cam.zoom);
-    const leftTiles = (cam.x/TILE) - vwTiles*0.5;
-    const topTiles  = (cam.y/TILE) - vhTiles*0.5;
+    const vw = VIEW_W / cam.zoom;
+    const vh = VIEW_H / cam.zoom;
+    const left = cam.x - vw*0.5;
+    const top  = cam.y - vh*0.5;
     mctx.strokeStyle = '#ffffff';
     mctx.lineWidth = 1;
-    mctx.strokeRect(offsetX + leftTiles*scale, offsetY + topTiles*scale, vwTiles*scale, vhTiles*scale);
+    mctx.strokeRect(offsetX + left*scale, offsetY + top*scale, vw*scale, vh*scale);
 
     requestAnimationFrame(drawMinimap);
   }
