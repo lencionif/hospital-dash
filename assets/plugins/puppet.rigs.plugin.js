@@ -885,6 +885,12 @@
     });
   }
 
+  function applyHeroThemeVars(root, cfg = {}){
+    if (!root || !root.style) return;
+    if (cfg.lanternColor) setCssVar(root, '--hero-lantern-color', cfg.lanternColor);
+    if (cfg.lanternGlow) setCssVar(root, '--hero-lantern-glow', cfg.lanternGlow);
+  }
+
   function buildHeroDom(hero, cfg = {}, entity){
     const overlay = buildHeroOverlay(hero, entity) || {};
     const head = overlay.parts?.head || null;
@@ -938,6 +944,10 @@
     };
     if (state.root){
       state.root.classList.add('hero-dom-ready', 'hero-dir-right', 'hero-state-idle');
+      applyHeroThemeVars(state.root, cfg);
+      try {
+        console.log(`[HeroRig] Rig de ${entity?.hero || hero || 'desconocido'} creado (hero_${hero}).`);
+      } catch (_) {}
     }
     paintHeroOverlayIcon(state, HERO_DRAW_PROFILE[hero] || {});
     return state;
@@ -1956,6 +1966,7 @@
     API.registerRig(`hero_${hero}`, {
       create(entity){
         const overlay = buildHeroOverlay(hero, entity);
+        if (overlay?.root) applyHeroThemeVars(overlay.root, cfg);
         const state = {
           hero,
           root: overlay.root,
@@ -1999,6 +2010,9 @@
           idleExtraCooldown: 0
         };
         paintHeroOverlayIcon(state, cfg);
+        try {
+          console.log(`[HeroRig] Rig de ${entity?.hero || hero || 'desconocido'} creado (hero_${hero}).`);
+        } catch (_) {}
         return state;
       },
       update(st, e, dt){
@@ -2015,6 +2029,9 @@
         if (entity && Array.isArray(entity._destroyCbs) && st.cleanup){
           entity._destroyCbs = entity._destroyCbs.filter((fn) => fn !== st.cleanup);
         }
+        try {
+          console.info(`[HeroRig] Rig hero_${hero} destruido.`);
+        } catch (_) {}
         st.cleanup = null;
       }
     });
@@ -2279,6 +2296,9 @@
         if (entity && Array.isArray(entity._destroyCbs) && state.cleanup){
           entity._destroyCbs = entity._destroyCbs.filter((fn) => fn !== state.cleanup);
         }
+        try {
+          console.info(`[HeroRig] Rig hero_${hero} destruido.`);
+        } catch (_) {}
         state.cleanup = null;
       }
     });
