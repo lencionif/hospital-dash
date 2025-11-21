@@ -205,7 +205,7 @@
       if (typeof ent.takeDamage === 'function'){
         try { ent.takeDamage(Math.max(1, Math.round(chunk * 2)), meta); return; } catch(_){}
       }
-      if (typeof ent.applyDamage === 'function'){
+      if (typeof ent.applyDamage === 'function' && chunk >= 1){
         try { ent.applyDamage(chunk, meta); return; } catch(_){}
       }
       if (typeof ent.hp === 'number'){
