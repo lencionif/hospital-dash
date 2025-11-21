@@ -615,10 +615,12 @@
       hero.isTalking = true;
       try { W.Entities?.Hero?.setTalking?.(hero, true); } catch (_) {}
     }
+    if (typeof pauseGame === 'function') pauseGame();
     let finished = false;
     const finish = (correct) => {
       if (finished) return;
       finished = true;
+      if (typeof resumeGame === 'function') resumeGame();
       onChiefDialogEnd(e, hero, correct);
     };
 

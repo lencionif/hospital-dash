@@ -548,12 +548,14 @@
       try { window.Entities?.Hero?.setTalking?.(hero, true, 1.4); } catch (_) {}
     }
     if (isDebug()) console.debug('[DOCTOR] start easy riddle', { heroId: hero?.id || hero?.heroId || 'player' });
+    if (typeof pauseGame === 'function') pauseGame();
 
     const hint = riddle.hint ? `\n\n${riddle.hint}` : '';
     let finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
+      if (typeof resumeGame === 'function') resumeGame();
       onDoctorDialogEnd(e, hero);
     };
     const handleAnswer = (isCorrect) => {

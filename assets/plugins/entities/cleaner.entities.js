@@ -768,8 +768,10 @@
 
     const riddle = CLEANER_RIDDLES[ai.riddleIndex % CLEANER_RIDDLES.length];
     ai.riddleIndex = (ai.riddleIndex + 1) % CLEANER_RIDDLES.length;
+    if (typeof pauseGame === 'function') pauseGame();
 
     const finish = (success) => {
+      if (typeof resumeGame === 'function') resumeGame();
       onCleanerDialogEnd(ent, hero, success);
       logCleanerDebug('[CLEANER_TALK] end dialog', { id: ent.id, success });
     };

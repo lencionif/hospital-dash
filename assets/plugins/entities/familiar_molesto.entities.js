@@ -211,21 +211,26 @@
     const key = pickRandomFamiliarQuestionKey();
     const payload = { npcId: ent.id, heroId: hero?.id };
     const started = !!W.NarrativeAPI?.startDialog?.('familiar_molesto', key, payload);
-    const onClose = () => onFamiliarDialogEnd(ent, hero);
+    const onClose = () => {
+      if (typeof resumeGame === 'function') resumeGame();
+      onFamiliarDialogEnd(ent, hero);
+    };
+    if (typeof pauseGame === 'function') pauseGame();
     if (!started) {
       if (W.DialogAPI?.open) {
         W.DialogAPI.open({
           title: 'Visitante molesto',
           portraitCssVar: '--portrait-familiar',
           text: key,
-          buttons: [{ id: 'ok', label: '...', action: () => W.DialogAPI.close?.() }],
-          pauseGame: false,
+          buttons: [{ id: 'ok', label: 'Continuar', action: () => W.DialogAPI.close?.() }],
           onClose,
         });
       } else {
-        try { alert(key); } catch (_) { console.log('[FamiliarMolesto]', key); }
+        try { console.log('[FamiliarMolesto]', key); } catch (_) {}
         setTimeout(onClose, 1600);
       }
+    } else {
+      setTimeout(onClose, 1800);
     }
     ent.vx = ent.vy = 0;
     ent.puppetState.anim = 'talk';
