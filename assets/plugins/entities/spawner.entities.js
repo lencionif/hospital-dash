@@ -71,6 +71,64 @@
     }
   }
 
+  function inBoundsPx(x, y) {
+    const g = getGame();
+    const Ww = (g.mapW || 0) * TILE;
+    const Wh = (g.mapH || 0) * TILE;
+    if (!Ww || !Wh) return true;
+    return x >= 0 && y >= 0 && x < Ww && y < Wh;
+  }
+
+  function isWallTile(Tx, Ty) {
+    const g = getGame();
+    const m = g.map;
+    return !!(m && m[Ty] && m[Ty][Tx]);
+  }
+
+  function hitsWallRect(x, y, w, h) {
+    const tx0 = Math.floor(x / TILE);
+    const ty0 = Math.floor(y / TILE);
+    const tx1 = Math.floor((x + w - 1) / TILE);
+    const ty1 = Math.floor((y + h - 1) / TILE);
+    for (let Ty = ty0; Ty <= ty1; Ty++) {
+      for (let Tx = tx0; Tx <= tx1; Tx++) {
+        if (isWallTile(Tx, Ty)) return true;
+      }
+    }
+    return false;
+  }
+
+  function overlapsSolidEntity(x, y, w, h, ignore) {
+    const g = getGame();
+    if (!Array.isArray(g.entities)) return false;
+    for (const ent of g.entities) {
+      if (!ent || ent === SpawnerAPI || ent === SpawnerManager || ent === ignore) continue;
+      if (!ent.solid && ent.static !== true) continue;
+      const ew = ent.w || TILE * 0.9;
+      const eh = ent.h || TILE * 0.9;
+      const ex = typeof ent.worldX === 'number' ? ent.worldX : (ent.x || 0);
+      const ey = typeof ent.worldY === 'number' ? ent.worldY : (ent.y || 0);
+      const sepX = (x + w) <= ex || (ex + ew) <= x;
+      const sepY = (y + h) <= ey || (ey + eh) <= y;
+      if (!sepX && !sepY) return true;
+    }
+    return false;
+  }
+
+  function findFreeSpotNear(px, py, w, h, rTiles = 4, ignore = null) {
+    const R = (rTiles | 0) * TILE;
+    for (let i = 0; i < 180; i++) {
+      const ang = 2 * Math.PI * (i / 180);
+      const rx = px + Math.cos(ang) * R * 0.6 * Math.random();
+      const ry = py + Math.sin(ang) * R * 0.6 * Math.random();
+      if (!inBoundsPx(rx, ry)) continue;
+      if (hitsWallRect(rx, ry, w, h)) continue;
+      if (overlapsSolidEntity(rx, ry, w, h, ignore)) continue;
+      return { x: rx, y: ry };
+    }
+    return null;
+  }
+
   function createSpawnerEntity(spawnType, x, y, opts = {}) {
     const { spriteKey, skin } = spriteForType(spawnType);
     const baseX = opts.inTiles ? x * TILE : x;
@@ -187,10 +245,16 @@
     const baseY = sp.inTiles ? sp.y * TILE : sp.worldY;
     const payload = Object.assign({ spawnerId: sp.id }, req.template || {});
 
+    const desiredW = payload.w || sp.w || TILE * 0.9;
+    const desiredH = payload.h || sp.h || TILE * 0.9;
+    const freeSpot = findFreeSpotNear(baseX, baseY, desiredW, desiredH, 4, sp);
+    const spawnX = freeSpot ? freeSpot.x : baseX;
+    const spawnY = freeSpot ? freeSpot.y : baseY;
+
     let ent = null;
-    if (sp.spawnType === 'animals') ent = Spawn.animals(payload.kind || payload.sub, baseX, baseY, payload);
-    else if (sp.spawnType === 'humans') ent = Spawn.humans(payload.role || payload.kind || payload.sub, baseX, baseY, payload);
-    else if (sp.spawnType === 'carts') ent = Spawn.carts(payload.kind || payload.type || payload.sub, baseX, baseY, payload);
+    if (sp.spawnType === 'animals') ent = Spawn.animals(payload.kind || payload.sub, spawnX, spawnY, payload);
+    else if (sp.spawnType === 'humans') ent = Spawn.humans(payload.role || payload.kind || payload.sub, spawnX, spawnY, payload);
+    else if (sp.spawnType === 'carts') ent = Spawn.carts(payload.kind || payload.type || payload.sub, spawnX, spawnY, payload);
 
     if (ent) {
       sp._queue.shift();
