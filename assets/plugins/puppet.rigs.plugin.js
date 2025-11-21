@@ -233,7 +233,7 @@
     ctx.strokeStyle = 'rgba(8,12,18,0.9)';
     ctx.lineWidth = Math.max(1, fontPx * 0.08);
     ctx.stroke();
-    ctx.fillStyle = '#f4fbff';
+    ctx.fillStyle = e?.color || '#ffd166';
     ctx.strokeStyle = 'rgba(8,12,18,0.9)';
     ctx.lineWidth = Math.max(2, fontPx * 0.18);
     ctx.strokeText(text, safeX, safeY);
