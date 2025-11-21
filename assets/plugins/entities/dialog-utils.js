@@ -10,7 +10,7 @@ DialogUtils.openRiddleDialog = function (riddle, opts) {
   var options = riddle.options || [];
   var correctIndex = riddle.correctIndex || 0;
   if (api.openRiddle) {
-    api.openRiddle({
+    var opened = api.openRiddle({
       title: title,
       text: ask,
       hint: riddle.hint || '',
@@ -20,14 +20,14 @@ DialogUtils.openRiddleDialog = function (riddle, opts) {
       onFail: onFail,
       onClose: onClose
     });
-    return;
+    return opened !== undefined ? opened : true;
   }
   if (api.open) {
     var buttons = options.map(function (label, idx) {
       return { label: label, action: function () { if (idx === correctIndex) onSuccess(); else onFail(); onClose(); } };
     });
-    api.open({ title: title, text: ask, buttons: buttons });
-    return;
+    var openedFallback = api.open({ title: title, text: ask, buttons: buttons });
+    return openedFallback !== undefined ? openedFallback : true;
   }
   console.error('[DialogUtils] No hay DialogAPI disponible para riddles');
 };
