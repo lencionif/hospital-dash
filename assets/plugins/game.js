@@ -645,6 +645,24 @@
 
     function applyTargetMotion(e, st){
       if (!Number.isFinite(st.targetX) || !Number.isFinite(st.targetY)) return false;
+      const threshold = Math.max(4, (tileSize || TILE) * 0.15);
+      const snapDx = st.targetX - (e.x || 0);
+      const snapDy = st.targetY - (e.y || 0);
+      if (snapDx * snapDx + snapDy * snapDy < threshold * threshold) {
+        st.vx = 0; st.vy = 0; st.intentVx = 0; st.intentVy = 0;
+        if (e) {
+          e.x = st.targetX;
+          e.y = st.targetY;
+          e.speed = 0;
+          if (typeof e.setAnimation === 'function') {
+            try { e.setAnimation('idle'); } catch (_) {}
+          } else if (e.state) {
+            e.state.animation = 'idle';
+          }
+        }
+        st.targetX = null; st.targetY = null;
+        return true;
+      }
       const cx = (st.x || 0) + (e.w || 0) * 0.5;
       const cy = (st.y || 0) + (e.h || 0) * 0.5;
       const dx = st.targetX - cx;
@@ -2188,6 +2206,26 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (dx || dy) G.lastPushDir = { x: Math.sign(dx || 0), y: Math.sign(dy || 0) };
   }
 
+  function onPickupPill(hero, pill) {
+    try { window.GameFlowAPI?.onPickupPill?.(hero, pill); } catch (_) {}
+    try { window.ScoreAPI?.onPickupPill?.(hero, pill); } catch (_) {}
+  }
+
+  function onGivePill(hero, patient) {
+    try { window.GameFlowAPI?.onGivePill?.(hero, patient); } catch (_) {}
+    try { window.ScoreAPI?.onGivePill?.(hero, patient); } catch (_) {}
+  }
+
+  function heroHasPillFor(patient, hero = G.player) {
+    if (!patient || patient.attended) return false;
+    const carrier = hero || G.player || null;
+    if (!carrier) return false;
+    const carry = carrier.currentPill || carrier.carry || carrier.inventory?.medicine || G.carry || G.currentPill || null;
+    if (!carry || (carry.kind !== 'PILL' && carry.type !== 'PILL')) return false;
+    const targetId = carry.targetPatientId || carry.forPatientId || carry.patientId || null;
+    return !!(targetId && patient.id && patient.id === targetId);
+  }
+
   function assignCarryFromPill(hero, pill) {
     if (!pill || pill.dead) return false;
     const carrier = hero || G.player || null;
@@ -2211,6 +2249,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     G.currentPill = carry;
     carrier.inventory = carrier.inventory || {};
     carrier.inventory.medicine = Object.assign({}, carry);
+    onPickupPill(carrier, pill);
     if (typeof window.LogCollision === 'function') {
       try {
         window.LogCollision('PILL_PICKUP', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
@@ -2284,9 +2323,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
     if (!target) return false;
-    const canDeliver = (window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
-      ? window.PatientsAPI.canDeliver(hero, target)
-      : false;
+    const canDeliver = heroHasPillFor(target, hero)
+      || ((window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
+        ? window.PatientsAPI.canDeliver(hero, target)
+        : false);
     const safeDist = Number.isFinite(bestDist) ? Number(bestDist.toFixed(2)) : null;
     logPillDeliveryDebug(hero, target, { distance: safeDist, canDeliver, reason: canDeliver ? 'match' : 'target_mismatch' });
     if (typeof window.LogCollision === 'function') {
@@ -2295,6 +2335,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       } catch (_) {}
     }
     if (canDeliver) {
+      onGivePill(hero, target);
       const delivered = window.PatientsAPI?.deliverPill?.(hero, target);
       if (delivered) afterManualDelivery(target);
       return true;
@@ -2662,20 +2703,25 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const isRatHit = !!src && (src.kind === ENT.RAT || src.kindName === 'rat');
     if (!p) return;
     if (!isRatHit && p.invuln > 0) return;
-    const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));
-    const halvesAfter  = Math.max(0, halvesBefore - (amount|0));
-    G.player.hp = Math.ceil(halvesAfter / 2);
-    G.health     = halvesAfter;
-    p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
-    try { window.Entities?.Hero?.notifyDamage?.(p, { source: src || (isRatHit ? 'bite' : 'impact'), duration: isRatHit ? 0.4 : 0.6 }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] damage notify error', err); }
+    const source = src || (isRatHit ? 'bite' : 'impact');
+    if (typeof p.takeDamage === 'function') {
+      p.takeDamage(amount, { source, attacker: src, knockbackFrom: src });
+    } else {
+      const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));
+      const halvesAfter  = Math.max(0, halvesBefore - (amount|0));
+      G.player.hp = Math.ceil(halvesAfter / 2);
+      G.health     = halvesAfter;
+      p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
+      try { window.Entities?.Hero?.notifyDamage?.(p, { source, duration: isRatHit ? 0.4 : 0.6 }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] damage notify error', err); }
 
-    // knockback desde 'src' hacia fuera
-    if (src){
-      const dx = (p.x + p.w/2) - (src.x + src.w/2);
-      const dy = (p.y + p.h/2) - (src.y + src.h/2);
-      const n = Math.hypot(dx,dy) || 1;
-      p.vx += (dx/n) * 160;
-      p.vy += (dy/n) * 160;
+      // knockback desde 'src' hacia fuera
+      if (src){
+        const dx = (p.x + p.w/2) - (src.x + src.w/2);
+        const dy = (p.y + p.h/2) - (src.y + src.h/2);
+        const n = Math.hypot(dx,dy) || 1;
+        p.vx += (dx/n) * 160;
+        p.vy += (dy/n) * 160;
+      }
     }
 
     if (G.health <= 0){
@@ -4666,6 +4712,9 @@ function drawEntities(c2){
   window.resetGameWorld = resetGameWorld;
   window.toScreen = bridgeToScreen;
   window.startGame = startGame;
+  window.heroHasPillFor = heroHasPillFor;
+  window.onPickupPill = onPickupPill;
+  window.onGivePill = onGivePill;
   window.damagePlayer = damagePlayer; // ⬅️ EXponer daño del héroe para las ratas
   })();
 // ==== DEBUG MINI-MAP OVERLAY =================================================
