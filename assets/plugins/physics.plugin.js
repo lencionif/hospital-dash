@@ -496,6 +496,16 @@
           const rvx = (a.vx || 0) - (b.vx || 0);
           const rvy = (a.vy || 0) - (b.vy || 0);
           const relativeSpeed = Math.hypot(rvx, rvy);
+          if (typeof window.LogCollision === 'function' && G && (a === G.player || b === G.player)) {
+            const other = a === G.player ? b : a;
+            try {
+              window.LogCollision('HERO_HIT_ENTITY', {
+                otherId: other?.id || null,
+                otherKind: other?.kindName || other?.kind || other?._tag || null,
+                relativeSpeed: Number.isFinite(relativeSpeed) ? Number(relativeSpeed.toFixed(2)) : relativeSpeed,
+              });
+            } catch (_) {}
+          }
           const velN = rvx * nx + rvy * ny;
           if (velN < 0){
             const rest = Math.max(CFG.restitution, resolveRestitution(a), resolveRestitution(b));

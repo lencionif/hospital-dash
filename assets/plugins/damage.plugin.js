@@ -151,8 +151,13 @@
       });
       if (!applied) continue;
       cooldownById.set(key, now + 1.0);
-      if (window.DEBUG_FORCE_ASCII){
-        console.log('[Damage] hit by', ent.kindName || ent.kind || key, 'hp=', (player.health ?? 0).toFixed(2));
+      if (typeof window.LogCollision === 'function') {
+        try {
+          window.LogCollision('HERO_DAMAGE', {
+            source: ent.kindName || ent.kind || key,
+            hp: Number.isFinite(player.health) ? Number(player.health.toFixed(2)) : player.health,
+          });
+        } catch (_) {}
       }
     }
 
