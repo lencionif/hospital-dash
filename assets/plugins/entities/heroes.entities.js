@@ -15,8 +15,6 @@
     return e;
   })();
   const TILE = (typeof W.TILE_SIZE !== 'undefined') ? W.TILE_SIZE : (W.TILE || 32);
-  const ENABLE_COOP = false;
-  W.ENABLE_COOP = false;
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 

@@ -45,7 +45,11 @@
     ? (DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID)
     : (NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID);
   const CURRENT_LEVEL_NUMBER = extractLevelNumber(CURRENT_LEVEL_ID) || 1;
+  // Bandera global de cooperativo:
+  // - Solo se declara aquí.
+  // - El resto de archivos la usan sin redeclararla.
   const ENABLE_COOP = false;
+  window.ENABLE_COOP = ENABLE_COOP;
   window.DEBUG_MAP_MODE = DEBUG_MAP_MODE;
   window.DEBUG_LEVEL_PARAM = MAP_DEBUG_LEVEL_PARAM_RAW || LEVEL_PARAM_RAW || null;
   window.DEBUG_LEVEL_ID = DEBUG_LEVEL_ID;
@@ -1395,7 +1399,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // ------------------------------------------------------------
   // Creación de entidades
   // ------------------------------------------------------------
-  const ENABLE_COOP = false;
   // === Defaults de física por tipo (fallback si el spawn no los pasa) ===
   const PHYS_DEFAULTS = {};
   PHYS_DEFAULTS[ENT.PLAYER]   = { mass: 1.00, rest: 0.10, mu: 0.12 };
@@ -4779,7 +4782,6 @@ function drawEntities(c2){
 
   // Exponer algunas APIs esperadas por otros plugins/sistemas
   window.TILE_SIZE = TILE;
-  window.ENABLE_COOP = ENABLE_COOP;
   G.TILE_SIZE = TILE;
   window.ENT = ENT;                 // para plugins/sprites
   window.G = G;
