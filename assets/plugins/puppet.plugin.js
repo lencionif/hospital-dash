@@ -156,9 +156,11 @@
     if (key && registry[key]) return key;
     if (key && !missingRigWarnings.has(key)){
       missingRigWarnings.add(key);
-      try {
-        console.warn(`[Puppet] rig "${key}" no registrado, usando fallback 'default'.`);
-      } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try {
+          console.warn(`[Puppet] rig "${key}" no registrado, usando fallback 'default'.`);
+        } catch (_) {}
+      }
     }
     return 'default';
   }
@@ -178,11 +180,11 @@
         try {
           rig.dispose(puppet.state, entity, puppet);
         } catch (err){
-          console.warn('[Puppet] rig.dispose', puppet.rigName, err);
+          if (window.DEBUG_COLLISIONS) console.warn('[Puppet] rig.dispose', puppet.rigName, err);
         }
       }
     } catch (err){
-      console.warn('[Puppet] cleanup error', err);
+      if (window.DEBUG_COLLISIONS) console.warn('[Puppet] cleanup error', err);
     }
     if (entity){
       if (entity.puppet === puppet) delete entity.puppet;
@@ -244,9 +246,11 @@
     const name = resolveRigName(rigName);
     if (name === 'default' && rigName && rigName !== 'default'){
       const label = describeEntity(entity);
-      try {
-        console.warn(`[Puppet.bind] Advertencia: '${label || 'Entidad'}' solicitó rig '${rigName}' pero se está usando 'default'.`);
-      } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try {
+          console.warn(`[Puppet.bind] Advertencia: '${label || 'Entidad'}' solicitó rig '${rigName}' pero se está usando 'default'.`);
+        } catch (_) {}
+      }
     }
     const puppet = attach(entity, { ...opts, rig: name });
     const rig = registry[name];
@@ -284,9 +288,11 @@
           console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
         } catch (_) {}
       }
-      try {
-        console.warn(`[Puppet.bind] Fallback aplicado a ${label || 'entidad'} (${entity.rigName}).`);
-      } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try {
+          console.warn(`[Puppet.bind] Fallback aplicado a ${label || 'entidad'} (${entity.rigName}).`);
+        } catch (_) {}
+      }
     }
     if (rigCheckTargets.has(name)){
       const label = describeEntity(entity) || entity?.kind || entity?.tag || 'Entidad';
@@ -343,7 +349,7 @@
         try {
           puppet.state = rig.create(puppet.entity) || {};
         } catch (err){
-          console.warn('[PuppetAPI] rig.create', puppet.rigName, err);
+        if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.create', puppet.rigName, err);
           if (puppet.rigName !== 'default'){
             puppet.rigName = 'default';
             const fallback = rigs.get('default') || registry.default;
@@ -352,7 +358,7 @@
                 puppet.state = fallback.create(puppet.entity) || {};
                 rig = fallback;
               } catch (err2){
-                console.warn('[PuppetAPI] default rig.create', err2);
+                if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] default rig.create', err2);
                 puppet.state = { e: puppet.entity };
                 rig = fallback || rig;
               }
@@ -418,15 +424,17 @@
       const fallback = (!available && candidate) ? (registry[candidate.toLowerCase?.()] || rigs.get(candidate.toLowerCase?.())) : null;
       const rigName = available ? candidate : (fallback ? candidate.toLowerCase() : null);
       if (!rigName) continue;
-      try {
-        console.warn(`[Puppet] Reasignando rig '${rigName}' a ${label}.`);
-        const puppet = bind(ent, rigName, ent.puppet?.data ? { data: ent.puppet.data } : {});
-        if (puppet && puppet.rigName === rigName){
-          ent.rigOk = true;
-          return true;
+      if (window.DEBUG_COLLISIONS || shouldLogDebug()) {
+        try {
+          console.warn(`[Puppet] Reasignando rig '${rigName}' a ${label}.`);
+          const puppet = bind(ent, rigName, ent.puppet?.data ? { data: ent.puppet.data } : {});
+          if (puppet && puppet.rigName === rigName){
+            ent.rigOk = true;
+            return true;
+          }
+        } catch (err){
+          try { console.error(`[Puppet] Error al reasignar rig '${rigName}' a ${label}.`, err); } catch (_) {}
         }
-      } catch (err){
-        try { console.error(`[Puppet] Error al reasignar rig '${rigName}' a ${label}.`, err); } catch (_) {}
       }
     }
     return false;
@@ -626,7 +634,7 @@
             rig.update(puppet, state, dt);
           }
         } catch (err) {
-          console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
+          if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
         }
       }
     }
@@ -683,7 +691,7 @@
         rig.draw(ctx, camera, puppet.entity);
       }
     } catch (err) {
-      console.warn('[PuppetAPI] rig.draw', err);
+      if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.draw', err);
     }
   }
 
@@ -702,7 +710,7 @@
           rig.update(puppet, state, dt);
         }
       } catch (err) {
-        console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
+        if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
       }
     }
   }

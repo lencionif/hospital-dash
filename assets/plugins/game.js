@@ -899,6 +899,26 @@
     });
   }
 
+  function placeHeroAtControlRoom(){
+    const tile = (typeof TILE !== 'undefined' && TILE) || window.TILE_SIZE || window.TILE || 32;
+    const ctrl = G?.mapAreas?.control || null;
+    const safeRect = G?.safeRect || null;
+    const centerX = ctrl ? (ctrl.x + ctrl.w * 0.5) * tile : (safeRect ? safeRect.x + safeRect.w * 0.5 : (G.mapW || 1) * tile * 0.5);
+    const centerY = ctrl ? (ctrl.y + ctrl.h * 0.5) * tile : (safeRect ? safeRect.y + safeRect.h * 0.5 : (G.mapH || 1) * tile * 0.5);
+    const x = Math.round(centerX);
+    const y = Math.round(centerY);
+    G.startControlRoom = { x, y };
+    if (G.player) {
+      G.player.x = x;
+      G.player.y = y;
+      G.player._lastSafeX = x;
+      G.player._lastSafeY = y;
+      try { window.MovementSystem?.register?.(G.player); } catch (_) {}
+      camera.x = x + (G.player.w || 0) * 0.5;
+      camera.y = y + (G.player.h || 0) * 0.5;
+    }
+  }
+
   function resetAndLoadLevel(levelNumber){
     const numericLevel = Number(levelNumber);
     const nextLevel = Number.isFinite(numericLevel) && numericLevel > 0
@@ -1493,21 +1513,29 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
 
     if (typeof spawnFn !== 'function') {
-      console.error('[BossLoadError] Boss factory missing for level', lvl);
-      if (lvl !== 1) return spawnBossForLevel(1, x, y);
-      return null;
+      const fallbackFn = window.Entities?.PatientHematologic?.spawn;
+      if (fallbackFn) {
+        spawnFn = fallbackFn;
+        if (window.DEBUG_COLLISIONS) {
+          console.warn('[BossLoadError] Boss factory missing, usando fallback de nivel 1', lvl);
+        }
+      } else {
+        if (window.DEBUG_COLLISIONS) console.error('[BossLoadError] Boss factory missing for level', lvl);
+        if (lvl !== 1) return spawnBossForLevel(1, x, y);
+        return null;
+      }
     }
 
     let bossEnt = null;
     try {
       bossEnt = spawnFn(px, py, { level: lvl });
     } catch (err) {
-      console.warn('[BossLoadError] spawn error', err);
+      if (window.DEBUG_COLLISIONS) console.warn('[BossLoadError] spawn error', err);
       try { bossEnt = spawnFn(px, py); } catch (_) {}
     }
 
     if (!bossEnt) {
-      console.error('[BossLoadError] Boss factory returned no entity for level', lvl);
+      if (window.DEBUG_COLLISIONS) console.error('[BossLoadError] Boss factory returned no entity for level', lvl);
       if (lvl !== 1) return spawnBossForLevel(1, x, y);
       return null;
     }
@@ -3492,6 +3520,7 @@ function drawEntities(c2){
         }
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
+    if (G.player) placeHeroAtControlRoom();
     G._placementsFinalized = true;
   }
   // ------------------------------------------------------------
@@ -3883,11 +3912,13 @@ function drawEntities(c2){
     placeHeroAtControlRoom();
     window.MapAPI = window.MapAPI || {};
     window.MapAPI.ascii = () => asciiString;
-    try {
-      console.log('[debug-map] mapa ASCII externo cargado');
-      console.log(asciiString);
-    } catch (_) {}
-    if (asciiString && typeof fetch === 'function') {
+    if (window.DEBUG_COLLISIONS) {
+      try {
+        console.log('[debug-map] mapa ASCII externo cargado');
+        console.log(asciiString);
+      } catch (_) {}
+    }
+    if (asciiString && typeof fetch === 'function' && window.DEBUG_COLLISIONS) {
       try {
         fetch('debug-export.php', {
           method: 'POST',
@@ -3900,7 +3931,7 @@ function drawEntities(c2){
         console.error('[debug-map] Excepción al enviar mapa ASCII', e);
       }
     }
-    if (DEBUG_MAP_MODE) {
+    if (DEBUG_MAP_MODE && window.DEBUG_COLLISIONS) {
       try {
         console.debug(`[debug-map] ASCII (${width}x${height}):\n${asciiString}`);
       } catch (_) {}
@@ -4226,17 +4257,21 @@ function drawEntities(c2){
       const rigCountBefore = window.PuppetAPI?.getActiveCount?.();
       const entityCountBefore = Array.isArray(G.entities) ? G.entities.filter(Boolean).length : 0;
       if (rigCountBefore != null){
-        console.log(`[Puppet] Reset rigs (level-reset) -> antes: rigs=${rigCountBefore}, entidades=${entityCountBefore}`);
+        if (window.DEBUG_COLLISIONS) {
+          console.log(`[Puppet] Reset rigs (level-reset) -> antes: rigs=${rigCountBefore}, entidades=${entityCountBefore}`);
+        }
       }
       if (window.PuppetAPI?.reset){
         window.PuppetAPI.reset({ reason: 'level-reset', log: false });
       }
       const rigCountAfter = window.PuppetAPI?.getActiveCount?.();
       if (rigCountAfter != null){
-        console.log(`[Puppet] Reset rigs (level-reset) -> después: rigs=${rigCountAfter}`);
+        if (window.DEBUG_COLLISIONS) {
+          console.log(`[Puppet] Reset rigs (level-reset) -> después: rigs=${rigCountAfter}`);
+        }
       }
     } catch (err){
-      console.warn('[Puppet] resetGlobalLevelState', err);
+      if (window.DEBUG_COLLISIONS) console.warn('[Puppet] resetGlobalLevelState', err);
     }
 
     const arrayKeys = [
@@ -4473,11 +4508,13 @@ function drawEntities(c2){
         const rigCount = window.PuppetAPI?.getActiveCount?.();
         const entityCount = Array.isArray(G.entities) ? G.entities.filter(Boolean).length : 0;
         if (rigCount != null){
-          console.log(`[Puppet] Rigs tras seed: ${rigCount} / entidades=${entityCount}`);
+          if (window.DEBUG_COLLISIONS) {
+            console.log(`[Puppet] Rigs tras seed: ${rigCount} / entidades=${entityCount}`);
+          }
         }
         window.PuppetAPI?.debugListAll?.('level-ready');
       } catch (err){
-        if (window.DEBUG_FORCE_ASCII) console.warn('[Puppet] level-ready audit error', err);
+        if (window.DEBUG_COLLISIONS || window.DEBUG_FORCE_ASCII) console.warn('[Puppet] level-ready audit error', err);
       }
 
       setGameState('READY');

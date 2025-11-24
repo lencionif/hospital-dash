@@ -15,9 +15,13 @@
   const collisionsFromQuery = debugParam.split(',').some((p) => p.trim().toLowerCase() === 'collisions');
   W.DEBUG_COLLISIONS = typeof W.DEBUG_COLLISIONS === 'boolean' ? W.DEBUG_COLLISIONS : collisionsFromQuery;
   function logCollision(event, data) {
+    const payload = data || {};
+    try {
+      W.LOG?.event?.('COLLISION', { event, ...payload });
+    } catch (_) {}
     if (!W.DEBUG_COLLISIONS) return;
     try {
-      console.log('[COLLISION]', event, data);
+      console.log('[COLLISION]', event, payload);
     } catch (_) {}
   }
   W.LogCollision = logCollision;

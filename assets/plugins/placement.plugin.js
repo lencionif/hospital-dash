@@ -1255,7 +1255,9 @@
     }
     if (!target){
       const payload = { char: searchOpts.char || describeSpawnTarget(entity), from: { tx, ty } };
-      try { console.error('[SPAWN_SAFETY] No hay casillas libres', payload); } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try { console.error('[SPAWN_SAFETY] No hay casillas libres', payload); } catch (_) {}
+      }
       if (searchOpts.forceFallback !== false){
         const fallback = spawnSafetyFallbackTile(game);
         const px = fallback.tx * tile + baseOffsetX;
@@ -1268,13 +1270,15 @@
     const py = target.ty * tile + baseOffsetY;
     moveEntityToWorld(entity, px, py);
     if ((target.tx !== tx || target.ty !== ty) && shouldLogSpawnSafety(searchOpts)){
-      try {
-        console.debug('[SPAWN_SAFETY] Recolocado spawn empotrado', {
-          char: searchOpts.char || describeSpawnTarget(entity),
-          from: { tx, ty },
-          to: { tx: target.tx, ty: target.ty }
-        });
-      } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try {
+          console.debug('[SPAWN_SAFETY] Recolocado spawn empotrado', {
+            char: searchOpts.char || describeSpawnTarget(entity),
+            from: { tx, ty },
+            to: { tx: target.tx, ty: target.ty }
+          });
+        } catch (_) {}
+      }
     }
     return target;
   }
