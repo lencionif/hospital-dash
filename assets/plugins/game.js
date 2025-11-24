@@ -45,6 +45,7 @@
     ? (DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID)
     : (NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID);
   const CURRENT_LEVEL_NUMBER = extractLevelNumber(CURRENT_LEVEL_ID) || 1;
+  const ENABLE_COOP = false;
   window.DEBUG_MAP_MODE = DEBUG_MAP_MODE;
   window.DEBUG_LEVEL_PARAM = MAP_DEBUG_LEVEL_PARAM_RAW || LEVEL_PARAM_RAW || null;
   window.DEBUG_LEVEL_ID = DEBUG_LEVEL_ID;
@@ -2216,6 +2217,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     try { window.ScoreAPI?.onGivePill?.(hero, patient); } catch (_) {}
   }
 
+  function clearHeroCarry(hero){
+    if (!hero) return;
+    hero.carry = null;
+    hero.currentPill = null;
+    if (hero.inventory?.medicine) hero.inventory.medicine = null;
+    G.carry = null;
+    G.currentPill = null;
+  }
+
   function heroHasPillFor(patient, hero = G.player) {
     if (!patient || patient.attended) return false;
     const carrier = hero || G.player || null;
@@ -2337,11 +2347,42 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (canDeliver) {
       onGivePill(hero, target);
       const delivered = window.PatientsAPI?.deliverPill?.(hero, target);
-      if (delivered) afterManualDelivery(target);
+      if (delivered) {
+        clearHeroCarry(hero);
+        afterManualDelivery(target);
+      }
       return true;
     }
     window.PatientsAPI?.wrongDelivery?.(target);
     return true;
+  }
+
+  function deliverPillToPatient(hero, patient, opts = {}) {
+    if (!hero || !patient || patient.dead || patient.attended) return false;
+    const maxRange = (window.TILE_SIZE || TILE) * 1.35;
+    const hx = hero.x + hero.w * 0.5;
+    const hy = hero.y + hero.h * 0.5;
+    const px = patient.x + (patient.w || 0) * 0.5;
+    const py = patient.y + (patient.h || 0) * 0.5;
+    const dist = Math.hypot(px - hx, py - hy);
+    if (dist > maxRange) return false;
+    const canDeliver = heroHasPillFor(patient, hero)
+      || ((window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
+        ? window.PatientsAPI.canDeliver(hero, patient)
+        : false);
+    logPillDeliveryDebug(hero, patient, { distance: Number(dist.toFixed(2)), canDeliver, reason: opts.reason || 'click' });
+    if (!canDeliver) {
+      window.PatientsAPI?.wrongDelivery?.(patient);
+      return false;
+    }
+    onGivePill(hero, patient);
+    const delivered = window.PatientsAPI?.deliverPill?.(hero, patient);
+    if (delivered) {
+      clearHeroCarry(hero);
+      afterManualDelivery(patient);
+      return true;
+    }
+    return false;
   }
 
   function isCartEntity(ent){
@@ -3039,6 +3080,32 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
   }
 
+  function handleHeroContacts(){
+    const hero = G.player;
+    if (!hero) return;
+    const logCollisions = !!window.DEBUG_COLLISIONS;
+    const hostiles = Array.isArray(G.hostiles) ? G.hostiles : [];
+    for (const enemy of hostiles) {
+      if (!enemy || enemy.dead) continue;
+      if (!nearAABB(hero, enemy, 4) || !AABB(hero, enemy)) continue;
+      const dmg = Number.isFinite(enemy.touchDamage) ? enemy.touchDamage : (Number.isFinite(enemy.damage) ? enemy.damage : 1);
+      if (hero.invuln > 0) continue;
+      if (logCollisions) {
+        console.debug('[COLLISION] hero vs enemy', enemy.kind || enemy.kindName || enemy.tag || 'unknown', 'damage=', dmg);
+      }
+      damagePlayer(enemy, dmg);
+    }
+
+    if (hero.carry || G.carry) {
+      const patients = Array.isArray(G.patients) ? G.patients : [];
+      for (const patient of patients) {
+        if (!patient || patient.dead || patient.attended) continue;
+        if (!nearAABB(hero, patient, 8)) continue;
+        if (deliverPillToPatient(hero, patient, { reason: 'touch' })) break;
+      }
+    }
+  }
+
   // ------------------------------------------------------------
   // Reglas de juego base (pill→patient→door→boss with cart)
   // ------------------------------------------------------------
@@ -3055,9 +3122,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       }
     }
 
-    // 2) Mantener la puerta cerrada hasta atender a todos
+    // 2) Mantener la puerta de urgencias cerrada hasta atender a todos
     if ((G.stats?.remainingPatients || 0) > 0) {
-      if (G.door && !G.door.locked) {
+      if (G.door && (G.door.bossDoor || G.door.isBossDoor || G.door.tag === 'bossDoor') && !G.door.locked) {
         G.door.locked = true;
         G.door.solid = true;
       }
@@ -3219,6 +3286,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     MovementSystem.step(dt);
     resolvePinballCollisions(dt);
     runtimePushableSafety(dt);
+    handleHeroContacts();
 
     // ascensores
     Entities?.Elevator?.update?.(dt);
@@ -4069,6 +4137,7 @@ function drawEntities(c2){
       const isInteractuable = (ent) => {
         if (!ent) return false;
         if (ent.kind === ENT.DOOR) return true;
+        if (ent.kind === ENT.PATIENT || ent.kindName === 'PATIENT') return true;
         if (ent.pushable === true) return true;
         return false;
       };
@@ -4077,13 +4146,22 @@ function drawEntities(c2){
       MouseNav._performUse = (player, target) => {
         if (!target) return;
         if (target.kind === ENT.DOOR){
-          if (window.Doors?.toggle){
+          const isBoss = !!(target.bossDoor || target.isBossDoor || target.tag === 'bossDoor');
+          if (window.Doors?.openUrgentDoor && isBoss) {
+            window.Doors.openUrgentDoor(target, player);
+          } else if (window.Doors?.openNormalDoor) {
+            window.Doors.openNormalDoor(target, player);
+          } else if (window.Doors?.toggle) {
             window.Doors.toggle(target);
           } else {
-            target.solid = !target.solid;
-            target.open = !target.solid;
+            target.solid = false;
+            target.open = true;
             target.color = target.solid ? '#7f8c8d' : '#2ecc71';
           }
+          return;
+        }
+        if (target.kind === ENT.PATIENT || target.kindName === 'PATIENT') {
+          deliverPillToPatient(player, target, { reason: 'click' });
           return;
         }
         if (target.pushable === true){
@@ -4703,6 +4781,7 @@ function drawEntities(c2){
 
   // Exponer algunas APIs esperadas por otros plugins/sistemas
   window.TILE_SIZE = TILE;
+  window.ENABLE_COOP = ENABLE_COOP;
   G.TILE_SIZE = TILE;
   window.ENT = ENT;                 // para plugins/sprites
   window.G = G;

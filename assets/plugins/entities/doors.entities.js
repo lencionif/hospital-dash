@@ -234,6 +234,24 @@
     return true;
   }
 
+  function openNormalDoor(door, hero){
+    if (!door) return false;
+    door.locked = false;
+    return openDoor(door, { by: hero, ignoreLock: true, autoCloseAfter: 2 });
+  }
+
+  function openUrgentDoor(door, hero){
+    if (!door) return false;
+    const ready = (typeof window.ObjectiveSystem?.hasPendingPatients === 'function')
+      ? !window.ObjectiveSystem.hasPendingPatients()
+      : !!(window.GameFlowAPI?.getState?.()?.allDelivered);
+    if (!ready) {
+      notifyLocked(door);
+      return false;
+    }
+    return openDoor(door, { by: hero, holdOpen: true, ignoreLock: true });
+  }
+
   function closeDoor(door, opts={}){
     if (!door) return false;
     door.state = door.state || { open: false, openProgress: 0 };
@@ -251,11 +269,14 @@
 
   function toggleDoor(door, opts={}){
     if (!door) return false;
+    if (door.bossDoor || door.isBossDoor || door.tag === 'bossDoor') {
+      return openUrgentDoor(door, opts.by);
+    }
     if (door.locked && !door.open){
       if (opts.feedback !== false) notifyLocked(door);
       return true;
     }
-    return door.state?.open ? closeDoor(door, opts) : openDoor(door, opts);
+    return door.state?.open ? closeDoor(door, opts) : openNormalDoor(door, opts.by);
   }
 
   function collectDoors(state){
@@ -369,7 +390,7 @@
     return opened;
   }
 
-  window.Doors = { spawn, update, gameflow, open: openDoor, close: closeDoor, toggle: toggleDoor, openUrgencias, hasBlockingPatientsOrFuriosas };
+  window.Doors = { spawn, update, gameflow, open: openDoor, close: closeDoor, toggle: toggleDoor, openUrgencias, openNormalDoor, openUrgentDoor, hasBlockingPatientsOrFuriosas };
   window.hasBlockingPatientsOrFuriosas = hasBlockingPatientsOrFuriosas;
   window.DoorsAPI = {
     toggleNearest: (entity, radius)=> toggleNearestDoor(entity, { radius }),
@@ -397,6 +418,8 @@
     close: closeDoor,
     toggle: toggleDoor,
     tryOpen: openDoor,
-    tryClose: closeDoor
+    tryClose: closeDoor,
+    openNormalDoor,
+    openUrgentDoor
   };
 })();
