@@ -67,10 +67,10 @@ function bindSkip(){
     if (unlocked) return;
     unlocked = true;
     try {
-      if (window.MusicAPI?.playIntro) {
+      if (window.MusicManager?.fadeTo) {
         if (!window.__introMusicStarted) {
           window.__introMusicStarted = true;      // ← marca que ya suena la intro
-          MusicAPI.playIntro({ fade: 0.2 });
+          MusicManager.fadeTo('intro', { fadeTime: 0.2 });
         }
       }
     } catch(_) {}
@@ -153,8 +153,8 @@ __on(overlay, 'pointerdown', unlock, { once:true, passive:true, capture:true });
 
     // Asegura que, si el navegador bloqueó audio, al primer gesto o aquí suene.
     try{
-      if (W.MusicAPI && MusicAPI.playIntro) {
-        if (!window.__introMusicStarted) { window.__introMusicStarted = true; MusicAPI.playIntro({ fade: 0.3 }); } // no reintentar si ya sonaba
+      if (W.MusicManager && MusicManager.fadeTo) {
+        if (!window.__introMusicStarted) { window.__introMusicStarted = true; MusicManager.fadeTo('intro', { fadeTime: 0.3 }); } // no reintentar si ya sonaba
       }
     }catch(_){}
 
