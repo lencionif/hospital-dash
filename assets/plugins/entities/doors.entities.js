@@ -8,10 +8,12 @@
   'use strict';
 
   const W = typeof window !== 'undefined' ? window : globalThis;
+  const ENT = (W && (W.ENT || (W.G && W.G.ENT))) || {};
   const TILE = W.TILE_SIZE || W.TILE || 32;
   const DEBUG_DOORS = false;
   const INTERACT_RADIUS = TILE * 1.5;
   const OPEN_SPEED = 1 / 0.5; // abrir/cerrar en ~0.5s
+  const DOOR_INTERACT_TAG = '_doorInteractHook';
 
   function logDebug(...args) {
     if (!DEBUG_DOORS) return;
@@ -23,13 +25,30 @@
     const target = state || G;
     if (!Array.isArray(target.entities)) target.entities = [];
     if (!Array.isArray(target.doors)) target.doors = [];
+    const hooks = Array.isArray(target.onInteract)
+      ? target.onInteract
+      : Array.isArray(G.onInteract)
+        ? G.onInteract
+        : [];
+    if (!Array.isArray(target.onInteract)) target.onInteract = hooks;
+    if (!Array.isArray(G.onInteract)) G.onInteract = hooks;
+    if (!hooks.some(fn => fn && fn[DOOR_INTERACT_TAG])) {
+      const handler = (hero) => {
+        const door = findNearestDoor(hero, INTERACT_RADIUS, target);
+        if (!door) return false;
+        return onHeroInteractDoor(hero, door);
+      };
+      handler[DOOR_INTERACT_TAG] = true;
+      hooks.push(handler);
+    }
     return target;
   }
 
   function ensureRig(door) {
     try {
-      const puppet = W.Puppet?.bind?.(door, door.kind === 'door_urgencias' ? 'door_urgencias' : 'door', { z: 0, scale: 1 })
-        || W.PuppetAPI?.attach?.(door, { rig: door.kind === 'door_urgencias' ? 'door_urgencias' : 'door', z: 0, scale: 1 });
+      const rig = door.kindName === 'door_urgencias' || door.doorType === 'door_urgencias' ? 'door_urgencias' : 'door';
+      const puppet = W.Puppet?.bind?.(door, rig, { z: 0, scale: 1 })
+        || W.PuppetAPI?.attach?.(door, { rig, z: 0, scale: 1 });
       if (puppet) door.rig = puppet;
       door.rigOk = !!puppet;
     } catch (_) {
@@ -40,10 +59,12 @@
   function createDoor(x, y, opts = {}) {
     const state = resolveState(opts.state);
     const bossDoorFlag = !!(opts.bossDoor || opts.isBossDoor || opts.tag === 'bossDoor' || String(opts.kind || '').toLowerCase() === 'urgencias');
-    const kind = bossDoorFlag ? 'door_urgencias' : 'door';
+    const doorKindName = bossDoorFlag ? 'door_urgencias' : 'door';
     const door = {
       id: opts.id || `door_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      kind,
+      kind: Number.isFinite(ENT?.DOOR) ? ENT.DOOR : 'door',
+      kindName: doorKindName,
+      doorType: doorKindName,
       bossDoor: bossDoorFlag,
       x: Number(x) || 0,
       y: Number(y) || 0,
@@ -144,14 +165,11 @@
   }
 
   function onHeroInteractDoor(hero, door) {
-    if (!hero || !door) return;
+    if (!hero || !door) return false;
     const distOk = distanceSq({ x: door.x, y: door.y }, { x: hero.x, y: hero.y }) <= (INTERACT_RADIUS * INTERACT_RADIUS);
-    if (!distOk) return;
-    if (door.bossDoor || door.kind === 'door_urgencias') {
-      openBossDoor(door);
-    } else {
-      openNormalDoor(door);
-    }
+    if (!distOk) return false;
+    const isBoss = door.bossDoor || door.kindName === 'door_urgencias' || door.doorType === 'door_urgencias';
+    return isBoss ? openBossDoor(door) : openNormalDoor(door);
   }
 
   function openUrgencias(state) {
@@ -180,7 +198,13 @@
     let best = null;
     let bestD2 = Infinity;
     for (const door of list) {
-      if (!door || door.kind !== 'door' && !door.bossDoor && door.kind !== 'door_urgencias') continue;
+      const kindId = Number.isFinite(ENT?.DOOR) ? ENT.DOOR : null;
+      const namedKind = door.kindName || door.doorType || door.kind;
+      const isDoorEntity = door?.bossDoor
+        || (kindId != null && door.kind === kindId)
+        || namedKind === 'door'
+        || namedKind === 'door_urgencias';
+      if (!isDoorEntity) continue;
       const d2 = distanceSq(origin, door);
       if (d2 > maxR2) continue;
       if (d2 < bestD2) { bestD2 = d2; best = door; }
@@ -196,7 +220,8 @@
 
   function openDoorGeneric(door) {
     if (!door) return false;
-    return door.bossDoor || door.kind === 'door_urgencias'
+    const isBoss = door.bossDoor || door.kindName === 'door_urgencias' || door.doorType === 'door_urgencias';
+    return isBoss
       ? openBossDoor(door)
       : openNormalDoor(door);
   }
