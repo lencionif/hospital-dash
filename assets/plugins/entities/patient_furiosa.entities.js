@@ -155,6 +155,8 @@
     const api = heroAPI();
     if (api && typeof api.applyDamage === 'function') {
       api.applyDamage(hero, amount, meta);
+    } else if (typeof hero?.takeDamage === 'function') {
+      hero.takeDamage(amount, meta);
     } else if (hero) {
       hero.hp = Math.max(0, (hero.hp || 0) - amount);
     }

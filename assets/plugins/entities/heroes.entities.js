@@ -84,6 +84,7 @@
       x: Math.round(x), y: Math.round(y),
       w, h,
       solid: true,
+      collisionLayer: 'living',
       pushable: true,
       vx: 0, vy: 0,
       ax: 0, ay: 0,
@@ -112,6 +113,26 @@
       _fogRange: null,
       _lastHitAt: 0,
       _destroyCbs: [],
+      takeDamage(amount = 1, meta = {}){
+        const src = meta?.source || meta?.attacker || null;
+        const invuln = Number.isFinite(meta?.invuln) ? meta.invuln : 0.6;
+        this.invuln = Math.max(this.invuln || 0, invuln);
+        try { applyDamage(this, amount, src); } catch (_) {}
+        if (meta?.knockbackFrom && window.Physics?.applyImpulse) {
+          try {
+            window.Physics.applyImpulse(this, meta.knockbackFrom.vx || 0, meta.knockbackFrom.vy || 0);
+          } catch (_) {}
+        }
+        if (typeof window.LogCollision === 'function') {
+          try {
+            window.LogCollision('HERO_DAMAGE', {
+              source: src || meta?.reason || 'impact',
+              hp: this.hp,
+              heroId: this.id || this.heroId || this.hero || null,
+            });
+          } catch (_) {}
+        }
+      },
       // util
       onDestroy(){ for(const fn of this._destroyCbs) try{ fn(); }catch(e){}; this._destroyCbs.length=0; },
     };
