@@ -352,6 +352,15 @@
     setObjectiveFindPill('level_start');
   }
 
+  function hasPendingPatients() {
+    const { pending, furious } = getRemainingPatients();
+    return (pending | 0) > 0 || (furious | 0) > 0;
+  }
+
+  function canOpenBossDoor() {
+    return !hasPendingPatients();
+  }
+
   function getArrowTarget(Gref) {
     const G = Gref || getGame();
     const target = computeTarget(G);
@@ -372,7 +381,14 @@
     onCartDelivered,
     resetForLevel,
     getArrowTarget,
+    hasPendingPatients,
+    canOpenBossDoor,
   };
 
   W.ObjectiveSystem = ObjectiveSystem;
+  W.ObjectiveFlowAPI = {
+    getRemainingPatients,
+    hasPendingPatients,
+    canOpenBossDoor,
+  };
 })(this);
