@@ -177,6 +177,7 @@
   <script defer src="./assets/plugins/hud.plugin.js"></script>
   <script defer src="./assets/plugins/audio.plugin.js"></script>
   <script defer src="./assets/plugins/music.plugin.js"></script>
+  <script defer src="./assets/plugins/music.manager.plugin.js"></script>
   <script defer src="./assets/plugins/dialog.plugin.js"></script>
   <script defer src="./assets/plugins/presentation.plugin.js"></script>
   <script defer src="./assets/plugins/mouse.control.plugin.js"></script>
@@ -270,10 +271,10 @@
 </script>
 
 <script>
-  window.addEventListener('load', () => { 
+  window.addEventListener('load', () => {
     // ---- flujo normal (sin ?mini=1 ni ?map=mini|debug) ----
-    if (window.MusicAPI && MusicAPI.init) {
-      MusicAPI.init({ urls: { intro: './assets/audio/intro.ogg' } });
+    if (window.MusicManager && MusicManager.init) {
+      MusicManager.init({ volume: 0.8, fadeTime: 2.0 });
     }
     if (window.PresentationAPI && PresentationAPI.playIntroSequence) {
       PresentationAPI.playIntroSequence();

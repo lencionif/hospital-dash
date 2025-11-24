@@ -152,6 +152,12 @@
     hudBg: '#0b0d10',
   };
 
+  const musicTrackForLevel = (level) => {
+    if (level === 2) return 'level2';
+    if (level === 3) return 'level3';
+    return 'level1';
+  };
+
   // Balance (ligero; extensible sin romper APIs)
   const BALANCE = {
     physics: {
@@ -3224,6 +3230,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // ------------------------------------------------------------
   function update(dt){
     window.SkyFX?.update?.(dt);
+    try { window.MusicManager?.update?.(dt); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[MusicManager]', err); }
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
     try { window.Narrator?.tick?.(dt, G); } catch(e){}
     const isPlaying = (G.state === 'PLAYING');
@@ -4492,6 +4499,7 @@ function drawEntities(c2){
     });
     window.LOG?.event('START_GAME', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
     window.LOG?.event('LEVEL_START', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
+    try { window.MusicManager?.fadeTo?.(musicTrackForLevel(targetLevel), { fadeTime: 2.0 }); } catch (_) {}
 
     startScreen.classList.add('hidden');
     pausedScreen.classList.add('hidden');
@@ -4703,6 +4711,15 @@ function drawEntities(c2){
   function attachUIHandlers(){
     if (attachUIHandlers._done) return;
     attachUIHandlers._done = true;
+    const startOverlay = document.getElementById('start-screen');
+    if (startOverlay && !attachUIHandlers._musicBound) {
+      attachUIHandlers._musicBound = true;
+      const kickMenuMusic = () => {
+        try { window.MusicManager?.fadeTo?.('main_menu', { fadeTime: 2.0 }); } catch (_) {}
+      };
+      startOverlay.addEventListener('pointerdown', kickMenuMusic, { once: true, passive: true });
+      window.addEventListener('keydown', kickMenuMusic, { once: true, capture: true });
+    }
     const startBtn = document.getElementById('start-button');
     if (startBtn){
       startBtn.addEventListener('click', () => {

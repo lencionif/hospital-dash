@@ -34,6 +34,15 @@
     gameover:    (typeof document !== 'undefined') ? document.getElementById('game-over-screen') : null
   };
 
+  const musicFade = (id, fadeTime = 2.0) => {
+    try { window.MusicManager?.fadeTo?.(id, { fadeTime }); } catch (_) {}
+  };
+  const levelTrackFor = (level) => {
+    if (level === 2) return 'level2';
+    if (level === 3) return 'level3';
+    return 'level1';
+  };
+
   let readyOverlayEl = null;
   let readyContentEl = null;
   const readyTimers = [];
@@ -261,6 +270,7 @@
       lockBossDoor();
       syncUrgenciasFromStats();
       if (W.FogAPI && typeof W.FogAPI.reset === 'function') W.FogAPI.reset();
+      musicFade(levelTrackFor(S.level));
       try {
         W.Narrator?.say?.('level_start', { level: S.level });
         W.Narrator?.progress?.();
@@ -311,6 +321,7 @@
 
     notifyBossFinalDelivered() {
       S.finalDelivered = true;
+      musicFade('fire_escape');
     },
 
     notifyHeroDeath() {
@@ -500,6 +511,10 @@
       W.Narrator?.say?.('door_open', { level: S.level, remaining });
       W.Narrator?.progress?.();
     } catch (_) {}
+    // Música según fase del nivel
+    if (S.level === 1) musicFade('boss1');
+    else if (S.level === 2) musicFade('boss2');
+    else if (S.level === 3) musicFade('pre_final_boss');
   }
 
   // Fog + Zoom al boss
@@ -695,6 +710,7 @@
         totalPatients: S.totalPatients || 0,
       });
     }
+    musicFade('score');
     try {
       W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 });
       W.Narrator?.progress?.();
