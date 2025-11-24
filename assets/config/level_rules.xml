@@ -62,6 +62,8 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="2"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
 
+    <!-- kind="door"      → puerta normal, siempre abrible -->
+    <!-- kind="urgencias" → puerta de urgencias (boss), bloqueada hasta curar pacientes -->
     <!-- Puerta urgencias -->
     <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
 
@@ -120,6 +122,8 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="1"/>
 
+    <!-- kind="door"      → puerta normal, siempre abrible -->
+    <!-- kind="urgencias" → puerta de urgencias (boss), bloqueada hasta curar pacientes -->
     <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
 
     <rule type="elevator" count="2"
@@ -173,6 +177,8 @@
     <rule type="cart"  kind="medicina"  perRoom="0-1" count="3"/>
     <rule type="cart"  kind="urgencias" perRoom="0-1" count="2"/>
 
+    <!-- kind="door"      → puerta normal, siempre abrible -->
+    <!-- kind="urgencias" → puerta de urgencias (boss), bloqueada hasta curar pacientes -->
     <rule type="door"  kind="urgencias" at="bossRoomEntrance"/>
 
     <rule type="elevator" count="2"

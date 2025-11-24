@@ -428,12 +428,15 @@
   function handleDoorRule(rule, context, placements){
     const tile = resolveDoorTile(rule, context);
     if (!tile) return;
+    const kind = String(rule.kind || 'door');
+    const isBoss = kind.toLowerCase() === 'urgencias' || rule.bossDoor === true;
     placements.push({
       type: 'door',
       tx: tile.tx,
       ty: tile.ty,
-      sub: rule.kind || 'door',
-      bossDoor: String(rule.kind || '').toLowerCase().includes('urgencias')
+      sub: kind,
+      kind,
+      bossDoor: isBoss
     });
     markOccupied(context, tile.tx, tile.ty);
   }

@@ -4137,17 +4137,10 @@ function drawEntities(c2){
       MouseNav._performUse = (player, target) => {
         if (!target) return;
         if (target.kind === ENT.DOOR){
-          const isBoss = !!(target.bossDoor || target.isBossDoor || target.tag === 'bossDoor');
-          if (window.Doors?.openUrgentDoor && isBoss) {
-            window.Doors.openUrgentDoor(target, player);
-          } else if (window.Doors?.openNormalDoor) {
-            window.Doors.openNormalDoor(target, player);
-          } else if (window.Doors?.toggle) {
-            window.Doors.toggle(target);
-          } else {
-            target.solid = false;
-            target.open = true;
-            target.color = target.solid ? '#7f8c8d' : '#2ecc71';
+          if (window.DoorAPI?.onHeroInteractDoor) {
+            window.DoorAPI.onHeroInteractDoor(G.player, target);
+          } else if (window.Doors?.onHeroInteractDoor) {
+            window.Doors.onHeroInteractDoor(G.player, target);
           }
           return;
         }
