@@ -539,6 +539,7 @@
       const qs = (q.get('hero') || '').toLowerCase();
       const k = (p?.heroId || p?.hero || p?.skin || p?.sub || window.START_HERO_ID || qs || G.selectedHero || 'enrique').toLowerCase();
       G.selectedHero = k; // persistimos la selección para el resto del motor
+      window.START_HERO_ID = window.START_HERO_ID || k;
       return k;
     },
 
@@ -547,8 +548,13 @@
     spawnPlayer(x, y, p = {}) {
       const key = this.resolveKey(p);
       const e = createPlayer(x, y, key); G.selectedHero = key; window.selectedHeroKey = key; e.spriteKey = key; e.heroId = key;
+      window.START_HERO_ID = window.START_HERO_ID || key;
       window.G = window.G || {};
       G.selectedHero = key;
+      if (!window.ENABLE_COOP && G.player && G.player !== e) {
+        // Bloqueo explícito de héroe cooperativo/duplicado
+        return G.player;
+      }
       ensureOnArrays(e);
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
@@ -614,6 +620,10 @@
 
     // Seguidor opcional (compat con placement: type=follower, sub=...)
     spawnFollower(sub, x, y, p = {}) {
+      if (window.ENABLE_COOP === false) {
+        console.info('[Hero] modo coop desactivado, no se generan followers.');
+        return null;
+      }
       const key = (sub || p.sub || 'francesco').toLowerCase();
       const e = createPlayer(x, y, key);
       e.tag = 'follower';

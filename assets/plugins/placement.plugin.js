@@ -1394,8 +1394,11 @@
     const py = world.y + tile * 0.5;
     const heroKey = G?.selectedHero || cfg?.heroKey || root.selectedHeroKey;
     const opts = heroKey ? { skin: heroKey } : {};
-    const hero = root.Entities?.Hero?.spawnPlayer?.(px, py, opts)
-      || root.Entities?.Hero?.spawn?.(px, py, opts)
+    if (!root.ENABLE_COOP && G.player) {
+      return G.player;
+    }
+    const hero = root.Entities?.Hero?.spawnPlayer?.(px, py, { ...opts, heroId: heroKey })
+      || root.Entities?.Hero?.spawn?.(px, py, { ...opts, heroId: heroKey })
       || {
         kind: 'HERO',
         x: px,
@@ -1403,10 +1406,12 @@
         w: tile * 0.8,
         h: tile * 0.85,
         key: heroKey || 'hero_enrique',
+        heroId: heroKey || 'enrique',
         rigOk: false
       };
     if (hero && !hero.rigOk) hero.rigOk = true;
     placeEntitySafely(hero, G, tx, ty, { char: 'S', maxRadius: 12 });
+    G.player = hero;
     return hero;
   }
 

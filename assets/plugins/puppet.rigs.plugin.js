@@ -1,6 +1,8 @@
 (function(){
   const API = window.PuppetAPI; if (!API) return;
 
+  const DEBUG_RIGS_CHECK = false;
+
   const TAU = Math.PI * 2;
   const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
   const clamp255 = (v) => Math.max(0, Math.min(255, Number.isFinite(v) ? v | 0 : 0));
@@ -2023,7 +2025,7 @@
   }
 
   try {
-    if (window.DEBUG_COLLISIONS && typeof console !== 'undefined' && typeof console.debug === 'function'){
+    if (DEBUG_RIGS_CHECK && typeof console !== 'undefined' && typeof console.debug === 'function'){
       console.debug('[RIG_INIT] HERO_ACTION_CLASS_MAP keys:', Object.keys(HERO_ACTION_CLASS_MAP));
       console.debug('[RIG_INIT] Rigs de héroes registrados correctamente');
     }
@@ -2035,7 +2037,7 @@
     heroRigDiagnosticsDone = true;
     if (typeof window === 'undefined') return;
     const registry = window.Puppet?.RIGS || {};
-    if (window.DEBUG_COLLISIONS){
+    if (DEBUG_RIGS_CHECK){
       for (const hero of Object.keys(HERO_DRAW_PROFILE)){
         const id = `hero_${hero}`;
         if (registry && registry[id]){
