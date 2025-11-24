@@ -704,6 +704,7 @@
       HUD_DOM.objectiveText.textContent = objectiveOverride || fallback;
     }
   };
+  HUD.setHeroFace = setHeroFace;
 
   W.HUD = HUD;
   // Inicializa con posición por defecto (móvil abajo / PC arriba)

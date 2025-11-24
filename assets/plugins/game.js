@@ -1395,6 +1395,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // ------------------------------------------------------------
   // Creación de entidades
   // ------------------------------------------------------------
+  const ENABLE_COOP = false;
   // === Defaults de física por tipo (fallback si el spawn no los pasa) ===
   const PHYS_DEFAULTS = {};
   PHYS_DEFAULTS[ENT.PLAYER]   = { mass: 1.00, rest: 0.10, mu: 0.12 };
@@ -1434,65 +1435,48 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     return e;
   }
 
-  function makePlayer(x, y) {
-    // Lee la selección (si no la hay, cae en 'enrique')
-    const key =
-      (window.START_HERO_ID) ||
-      (window.selectedHeroKey) ||
-      ((window.G && G.selectedHero) ? G.selectedHero : null) ||
-      'enrique';
+  function createMainHero(opts = {}) {
+    const heroId = opts.heroId || window.START_HERO_ID || window.selectedHeroKey || (G.selectedHero) || 'enrique';
+    const x = opts.x ?? 0;
+    const y = opts.y ?? 0;
 
-    // Camino correcto: usa la API de héroes (aplica corazones y stats)
+    if (!ENABLE_COOP && G.player) return G.player;
+
     if (window.Entities?.Hero?.spawnPlayer) {
-      const p = window.Entities.Hero.spawnPlayer(x, y, { skin: key, heroId: key });
-      // 🛡️ Defaults “sanos” si la skin no los define:
-      p.mass     = (p.mass     != null) ? p.mass     : 1.00;
-      p.rest     = (p.rest     != null) ? p.rest     : 0.10;
-      p.mu       = (p.mu       != null) ? p.mu       : 0.12;
-      p.maxSpeed = (p.maxSpeed != null) ? p.maxSpeed : (BALANCE.physics.maxSpeedPlayer || 240);
-      p.accel    = (p.accel    != null) ? p.accel    : 1000;
-      p.pushForce= (p.pushForce!= null) ? p.pushForce: FORCE_PLAYER;
-      p.facing   = p.facing || 'S';
-
-      // === Giro más sensible por defecto ===
-      p.turnSpeed = (p.turnSpeed != null) ? p.turnSpeed : 4.5;
-      p.lookAngle = (typeof p.lookAngle === 'number')
-        ? p.lookAngle
-        : (p.facing === 'E' ? 0 :
-           p.facing === 'S' ? Math.PI/2 :
-           p.facing === 'W' ? Math.PI : -Math.PI/2);
-
-      p.heroId = (p.heroId || key);
-      if (!p.hero) p.hero = key;
-      if (!p.inventory) p.inventory = {};
-
-      G.player = p;
-      G.player.heroId = p.heroId;
-      return p;
+      const hero = window.Entities.Hero.spawnPlayer(x, y, { heroId, skin: heroId });
+      hero.heroId = hero.heroId || heroId;
+      hero.hero = hero.hero || heroId;
+      if (!hero.inventory) hero.inventory = {};
+      G.player = hero;
+      console.debug('[HERO_CREATE]', { id: hero.heroId, x: hero.x, y: hero.y, isCoop: !!hero.isCoop, isMain: true });
+      return hero;
     }
 
-    // Fallback de emergencia (por si faltara la API)
     const p = makeRect(x, y, TILE * 0.8, TILE * 0.8, ENT.PLAYER, COLORS.player, false);
     p.speed = 4.0;
     p.pushForce = FORCE_PLAYER;
     p.invuln = 0;
     p.facing = 'S';
     p.pushAnimT = 0;
-    p.skin = key;
-    p.hero = key;
-    p.heroId = key;
+    p.skin = heroId;
+    p.hero = heroId;
+    p.heroId = heroId;
     p.inventory = p.inventory || {};
     p.maxSpeed = 440;
     p.accel = 1000;
-
-    // === Giro más sensible por defecto ===
     p.turnSpeed = 4.5;
-    p.lookAngle = Math.PI / 2; // SUR
-    // Asegura corazones mínimos si no hay API
+    p.lookAngle = Math.PI / 2;
     p.hp = p.hp || 3;
     p.hpMax = p.hpMax || 3;
     MovementSystem.register(p);
+    G.player = p;
+    console.debug('[HERO_CREATE]', { id: p.heroId, x: p.x, y: p.y, isCoop: !!p.isCoop, isMain: true });
     return p;
+  }
+
+  function makePlayer(x, y) {
+    const key = (window.START_HERO_ID) || (window.selectedHeroKey) || (G.selectedHero) || 'enrique';
+    return createMainHero({ x, y, heroId: key });
   }
   // --------- Spawn de mosquito (enemigo básico) ----------
   function spawnMosquito(x, y) {
@@ -4725,6 +4709,10 @@ function drawEntities(c2){
       startBtn.addEventListener('click', () => {
         const heroId = ensureHeroSelected();
         window.START_HERO_ID = heroId;
+        if (window.GameFlowAPI?.startGameFromMenu) {
+          window.GameFlowAPI.startGameFromMenu({ heroId });
+          return;
+        }
         requestAnimationFrame(() => startGame({ heroId }));
       });
     }

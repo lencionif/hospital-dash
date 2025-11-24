@@ -51,6 +51,13 @@
     ? W.requestAnimationFrame.bind(W)
     : (fn) => setTimeout(fn, 16);
 
+  function readSelectedHeroId(){
+    if (typeof document === 'undefined') return window.START_HERO_ID || 'enrique';
+    const selectedCard = document.querySelector('.char-card.selected');
+    const heroId = selectedCard ? selectedCard.getAttribute('data-hero') : null;
+    return (heroId || window.START_HERO_ID || 'enrique').toLowerCase();
+  }
+
   function ensureReadyOverlay(){
     if (readyOverlayEl || typeof document === 'undefined') return readyOverlayEl;
     const overlay = document.createElement('div');
@@ -251,6 +258,20 @@
       resetLevelState();
       S.running = true;
       return GameFlow;
+    },
+
+    startGameFromMenu(opts = {}) {
+      const levelId = opts.levelId || opts.level || 1;
+      const heroId = (opts.heroId || readSelectedHeroId()).toLowerCase();
+      window.START_HERO_ID = heroId;
+      try { window.G = window.G || {}; window.G.selectedHero = heroId; } catch (_) {}
+      try { window.GameAPI?.startGame?.({ levelId, heroId }); } catch (_) {}
+      try { window.startGame?.({ level: levelId, heroId }); } catch (_) {}
+      return heroId;
+    },
+
+    getSelectedHeroId(){
+      return readSelectedHeroId();
     },
 
     // Llamar cuando cargues o reinicies un nivel
@@ -721,7 +742,21 @@
   function showOverlay(el) { if (el && el.classList) el.classList.remove('hidden'); }
   function hideOverlay(el) { if (el && el.classList) el.classList.add('hidden'); }
 
+  function bindStartScreen(){
+    if (bindStartScreen._done || typeof document === 'undefined') return;
+    bindStartScreen._done = true;
+    const startBtn = document.getElementById('start-button');
+    if (startBtn){
+      startBtn.addEventListener('click', () => {
+        const heroId = readSelectedHeroId();
+        window.START_HERO_ID = heroId;
+        GameFlow.startGameFromMenu({ heroId });
+      });
+    }
+  }
+
   // Exponer módulo
   W.GameFlowAPI = GameFlow;
+  bindStartScreen();
 
 })(this);

@@ -3755,6 +3755,29 @@
   registerSpawnerRig('npc', 'spawner_npc.png');
   registerSpawnerRig('cart', 'spawner_carros.png');
 
+  // ────────────────────── Rigs simples de héroes (single player) ─────────────────────
+  function registerSimpleHeroRig(heroId){
+    API.registerRig(`hero_${heroId}`, {
+      create(){
+        return { heroId };
+      },
+      update(st, e){ st.heroId = e?.heroId || heroId; },
+      draw(ctx, cam, e){
+        if (!ctx || !e) return;
+        const [cx, cy, sc] = toScreen(cam, e);
+        const tile = getTileSizePx();
+        const size = tile * 0.9 * sc;
+        ctx.save();
+        ctx.translate(cx, cy);
+        drawShadow(ctx, tile * 0.28, sc, 0.3, 0.2);
+        drawSprite(ctx, `${heroId}.png`, size, size, '#566074');
+        ctx.restore();
+      }
+    });
+  }
+
+  ['enrique', 'roberto', 'francesco'].forEach(registerSimpleHeroRig);
+
   try {
     if (window.DEBUG_COLLISIONS) {
       console.info('[BOOT_CHECK] puppet.rigs.plugin.js OK – HERO_ACTION_CLASS_MAP definido una única vez, juego arrancando sin errores de sintaxis');
