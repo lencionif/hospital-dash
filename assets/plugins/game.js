@@ -2183,7 +2183,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     G.currentPill = carry;
     carrier.inventory = carrier.inventory || {};
     carrier.inventory.medicine = Object.assign({}, carry);
-    console.debug('[PILL] Player picked pill', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
+    if (typeof window.LogCollision === 'function') {
+      try {
+        window.LogCollision('PILL_PICKUP', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
+      } catch (_) {}
+    }
     try { window.ObjectiveSystem?.onPillPicked?.(carry); } catch (_) {}
     try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
     if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
@@ -2257,6 +2261,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       : false;
     const safeDist = Number.isFinite(bestDist) ? Number(bestDist.toFixed(2)) : null;
     logPillDeliveryDebug(hero, target, { distance: safeDist, canDeliver, reason: canDeliver ? 'match' : 'target_mismatch' });
+    if (typeof window.LogCollision === 'function') {
+      try {
+        window.LogCollision('PATIENT_TOUCH', { patientId: target.id || null, distance: safeDist, canDeliver });
+      } catch (_) {}
+    }
     if (canDeliver) {
       const delivered = window.PatientsAPI?.deliverPill?.(hero, target);
       if (delivered) afterManualDelivery(target);

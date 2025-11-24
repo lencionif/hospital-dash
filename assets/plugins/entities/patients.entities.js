@@ -387,7 +387,11 @@
     const stats = ensureStats();
     stats.remainingPatients = Math.max(0, (stats.remainingPatients || 0) - 1);
     stats.attended = (stats.attended || 0) + 1;
-    console.debug('[PILL_DELIVERY] Delivered pill to patient', { patientId: patient.id || null, matched: true });
+    if (typeof W.LogCollision === 'function') {
+      try {
+        W.LogCollision('PILL_DELIVER', { patientId: patient.id || null, matched: true });
+      } catch (_) {}
+    }
     patient.state = 'disappear_on_cure';
     patient.attended = true;
     patient.furious = false;
@@ -407,7 +411,11 @@
       try { W.LOG?.event?.('PILL_DELIVER', { patient: patient.id }); } catch (_) {}
       try { W.LOG?.event?.('PATIENTS_COUNTER', counterSnapshot()); } catch (_) {}
     const remainingAfter = stats.remainingPatients || 0;
-    console.debug('[PATIENT] Cured + removed', { patientId: patient.id || null, remainingPatients: remainingAfter });
+    if (typeof W.LogCollision === 'function') {
+      try {
+        W.LogCollision('PATIENT_CURED', { patientId: patient.id || null, remainingPatients: remainingAfter });
+      } catch (_) {}
+    }
     try { W.GameFlowAPI?.notifyPatientDelivered?.(patient); } catch (_) {}
     try { W.ScoreAPI?.addScore?.(100, 'deliver_patient', { patient: patient.displayName }); } catch (_) {}
     try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}

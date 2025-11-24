@@ -8,6 +8,20 @@
   W.LOG.counter = W.LOG.counter || function counter(_k, _v) {};
   W.LOG.event = W.LOG.event || function event(_tag, _payload) {};
 
+  const searchParams = (typeof location !== 'undefined' && typeof location.search === 'string')
+    ? new URLSearchParams(location.search)
+    : null;
+  const debugParam = searchParams ? (searchParams.get('debug') || '') : '';
+  const collisionsFromQuery = debugParam.split(',').some((p) => p.trim().toLowerCase() === 'collisions');
+  W.DEBUG_COLLISIONS = typeof W.DEBUG_COLLISIONS === 'boolean' ? W.DEBUG_COLLISIONS : collisionsFromQuery;
+  function logCollision(event, data) {
+    if (!W.DEBUG_COLLISIONS) return;
+    try {
+      console.log('[COLLISION]', event, data);
+    } catch (_) {}
+  }
+  W.LogCollision = logCollision;
+
   function patientsSnapshot() {
     try {
       if (typeof W.PatientsAPI?.counterSnapshot === 'function') {
