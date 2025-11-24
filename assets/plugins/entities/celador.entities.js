@@ -331,9 +331,9 @@
   function handleCrushFromRecentlyPushed(celador, all){
     const b = B();
     const pushes = all.filter(o=> isPushable(o) && o._lastPushedBy==="CELADOR" && now()-(o._lastPushedTime||0) < 1200);
-    tgt._lastPushedId = e.id || e._nid || e._uid || null;
-    tgt._pushedByEnt  = e;
     for (const obj of pushes){
+      obj._lastPushedId = celador?.id || celador?._nid || celador?._uid || null;
+      obj._pushedByEnt  = celador || null;
       const spd = Math.hypot(obj.vx||0, obj.vy||0);
       if (spd < b.crushSpeedThresh) continue;
       for (const t of all){

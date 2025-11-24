@@ -166,7 +166,7 @@
           e._flashlightId = id;
           e._destroyCbs.push(() => { try { W.LightingAPI?.removeLight?.(id); } catch (_) {} });
         }
-        console.log(`[HeroLight] Linterna ${heroKey} -> radio ${radiusTiles.toFixed(2)} tiles @ ${intensity.toFixed(2)} intensidad`);
+        if (window.DEBUG_COLLISIONS) console.log(`[HeroLight] Linterna ${heroKey} -> radio ${radiusTiles.toFixed(2)} tiles @ ${intensity.toFixed(2)} intensidad`);
       } catch (err) {
         console.warn('[HeroLight] Error al usar Entities.attachFlashlight, se intentará LightingAPI directa.', err);
       }
@@ -186,7 +186,7 @@
       });
       e._flashlightId = id;
       e._destroyCbs.push(() => { try { W.LightingAPI.removeLight(id); } catch(_){} });
-      console.log(`[HeroLight] LightingAPI directa para ${heroKey} (radio ${radiusTiles.toFixed(2)} tiles).`);
+      if (window.DEBUG_COLLISIONS) console.log(`[HeroLight] LightingAPI directa para ${heroKey} (radio ${radiusTiles.toFixed(2)} tiles).`);
     } else if (!W.LightingAPI) {
       console.warn(`[HeroLight] LightingAPI no disponible para ${heroKey}; sólo se verá la linterna CSS.`);
     }
@@ -525,27 +525,33 @@
     // -> crea el jugador con la skin/stats adecuadas y lo inserta en G.entities
     spawnPlayer(x, y, p = {}) {
       const key = this.resolveKey(p);
-      const e = createPlayer(x, y, key); G.selectedHero = key; window.selectedHeroKey = key; e.spriteKey = key;
+      const e = createPlayer(x, y, key); G.selectedHero = key; window.selectedHeroKey = key; e.spriteKey = key; e.heroId = key;
       window.G = window.G || {};
       G.selectedHero = key;
       ensureOnArrays(e);
       e.spec = e.spec || {};
       e.spec.skin = `${key}.png`;
       e.skin = `${key}.png`;
-      const rigName = `hero_${key}`;
+      const rigName = `hero_${e.heroId}`;
+      const rigOptions = { rig: rigName, entity: e, z: 0, scale: 1, data: { hero: e.heroId } };
       let puppet = null;
       try {
-        if (window.Puppet?.bind) {
-          puppet = window.Puppet.bind(e, rigName, { z: 0, scale: 1, data: { hero: key } });
+        if (window.PuppetAPI?.attach) {
+          puppet = window.PuppetAPI.attach(rigOptions);
+          if (!puppet) {
+            puppet = window.PuppetAPI.attach(rigOptions.entity, rigOptions);
+          }
         }
       } catch (err) {
-        console.warn(`[HeroRig] Error en Puppet.bind(${rigName})`, err);
+        console.warn(`[HeroRig] Error en PuppetAPI.attach(${rigName})`, err);
       }
-      if (!puppet && window.PuppetAPI?.attach) {
+      if (!puppet) {
         try {
-          puppet = window.PuppetAPI.attach(e, { rig: rigName, z: 0, scale: 1, data: { hero: key } });
+          if (window.Puppet?.bind) {
+            puppet = window.Puppet.bind(e, rigName, { z: 0, scale: 1, data: { hero: e.heroId } });
+          }
         } catch (err) {
-          console.warn(`[HeroRig] Error en PuppetAPI.attach(${rigName})`, err);
+          console.warn(`[HeroRig] Error en Puppet.bind(${rigName})`, err);
         }
       }
       if (!puppet) {
@@ -560,7 +566,9 @@
           console.debug('[HeroRig] fallback detectado', { requested: rigName, resolved: puppet?.rigName || null });
         }
       } else {
-        try { console.log(`[HeroRig] ${key} vinculado a ${rigName}.`); } catch (_) {}
+        if (window.DEBUG_COLLISIONS) {
+          try { console.log(`[HeroRig] ${key} vinculado a ${rigName}.`); } catch (_) {}
+        }
       }
       const lightOverrides = CFG.light.byHero?.[key] || {};
       attachFlashlight(e, {
@@ -577,7 +585,9 @@
         }
         updateHeroAnimation(e, dt || 0);
       };
-      try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}
+      if (window.DEBUG_COLLISIONS) {
+        try { console.log(`%cHERO spawn => ${key}`, 'color:#9cc2ff;font-weight:bold'); } catch(_){}
+      }
       return e;
     },
 
@@ -619,7 +629,9 @@
           console.debug('[HeroRig] follower fallback detectado', { requested: rigName, resolved: puppet?.rigName || null });
         }
       } else {
-        try { console.log(`[HeroRig] follower ${key} → ${rigName}.`); } catch (_) {}
+        if (window.DEBUG_COLLISIONS) {
+          try { console.log(`[HeroRig] follower ${key} → ${rigName}.`); } catch (_) {}
+        }
       }
       const lightOverrides = CFG.light.byHero?.[key] || {};
       attachFlashlight(e, {

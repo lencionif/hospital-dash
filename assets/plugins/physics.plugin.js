@@ -593,7 +593,7 @@
       } catch (err){
         if (window.DEBUG_FORCE_ASCII) console.warn('[Physics] CineFX configure', err);
       }
-      if (!loggedSummary && isDebugPhysics()){
+      if (!loggedSummary && isDebugPhysics() && window.DEBUG_COLLISIONS){
         const carts = Array.isArray(G?.entities) ? G.entities.filter((it) => isCartEntity(it)).length : 0;
         const pushables = Array.isArray(G?.entities) ? G.entities.filter((it) => it?.pushable).length : 0;
         console.debug('[PHYSICS_CHECK] carts', { count: carts, profile: CFG.cartProfiles });

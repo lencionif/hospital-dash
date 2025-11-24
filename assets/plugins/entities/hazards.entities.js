@@ -138,7 +138,7 @@
           x: e.x+e.w/2, y: e.y+e.h/2, radius: e._lightR, color: e.color, intensity: e._lightI, broken:true
         });
         try {
-          console.log(`[Debug] Fire light: radiusPx=${Math.round(e._lightR)} intensity=${e._lightI.toFixed(2)}.`);
+          if (window.DEBUG_COLLISIONS) console.log(`[Debug] Fire light: radiusPx=${Math.round(e._lightR)} intensity=${e._lightI.toFixed(2)}.`);
         } catch (_) {}
         try { window.Puppet?.__notifyLightsReady?.(); } catch (_) {}
       }
