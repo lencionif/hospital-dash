@@ -158,7 +158,7 @@
     try {
       const label = owner.displayName || owner.name || owner.heroId || owner.kindName || owner.kind || 'entidad';
       const radiusTiles = (radius / TILE).toFixed(2);
-      console.log(`[Debug] Flashlight attached to ${label}: color=${color}, radius=${radius.toFixed(1)}px (${radiusTiles} tiles), intensity=${intensity.toFixed(2)}.`);
+      if (window.DEBUG_COLLISIONS) console.log(`[Debug] Flashlight attached to ${label}: color=${color}, radius=${radius.toFixed(1)}px (${radiusTiles} tiles), intensity=${intensity.toFixed(2)}.`);
     } catch (_) {}
     try { W.Puppet?.__notifyLightsReady?.(); } catch (_) {}
 

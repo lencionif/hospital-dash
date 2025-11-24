@@ -2023,7 +2023,7 @@
   }
 
   try {
-    if (typeof console !== 'undefined' && typeof console.debug === 'function'){
+    if (window.DEBUG_COLLISIONS && typeof console !== 'undefined' && typeof console.debug === 'function'){
       console.debug('[RIG_INIT] HERO_ACTION_CLASS_MAP keys:', Object.keys(HERO_ACTION_CLASS_MAP));
       console.debug('[RIG_INIT] Rigs de héroes registrados correctamente');
     }
@@ -2035,16 +2035,18 @@
     heroRigDiagnosticsDone = true;
     if (typeof window === 'undefined') return;
     const registry = window.Puppet?.RIGS || {};
-    for (const hero of Object.keys(HERO_DRAW_PROFILE)){
-      const id = `hero_${hero}`;
-      if (registry && registry[id]){
-        try {
-          console.log(`[HeroRig] rig "${id}" listo para usarse.`);
-        } catch (_) {}
-      } else {
-        try {
-          console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
-        } catch (_) {}
+    if (window.DEBUG_COLLISIONS){
+      for (const hero of Object.keys(HERO_DRAW_PROFILE)){
+        const id = `hero_${hero}`;
+        if (registry && registry[id]){
+          try {
+            console.log(`[HeroRig] rig "${id}" listo para usarse.`);
+          } catch (_) {}
+        } else {
+          try {
+            console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
+          } catch (_) {}
+        }
       }
     }
   }
@@ -2292,24 +2294,26 @@
     heroDomDiagnosticsDone = true;
     if (typeof window === 'undefined') return;
     const registry = window.Puppet?.RIGS || {};
-    for (const hero of Object.keys(HERO_DOM_CONFIG)){
-      const id = `hero_${hero}`;
-      if (registry && registry[id]){
-        try {
-          console.log(`[HeroRig] rig "${id}" listo para usarse.`);
-        } catch (_) {}
-      } else {
-        try {
-          console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
-        } catch (_) {}
+    if (window.DEBUG_COLLISIONS){
+      for (const hero of Object.keys(HERO_DOM_CONFIG)){
+        const id = `hero_${hero}`;
+        if (registry && registry[id]){
+          try {
+            console.log(`[HeroRig] rig "${id}" listo para usarse.`);
+          } catch (_) {}
+        } else {
+          try {
+            console.warn(`[HeroRig] rig "${id}" no está registrado, se usará fallback si se solicita.`);
+          } catch (_) {}
+        }
       }
+      try {
+        console.info('[HeroRig] Rigs DOM con caras personalizadas activos; no se requiere fallback.');
+      } catch (_) {}
+      try {
+        console.info('[RIG_TEST] Héroes: rigs cargados y animaciones funcionando correctamente; sin fallback.');
+      } catch (_) {}
     }
-    try {
-      console.info('[HeroRig] Rigs DOM con caras personalizadas activos; no se requiere fallback.');
-    } catch (_) {}
-    try {
-      console.info('[RIG_TEST] Héroes: rigs cargados y animaciones funcionando correctamente; sin fallback.');
-    } catch (_) {}
   }
 
   if (typeof document !== 'undefined'){
@@ -3750,6 +3754,8 @@
   registerSpawnerRig('cart', 'spawner_carros.png');
 
   try {
-    console.info('[BOOT_CHECK] puppet.rigs.plugin.js OK – HERO_ACTION_CLASS_MAP definido una única vez, juego arrancando sin errores de sintaxis');
+    if (window.DEBUG_COLLISIONS) {
+      console.info('[BOOT_CHECK] puppet.rigs.plugin.js OK – HERO_ACTION_CLASS_MAP definido una única vez, juego arrancando sin errores de sintaxis');
+    }
   } catch (_) {}
 })();

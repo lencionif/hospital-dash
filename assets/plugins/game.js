@@ -967,11 +967,11 @@
 
     // Al pulsar "Empezar turno", asegúrate de tener una clave
     document.getElementById('start-button')?.addEventListener('click', () => {
-      if (!window.selectedHeroKey) {
-        const first = document.querySelector('#start-screen .char-card[data-hero]');
-        window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
-      }
-      window.START_HERO_ID = window.selectedHeroKey || 'francesco';
+      const selectedCard = document.querySelector('#start-screen .char-card.selected')
+        || document.querySelector('#start-screen .char-card[data-hero]');
+      const chosen = (selectedCard?.dataset?.hero || window.selectedHeroKey || 'enrique').toLowerCase();
+      window.selectedHeroKey = chosen;
+      window.START_HERO_ID = chosen || 'francesco';
       window.G.selectedHero = window.START_HERO_ID;
     });
   })();

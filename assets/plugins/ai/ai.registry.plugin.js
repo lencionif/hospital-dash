@@ -28,7 +28,7 @@
       const key = toKey(name);
       if (!key || typeof handler !== 'function') return;
       this._entities.set(key, handler);
-      LOG()?.info?.('[AI] register entity', { key });
+      if (W.DEBUG_COLLISIONS) LOG()?.info?.('[AI] register entity', { key });
       this._ensureOrder(key, 'entity');
     },
 
@@ -36,7 +36,7 @@
       const key = toKey(name);
       if (!key || typeof handler !== 'function') return;
       this._systems.set(key, handler);
-      LOG()?.info?.('[AI] register system', { key });
+      if (W.DEBUG_COLLISIONS) LOG()?.info?.('[AI] register system', { key });
       this._ensureOrder(key, 'system');
     },
 
@@ -52,7 +52,7 @@
         try {
           handler(G, dt);
         } catch (err) {
-          LOG()?.warn?.('[AI] system error', { key, err });
+          if (W.DEBUG_COLLISIONS) LOG()?.warn?.('[AI] system error', { key, err });
         }
       }
 
@@ -66,7 +66,7 @@
         try {
           handler(ent, G, dt);
         } catch (err) {
-          LOG()?.warn?.('[AI] entity error', { key, entity: ent.id || ent.kind || null, err });
+          if (W.DEBUG_COLLISIONS) LOG()?.warn?.('[AI] entity error', { key, entity: ent.id || ent.kind || null, err });
         }
       }
     },

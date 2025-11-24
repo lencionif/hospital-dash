@@ -128,9 +128,11 @@
         if (distanceSq != null && heroInfo?.hero && ent !== heroInfo.hero){
           extra = ` (dist≈${Math.sqrt(distanceSq).toFixed(1)}px)`;
         }
-        try {
-          console.log(`[Puppet] ${active ? 'Activando' : 'Desactivando'} ${label}${extra}`);
-        } catch (_) {}
+        if (window.DEBUG_COLLISIONS) {
+          try {
+            console.log(`[Puppet] ${active ? 'Activando' : 'Desactivando'} ${label}${extra}`);
+          } catch (_) {}
+        }
       }
     }
     const summaryKey = `${activeCount}|${inactiveCount}`;
@@ -139,9 +141,11 @@
       const radiusPx = heroInfo?.radius ? Math.round(heroInfo.radius) : 0;
       const tileSize = getTileSize();
       const radiusTiles = radiusPx > 0 && tileSize > 0 ? radiusPx / tileSize : resolveVisualRadiusTiles();
-      try {
-        console.log(`[Puppet] Radio visual ≈ ${radiusTiles.toFixed(1)} tiles (~${radiusPx}px). Activos: ${activeCount}, Inactivos: ${inactiveCount}.`);
-      } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try {
+          console.log(`[Puppet] Radio visual ≈ ${radiusTiles.toFixed(1)} tiles (~${radiusPx}px). Activos: ${activeCount}, Inactivos: ${inactiveCount}.`);
+        } catch (_) {}
+      }
       debugStatus.activity = true;
       maybeReportIntegrationSuccess();
     }
@@ -196,6 +200,10 @@
   }
 
   function attach(entity, opts={}){
+    if (entity && typeof entity === 'object' && entity.entity && !opts.entity && opts !== entity){
+      opts = entity;
+      entity = opts.entity;
+    }
     if (!entity) return null;
     detach(entity);
     const requestedRig = opts.rig || opts.name || entity.rigName;
@@ -283,9 +291,11 @@
     if (rigCheckTargets.has(name)){
       const label = describeEntity(entity) || entity?.kind || entity?.tag || 'Entidad';
       const status = name === 'default' ? '⚠️' : '✔';
-      try {
-        console.info(`[RigCheck] ${label} -> rigName=${name} ${status}`);
-      } catch (_) {}
+      if (window.DEBUG_COLLISIONS) {
+        try {
+          console.info(`[RigCheck] ${label} -> rigName=${name} ${status}`);
+        } catch (_) {}
+      }
     }
     return puppet;
   }
@@ -426,9 +436,11 @@
     if (debugStatus.successAnnounced) return;
     if (!debugStatus.rigs || !debugStatus.lights || !debugStatus.activity) return;
     debugStatus.successAnnounced = true;
-    try {
-      console.log('[Debug] All animations and systems integrated successfully. Rigs: OK, Lights: OK, Off-screen optimization: OK.');
-    } catch (_) {}
+    if (window.DEBUG_COLLISIONS) {
+      try {
+        console.log('[Debug] All animations and systems integrated successfully. Rigs: OK, Lights: OK, Off-screen optimization: OK.');
+      } catch (_) {}
+    }
   }
 
   function auditRigs(force = false){
@@ -461,7 +473,7 @@
       messages.push(`[Debug] Rigs check: ${label} -> rig=${rigName || 'none'} ${ok ? '✔' : '⚠️'}`);
     }
     if (!messages.length) return;
-    const debugLogging = shouldLogDebug();
+    const debugLogging = shouldLogDebug() || window.DEBUG_COLLISIONS;
     if (!debugLogging && fallbackCount === 0){
       debugStatus.rigs = true;
       maybeReportIntegrationSuccess();
@@ -472,9 +484,11 @@
       debugStatus.successAnnounced = false;
       return;
     }
-    try {
-      for (const msg of messages) console.log(msg);
-    } catch (_) {}
+    if (window.DEBUG_COLLISIONS || shouldLogDebug()) {
+      try {
+        for (const msg of messages) console.log(msg);
+      } catch (_) {}
+    }
     if (fallbackCount === 0){
       debugStatus.rigs = true;
       maybeReportIntegrationSuccess();
@@ -492,7 +506,7 @@
   function resetAll(opts = {}){
     const reason = opts.reason || RESET_EVENT;
     const countBefore = puppets.length;
-    if (shouldLogDebug() || opts.log){
+    if ((shouldLogDebug() || opts.log) && window.DEBUG_COLLISIONS){
       try { console.log(`[Puppet] Reset(${reason}) antes: ${countBefore} rigs activos.`); } catch (_) {}
     }
     while (puppets.length){
@@ -503,7 +517,7 @@
     activityLog = new WeakMap();
     if (opts.clearWarnings !== false) missingRigWarnings.clear();
     if (opts.resetFallbacks !== false) fallbackErrorLabels.clear();
-    if (shouldLogDebug() || opts.log){
+    if ((shouldLogDebug() || opts.log) && window.DEBUG_COLLISIONS){
       try { console.log(`[Puppet] Reset(${reason}) después: ${puppets.length} rigs activos.`); } catch (_) {}
     }
     return countBefore;
@@ -514,7 +528,7 @@
   }
 
   function debugListAll(reason = 'manual'){
-    if (!shouldLogDebug()) return;
+    if (!(shouldLogDebug() || window.DEBUG_COLLISIONS)) return;
     const entities = window.G?.entities;
     if (!Array.isArray(entities)) return;
     try { console.groupCollapsed(`[Debug] Auditoría de rigs (${reason})`); } catch (_) {}
