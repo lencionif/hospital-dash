@@ -2704,13 +2704,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (!p) return;
     if (!isRatHit && p.invuln > 0) return;
     const source = src || (isRatHit ? 'bite' : 'impact');
+    let healthAfter;
     if (typeof p.takeDamage === 'function') {
       p.takeDamage(amount, { source, attacker: src, knockbackFrom: src });
+      healthAfter = Math.max(0, Math.round(((G.player?.hp ?? 0) * 2)));
     } else {
       const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));
       const halvesAfter  = Math.max(0, halvesBefore - (amount|0));
       G.player.hp = Math.ceil(halvesAfter / 2);
-      G.health     = halvesAfter;
+      healthAfter  = halvesAfter;
       p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
       try { window.Entities?.Hero?.notifyDamage?.(p, { source, duration: isRatHit ? 0.4 : 0.6 }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] damage notify error', err); }
 
@@ -2722,6 +2724,13 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
         p.vx += (dx/n) * 160;
         p.vy += (dy/n) * 160;
       }
+    }
+
+    if (!Number.isFinite(G.health)) {
+      G.health = Math.max(0, Math.round(((G.player?.hp ?? 0) * 2)));
+    }
+    if (Number.isFinite(healthAfter)) {
+      G.health = healthAfter;
     }
 
     if (G.health <= 0){
