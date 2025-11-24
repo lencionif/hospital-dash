@@ -454,6 +454,19 @@
         if (!nearAABB(e, o, 2)) continue;
         cartImpactDamage(e, o);
         if (!AABB(e, o)) continue;
+        if (typeof window.LogCollision === 'function' && G && (e === G.player || o === G.player) && (e.static || o.static)) {
+          const hero = e === G.player ? e : o;
+          const other = hero === e ? o : e;
+          try {
+            window.LogCollision('HERO_HIT_ENTITY', {
+              heroId: hero?.id || hero?.heroId || hero?.hero || null,
+              otherId: other?.id || other?.entity?.id || null,
+              otherKind: other?.kindName || other?.kind || other?.entity?.kind || other?._tag || null,
+              x: hero?.x,
+              y: hero?.y,
+            });
+          } catch (_) {}
+        }
         resolveOverlapPush(e, o);
         clampOutOfWalls(e);
         snapInsideMap(e);
@@ -472,10 +485,23 @@
           const a = dyn[i], b = dyn[k];
           if (!nearAABB(a, b, 2)) continue;
           cartImpactDamage(a, b);
-          if (!AABB(a, b)) continue;
-          const ax = a.x + a.w * 0.5, ay = a.y + a.h * 0.5;
-          const bx = b.x + b.w * 0.5, by = b.y + b.h * 0.5;
-          const penX = (a.w * 0.5 + b.w * 0.5) - Math.abs(ax - bx);
+        if (!AABB(a, b)) continue;
+        if (typeof window.LogCollision === 'function' && G && (a === G.player || b === G.player)) {
+          const hero = a === G.player ? a : b;
+          const other = hero === a ? b : a;
+          try {
+            window.LogCollision('HERO_HIT_ENTITY', {
+              heroId: hero?.id || hero?.heroId || hero?.hero || null,
+              otherId: other?.id || other?.entity?.id || null,
+              otherKind: other?.kindName || other?.kind || other?.entity?.kind || other?._tag || null,
+              x: hero?.x,
+              y: hero?.y,
+            });
+          } catch (_) {}
+        }
+        const ax = a.x + a.w * 0.5, ay = a.y + a.h * 0.5;
+        const bx = b.x + b.w * 0.5, by = b.y + b.h * 0.5;
+        const penX = (a.w * 0.5 + b.w * 0.5) - Math.abs(ax - bx);
           const penY = (a.h * 0.5 + b.h * 0.5) - Math.abs(ay - by);
           if (penX <= 0 || penY <= 0) continue;
           let nx = 0, ny = 0;
@@ -497,11 +523,15 @@
           const rvy = (a.vy || 0) - (b.vy || 0);
           const relativeSpeed = Math.hypot(rvx, rvy);
           if (typeof window.LogCollision === 'function' && G && (a === G.player || b === G.player)) {
-            const other = a === G.player ? b : a;
+            const hero = a === G.player ? a : b;
+            const other = hero === a ? b : a;
             try {
               window.LogCollision('HERO_HIT_ENTITY', {
-                otherId: other?.id || null,
-                otherKind: other?.kindName || other?.kind || other?._tag || null,
+                heroId: hero?.id || hero?.heroId || hero?.hero || null,
+                otherId: other?.id || other?.entity?.id || null,
+                otherKind: other?.kindName || other?.kind || other?.entity?.kind || other?._tag || null,
+                x: hero?.x,
+                y: hero?.y,
                 relativeSpeed: Number.isFinite(relativeSpeed) ? Number(relativeSpeed.toFixed(2)) : relativeSpeed,
               });
             } catch (_) {}
