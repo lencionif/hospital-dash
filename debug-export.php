@@ -9,6 +9,6 @@ if (!$data) {
     exit;
 }
 
-$file = __DIR__ . '/debug-load.txt';
+$file = __DIR__ . '/test-results/debug-load.txt';
 file_put_contents($file, $data);
 echo "OK";

@@ -525,7 +525,7 @@ button:active { transform: translateY(1px); }
 }
 
 #level-complete-screen{
-  background: url("./assets/level_complete.png") center / cover no-repeat;
+  background: url("./assets/images/level_complete.png") center / cover no-repeat;
 }
 
 /* La caja del menú no tapa la ilustración en estas pantallas */
