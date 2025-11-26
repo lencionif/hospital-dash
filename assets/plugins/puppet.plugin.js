@@ -1,752 +1,321 @@
-// ./assets/plugins/puppet.plugin.js
+// puppet.plugin.js
 (function(){
-  const PuppetNS = window.Puppet || (window.Puppet = {});
-  const registry = PuppetNS.RIGS = PuppetNS.RIGS || Object.create(null);
-  const rigs = new Map();
-  const puppets = [];
-  let needsSort = false;
-  const missingRigWarnings = new Set();
-  let activityLog = new WeakMap();
-  const fallbackErrorLabels = new Set();
-  const rigCheckTargets = new Set(['door', 'door_urgencias', 'elevator', 'hazard_fire', 'hazard_water']);
-  let lastActivitySummary = '';
-  const debugStatus = { rigs: false, lights: false, activity: false, successAnnounced: false };
-  const rigAuditState = { lastTime: 0, lastCount: 0 };
-  const RESET_EVENT = 'reset';
+  const TAU = Math.PI * 2;
 
-  function shouldLogDebug(){
-    if (typeof window === 'undefined') return false;
-    if (window.DEBUG_FORCE_ASCII) return true;
-    try {
-      const search = typeof window.location === 'object' ? (window.location.search || '') : '';
-      if (!search) return false;
-      const params = new URLSearchParams(search);
-      if (params.has('rigdebug') || params.has('rigs') || params.get('debug') === 'rigs') return true;
-    } catch (_) {}
-    return false;
-  }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 
-  const getNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
-    ? performance.now()
-    : Date.now();
+  // Un rig minimal con jerarquía y piezas
+  function create(opts={}){
+    const rig = {
+      // vínculo con la entidad del juego (jugador)
+      host: opts.host || null,      // {x,y,w,h,vx,vy,facing}
+      scale: opts.scale || 1,
+      kind: opts.kind || 'human',
+      // parámetros de animación
+      t: 0,
+        walkSpeed: 6,          // pasos/seg para el ciclo
+        stride: 12,            // (legacy) no lo usamos para rotar
+        armSwing: 12,          // swing suave de brazos
+        pushBoost: 0.6,        // brazos más abiertos al empujar
+        footLift: 6,           // ↑ elevación pie en E/W
+        stepStride: 5,         // → zancada en E/W
+        // variantes para caminar en N/S (más marcado)
+        footLiftNS: 8,         // ↑ elevación pie en N/S
+        stepStrideNS: 7,       // → zancada en N/S
+        armPumpNS: 5,          // bombeo vertical de brazos en N/S (px)
+        pushReach: 10,         // cuánto estiran los brazos al empujar
+        pushLean:  2,          // inclinación torso/cabeza al empujar
 
-  function getTileSize(){
-    const size = window.G?.TILE_SIZE ?? window.TILE_SIZE ?? window.TILE ?? 32;
-    const num = Number(size);
-    return Number.isFinite(num) && num > 0 ? num : 32;
-  }
-
-  function resolveVisualRadiusTiles(){
-    const raw = Number(window.G?.visualRadiusTiles);
-    return Number.isFinite(raw) && raw > 0 ? raw : 8;
-  }
-
-  function resolveVisualRadiusPx(){
-    const G = window.G || {};
-    const px = Number(G.visualRadiusPx);
-    if (Number.isFinite(px) && px > 0) return px;
-    const tiles = resolveVisualRadiusTiles();
-    const tile = getTileSize();
-    const computed = Math.max(1, tiles * tile);
-    G.visualRadiusPx = computed;
-    return computed;
-  }
-
-  function computeHeroInfo(hero){
-    if (!hero) return null;
-    const tile = getTileSize();
-    const w = Number(hero.w);
-    const h = Number(hero.h);
-    const hw = Number.isFinite(w) && w > 0 ? w : tile;
-    const hh = Number.isFinite(h) && h > 0 ? h : tile;
-    const hx = (Number(hero.x) || 0) + hw * 0.5;
-    const hy = (Number(hero.y) || 0) + hh * 0.5;
-    return { hero, hx, hy };
-  }
-
-  function computeVisualContext(hero){
-    const base = computeHeroInfo(hero);
-    const radius = Math.max(1, resolveVisualRadiusPx());
-    const radiusSq = radius * radius;
-    const now = getNow();
-    if (!base) return { hero: null, hx: 0, hy: 0, radius, radiusSq, now };
-    return { ...base, radius, radiusSq, now };
-  }
-
-  function isEntityAlwaysActive(ent, now){
-    if (!ent) return false;
-    if (ent._alwaysUpdate === true) return true;
-    const awakeUntil = Number(ent._alwaysUpdateUntil);
-    return Number.isFinite(awakeUntil) && awakeUntil > now;
-  }
-
-  function withinVisualRadius(entity, heroInfo, details){
-    if (!entity) return false;
-    if (!heroInfo || !heroInfo.hero) return true;
-    if (entity === heroInfo.hero) return true;
-    const tile = getTileSize();
-    const w = Number(entity.w);
-    const h = Number(entity.h);
-    const width = Number.isFinite(w) && w > 0 ? w : tile;
-    const height = Number.isFinite(h) && h > 0 ? h : tile;
-    const ex = (Number(entity.x) || 0) + width * 0.5;
-    const ey = (Number(entity.y) || 0) + height * 0.5;
-    const dx = ex - heroInfo.hx;
-    const dy = ey - heroInfo.hy;
-    const distSq = (dx * dx + dy * dy);
-    if (details && typeof details === 'object') details.distanceSq = distSq;
-    return distSq <= heroInfo.radiusSq;
-  }
-
-  function refreshEntityActivity(heroInfo){
-    const entities = window.G?.entities;
-    if (!Array.isArray(entities)) return;
-    const now = heroInfo?.now ?? getNow();
-    let activeCount = 0;
-    let inactiveCount = 0;
-    const distInfo = {};
-    for (const ent of entities){
-      if (!ent) continue;
-      let active = true;
-      let distanceSq = null;
-      if (heroInfo?.hero && ent !== heroInfo.hero){
-        if (isEntityAlwaysActive(ent, now)) {
-          active = true;
-        } else {
-          distInfo.distanceSq = null;
-          active = withinVisualRadius(ent, heroInfo, distInfo);
-          if (distInfo.distanceSq != null) distanceSq = distInfo.distanceSq;
-        }
-      }
-      ent._inactive = !active;
-      if (active) activeCount++; else inactiveCount++;
-      const prev = activityLog.get(ent);
-      if (prev !== active){
-        activityLog.set(ent, active);
-        const label = ent.name || ent.id || ent.tag || ent.kindName || ent.rigName || `entity@${entities.indexOf(ent)}`;
-        let extra = '';
-        if (distanceSq != null && heroInfo?.hero && ent !== heroInfo.hero){
-          extra = ` (dist≈${Math.sqrt(distanceSq).toFixed(1)}px)`;
-        }
-        if (window.DEBUG_COLLISIONS) {
-          try {
-            console.log(`[Puppet] ${active ? 'Activando' : 'Desactivando'} ${label}${extra}`);
-          } catch (_) {}
-        }
-      }
-    }
-    const summaryKey = `${activeCount}|${inactiveCount}`;
-    if (summaryKey !== lastActivitySummary){
-      lastActivitySummary = summaryKey;
-      const radiusPx = heroInfo?.radius ? Math.round(heroInfo.radius) : 0;
-      const tileSize = getTileSize();
-      const radiusTiles = radiusPx > 0 && tileSize > 0 ? radiusPx / tileSize : resolveVisualRadiusTiles();
-      if (window.DEBUG_COLLISIONS) {
-        try {
-          console.log(`[Puppet] Radio visual ≈ ${radiusTiles.toFixed(1)} tiles (~${radiusPx}px). Activos: ${activeCount}, Inactivos: ${inactiveCount}.`);
-        } catch (_) {}
-      }
-      debugStatus.activity = true;
-      maybeReportIntegrationSuccess();
-    }
-  }
-
-  function resolveRigName(name){
-    const key = typeof name === 'string' ? name : null;
-    if (key && registry[key]) return key;
-    if (key && !missingRigWarnings.has(key)){
-      missingRigWarnings.add(key);
-      if (window.DEBUG_COLLISIONS) {
-        try {
-          console.warn(`[Puppet] rig "${key}" no registrado, usando fallback 'default'.`);
-        } catch (_) {}
-      }
-    }
-    return 'default';
-  }
-
-  function registerRig(name, rig){
-    if (!name || !rig) return;
-    rigs.set(name, rig);
-    registry[name] = rig;
-  }
-
-  function cleanupPuppet(puppet){
-    if (!puppet) return;
-    const entity = puppet.entity;
-    try {
-      const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
-      if (rig && typeof rig.dispose === 'function'){
-        try {
-          rig.dispose(puppet.state, entity, puppet);
-        } catch (err){
-          if (window.DEBUG_COLLISIONS) console.warn('[Puppet] rig.dispose', puppet.rigName, err);
-        }
-      }
-    } catch (err){
-      if (window.DEBUG_COLLISIONS) console.warn('[Puppet] cleanup error', err);
-    }
-    if (entity){
-      if (entity.puppet === puppet) delete entity.puppet;
-      if (entity.rigName === puppet.rigName) delete entity.rigName;
-      entity.rigOk = false;
-    }
-  }
-
-  function detach(entity){
-    if (!entity || !entity.puppet) return;
-    const puppet = entity.puppet;
-    const idx = puppets.indexOf(puppet);
-    if (idx >= 0) puppets.splice(idx, 1);
-    cleanupPuppet(puppet);
-  }
-
-  function attach(entity, opts={}){
-    if (entity && typeof entity === 'object' && entity.entity && !opts.entity && opts !== entity){
-      opts = entity;
-      entity = opts.entity;
-    }
-    if (!entity) return null;
-    detach(entity);
-    const requestedRig = opts.rig || opts.name || entity.rigName;
-    const resolvedRig = resolveRigName(requestedRig);
-    const puppet = {
-      entity,
-      rigName: resolvedRig,
-      scale: opts.scale ?? 1,
-      z: opts.z ?? 0,
-      zscale: opts.zscale ?? 1,
-      data: opts.data || {},
-      state: null,
-      time: 0
+        // estado
+        state: { moving:false, pushing:false, dir:0 },
+        // piezas (puedes añadir img más tarde)
+        parts: {
+        head:  { r:12,  img:null, imgBack:null, ox:0,  oy:-16 },
+        body:  { rx:10, ry:16, img:null, ox:0,  oy:0 },
+        // articulación en hombro; el óvalo baja desde ahí
+        armL:  { rx:4,  ry:12, img:null, ox:-10, oy:-2 },
+        armR:  { rx:4,  ry:12, img:null, ox: 10, oy:-2 },
+        // pies como círculos (rx=ry)
+        legL:  { rx:6,  ry:6,  img:null, ox:-6,  oy:16 },
+        legR:  { rx:6,  ry:6,  img:null, ox: 6,  oy:16 },
+        },
+      debug:false,  // Key: J para alternar
     };
-    entity.puppet = puppet;
-    if (entity) {
-      entity.rigName = puppet.rigName;
-      entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
-      if (puppet.rigName === 'default' && requestedRig && requestedRig !== 'default'){
-        const label = describeEntity(entity);
-        const kind = entity?.kind ?? entity?.kindName ?? entity?.tag ?? 'desconocido';
-        const key = `${label}|${kind}`;
-        if (!fallbackErrorLabels.has(key)){
-          fallbackErrorLabels.add(key);
-          try {
-            console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
-          } catch (_) {}
-        }
-      }
-    }
-    puppets.push(puppet);
-    needsSort = true;
-    return puppet;
+    _PUSH_ME: // marcador mental
+    _pushRig(rig);
+    return rig;
   }
 
-  function bind(entity, rigName, opts={}){
-    if (!entity) return null;
-    const name = resolveRigName(rigName);
-    if (name === 'default' && rigName && rigName !== 'default'){
-      const label = describeEntity(entity);
-      if (window.DEBUG_COLLISIONS) {
-        try {
-          console.warn(`[Puppet.bind] Advertencia: '${label || 'Entidad'}' solicitó rig '${rigName}' pero se está usando 'default'.`);
-        } catch (_) {}
-      }
-    }
-    const puppet = attach(entity, { ...opts, rig: name });
-    const rig = registry[name];
-    try {
-      if (rig && typeof rig.create === 'function') {
-        puppet.state = rig.create(entity, opts) || puppet.state || { e: entity };
-      }
-      entity.rigOk = puppet.rigName && puppet.rigName !== 'default';
-    } catch (err) {
-      const label = describeEntity(entity);
-      try {
-        console.error(`[Puppet.bind] Error al inicializar rig '${rigName}' para ${label || 'entidad'}; se usará fallback 'default'.`, err);
-      } catch (_) {}
-      debugStatus.rigs = false;
-      debugStatus.successAnnounced = false;
-      const fallbackName = 'default';
-      puppet.rigName = fallbackName;
-      entity.rigName = fallbackName;
-      const fallback = registry[fallbackName];
-      try {
-        if (fallback && typeof fallback.create === 'function') {
-          puppet.state = fallback.create(entity, opts) || { e: entity };
-        } else {
-          puppet.state = { e: entity };
-        }
-      } catch (_) {
-        puppet.state = { e: entity };
-      }
-      entity.rigOk = false;
-      const kind = entity?.kind ?? entity?.kindName ?? 'desconocido';
-      const key = `${label}|${kind}`;
-      if (!fallbackErrorLabels.has(key)){
-        fallbackErrorLabels.add(key);
-        try {
-          console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
-        } catch (_) {}
-      }
-      if (window.DEBUG_COLLISIONS) {
-        try {
-          console.warn(`[Puppet.bind] Fallback aplicado a ${label || 'entidad'} (${entity.rigName}).`);
-        } catch (_) {}
-      }
-    }
-    if (rigCheckTargets.has(name)){
-      const label = describeEntity(entity) || entity?.kind || entity?.tag || 'Entidad';
-      const status = name === 'default' ? '⚠️' : '✔';
-      if (window.DEBUG_COLLISIONS) {
-        try {
-          console.info(`[RigCheck] ${label} -> rigName=${name} ${status}`);
-        } catch (_) {}
-      }
-    }
-    return puppet;
+  function update(rig, dt, hostState){
+    rig.t += dt;
+
+    // Si no nos pasan estado explícito, lo deducimos del host
+    const h = rig.host || {};
+    const s = hostState || {};
+
+    const speed = Math.hypot(h.vx||0, h.vy||0);
+
+    // ¿se mueve?
+    rig.state.moving = (s.moving != null) ? !!s.moving : (speed > 0.01);
+
+    // ¿empujando?
+    const pushingFlag = (h.isPushing ?? h.pushing ?? (h.pushAnimT > 0));
+    rig.state.pushing = (s.pushing != null) ? !!s.pushing : !!pushingFlag;
+
+    // dirección (rad)
+    let dir = (typeof s.dir === 'number') ? s.dir
+          : (typeof h.facingAngle === 'number' ? h.facingAngle
+          : (Math.atan2(h.vy||0, h.vx||0) || 0));
+    rig.state.dir = dir;
+
+    // cara (E/W/N/S)
+    rig.state.face = (typeof s.face === 'string')
+      ? s.face.toUpperCase()
+      : _dirToFace(dir);
   }
 
-  function sortPuppets(){
-    if (!needsSort) return;
-    puppets.sort((a, b) => {
-      if (a.z !== b.z) return a.z - b.z;
-      const ay = a.entity?.y ?? 0;
-      const by = b.entity?.y ?? 0;
-      return ay - by;
-    });
-    needsSort = false;
+  function setHeroHead(rig, heroKey){
+    // Carga 'assets/images/<hero>.png' (frente) y 'assets/images/<hero>_back.png' (espalda)
+    if (!rig?.parts?.head) return;
+    const front = new Image();
+    const back  = new Image();
+    front.src = `assets/images/${heroKey}.png`;
+    back.src  = `assets/images/${heroKey}_back.png`;
+    front.onload = () => { rig.parts.head.img = front; };
+    back.onload  = () => { rig.parts.head.imgBack = back; };
   }
 
-  function ensureCamera(ctx, cam){
-    if (cam) return { ...cam, w: cam.w ?? ctx?.canvas?.width ?? 0, h: cam.h ?? ctx?.canvas?.height ?? 0 };
-    const w = ctx?.canvas?.width ?? 0;
-    const h = ctx?.canvas?.height ?? 0;
-    return { x:0, y:0, w, h, zoom:1 };
+  const _ALL_RIGS = [];
+  const _pushRig = (r) => { if (r && !_ALL_RIGS.includes(r)) _ALL_RIGS.push(r); };
+
+  function toggleDebug(){
+    const on = !_ALL_RIGS._dbg;
+    _ALL_RIGS._dbg = on;
+    _ALL_RIGS.forEach(r => r.debug = on);
   }
 
-  function ensureRigState(puppet){
-    if (!puppet) return null;
-    let rig = rigs.get(puppet.rigName);
-    if (!rig) {
-      const previous = puppet.rigName;
-      puppet.rigName = 'default';
-      rig = rigs.get('default') || registry.default;
-      if (!rig) return null;
-      if (previous && previous !== 'default'){
-        const label = describeEntity(puppet.entity);
-        const kind = puppet.entity?.kind ?? puppet.entity?.kindName ?? 'desconocido';
-        const key = `${label}|${kind}`;
-        if (!fallbackErrorLabels.has(key)){
-          fallbackErrorLabels.add(key);
-          try {
-            console.error(`[Puppet] ERROR: Entidad '${label}' (kind=${kind}) está usando rig fallback 'default'. Revisa la asociación de rigs.`);
-          } catch (_) {}
-        }
-      }
-    }
-    if (!puppet.state){
-      if (typeof rig.create === 'function'){
-        try {
-          puppet.state = rig.create(puppet.entity) || {};
-        } catch (err){
-        if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.create', puppet.rigName, err);
-          if (puppet.rigName !== 'default'){
-            puppet.rigName = 'default';
-            const fallback = rigs.get('default') || registry.default;
-            if (fallback && typeof fallback.create === 'function'){
-              try {
-                puppet.state = fallback.create(puppet.entity) || {};
-                rig = fallback;
-              } catch (err2){
-                if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] default rig.create', err2);
-                puppet.state = { e: puppet.entity };
-                rig = fallback || rig;
-              }
-            } else {
-              puppet.state = { e: puppet.entity };
-              rig = fallback || rig;
-            }
-          } else {
-            puppet.state = { e: puppet.entity };
-          }
-        }
-      } else if (puppet.data && typeof puppet.data === 'object'){
-        puppet.state = puppet.data;
-      } else {
-        puppet.state = {};
-      }
-    }
-    return puppet.state;
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyJ') toggleDebug();
+  });
+
+  function _dirToFace(rad){
+    const TAU = Math.PI*2;
+    const a = (rad % TAU + TAU) % TAU;
+    // E(−π/4..π/4)  S(π/4..3π/4)  W(3π/4..5π/4)  N(5π/4..7π/4)
+    if (a > Math.PI*0.25 && a <= Math.PI*0.75)  return 'S';
+    if (a > Math.PI*0.75 && a <= Math.PI*1.25) return 'W';
+    if (a > Math.PI*1.25 && a <= Math.PI*1.75) return 'N';
+    return 'E';
   }
 
-  function describeEntity(ent, idx){
-    if (!ent) return idx != null ? `entity@${idx}` : 'entidad-desconocida';
-    return ent.name || ent.displayName || ent.label || ent.id || ent.kindName || ent.kind || (idx != null ? `entity@${idx}` : 'entidad');
+  // Dibuja una elipse (o círculo) en el Canvas local
+  function fillEllipse(ctx, rx, ry){
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+    ctx.fill();
   }
 
-  function gatherRigCandidates(ent){
-    const out = [];
-    if (!ent || typeof ent !== 'object') return out;
-    const push = (value) => {
-      if (typeof value !== 'string') return;
-      const trimmed = value.trim();
-      if (!trimmed || trimmed.toLowerCase() === 'default') return;
-      if (!out.includes(trimmed)) out.push(trimmed);
-    };
-    push(ent.expectedRig);
-    push(ent.desiredRig);
-    push(ent.desiredRigName);
-    push(ent.rigNameWanted);
-    push(ent.rigWanted);
-    push(ent.preferredRig);
-    const direct = typeof ent.rigName === 'string' ? ent.rigName.trim() : '';
-    if (direct && direct.toLowerCase() !== 'default') push(direct);
-    const possibilities = [ent.kind, ent.kindName, ent.type, ent.entityType];
-    for (const name of possibilities){
-      if (typeof name !== 'string') continue;
-      push(name);
-      const lower = name.toLowerCase();
-      push(lower);
-      const camel = lower.replace(/[^a-z0-9]+([a-z0-9])/g, (_, c) => c.toUpperCase());
-      push(camel);
-    }
-    return out;
-  }
+    function draw(rig, ctx, camera){
+    if (!rig || !rig.host || !ctx) return;
 
-  function attemptAutoRig(ent, label){
-    if (!ent) return false;
-    const attempts = ent.__rigAuditAttempts || (ent.__rigAuditAttempts = Object.create(null));
-    const candidates = gatherRigCandidates(ent);
-    for (const candidate of candidates){
-      if (!candidate || attempts[candidate]) continue;
-      attempts[candidate] = true;
-      const available = registry[candidate] || rigs.get(candidate);
-      const fallback = (!available && candidate) ? (registry[candidate.toLowerCase?.()] || rigs.get(candidate.toLowerCase?.())) : null;
-      const rigName = available ? candidate : (fallback ? candidate.toLowerCase() : null);
-      if (!rigName) continue;
-      if (window.DEBUG_COLLISIONS || shouldLogDebug()) {
-        try {
-          console.warn(`[Puppet] Reasignando rig '${rigName}' a ${label}.`);
-          const puppet = bind(ent, rigName, ent.puppet?.data ? { data: ent.puppet.data } : {});
-          if (puppet && puppet.rigName === rigName){
-            ent.rigOk = true;
-            return true;
-          }
-        } catch (err){
-          try { console.error(`[Puppet] Error al reasignar rig '${rigName}' a ${label}.`, err); } catch (_) {}
-        }
-      }
-    }
-    return false;
-  }
+    const h = rig.host;
+    const cam = camera || {x:0,y:0,zoom:1};
+    const s = (rig.scale||1) * (cam.zoom||1);
 
-  function maybeReportIntegrationSuccess(){
-    if (debugStatus.successAnnounced) return;
-    if (!debugStatus.rigs || !debugStatus.lights || !debugStatus.activity) return;
-    debugStatus.successAnnounced = true;
-    if (window.DEBUG_COLLISIONS) {
-      try {
-        console.log('[Debug] All animations and systems integrated successfully. Rigs: OK, Lights: OK, Off-screen optimization: OK.');
-      } catch (_) {}
-    }
-  }
+    // base (cadera) en el centro de la AABB del player
+    const cx = (h.x + h.w*0.5 - cam.x) * cam.zoom + ctx.canvas.width *0.5;
+    const cy = (h.y + h.h*0.5 - cam.y) * cam.zoom + ctx.canvas.height*0.5;
 
-  function auditRigs(force = false){
-    const entities = window.G?.entities;
-    if (!Array.isArray(entities) || entities.length === 0) return;
-    const now = getNow();
-    const count = entities.filter(Boolean).length;
-    if (!force){
-      const interval = 3500;
-      if (now - rigAuditState.lastTime < interval && count === rigAuditState.lastCount) return;
-    }
-    rigAuditState.lastTime = now;
-    rigAuditState.lastCount = count;
-    const messages = [];
-    let fallbackCount = 0;
-    for (let i = 0; i < entities.length; i++){
-      const ent = entities[i];
-      if (!ent) continue;
-      const label = describeEntity(ent, i);
-      let rigName = (ent.rigName || ent.puppet?.rigName || '').toString();
-      let ok = ent.rigOk === true && rigName && rigName !== 'default';
-      if (!ok){
-        const fixed = attemptAutoRig(ent, label);
-        if (fixed){
-          rigName = (ent.rigName || ent.puppet?.rigName || rigName).toString();
-          ok = ent.rigOk === true && rigName && rigName !== 'default';
-        }
-      }
-      if (!ok) fallbackCount++;
-      messages.push(`[Debug] Rigs check: ${label} -> rig=${rigName || 'none'} ${ok ? '✔' : '⚠️'}`);
-    }
-    if (!messages.length) return;
-    const debugLogging = shouldLogDebug() || window.DEBUG_COLLISIONS;
-    if (!debugLogging && fallbackCount === 0){
-      debugStatus.rigs = true;
-      maybeReportIntegrationSuccess();
-      return;
-    }
-    if (!debugLogging && fallbackCount > 0){
-      debugStatus.rigs = false;
-      debugStatus.successAnnounced = false;
-      return;
-    }
-    if (window.DEBUG_COLLISIONS || shouldLogDebug()) {
-      try {
-        for (const msg of messages) console.log(msg);
-      } catch (_) {}
-    }
-    if (fallbackCount === 0){
-      debugStatus.rigs = true;
-      maybeReportIntegrationSuccess();
-    } else {
-      debugStatus.rigs = false;
-      debugStatus.successAnnounced = false;
-    }
-  }
+    // movimiento/idle
+    const speed = Math.hypot(h.vx||0, h.vy||0);
+    const moving = speed > 0.01 || rig.state.moving;
+    rig.t += 1/60; // ritmo estable aunque dt varíe (nuestro loop es fixed-step)
+    const phase = rig.t * (rig.walkSpeed || 6) * (moving ? 1 : 0);
 
-  function markLightsReady(){
-    debugStatus.lights = true;
-    maybeReportIntegrationSuccess();
-  }
+    // respiración en idle (sube/baja torso/cabeza)
+    const breath = moving ? 0 : Math.sin(rig.t * 2.6) * 1.2 * s;
+    // Progreso de empuje (usa el temporizador del host y/o el flag del rig)
+    const pushT   = Math.max(0, Math.min(1, (h.pushAnimT || 0)));
+    const pushK   = pushT * (2 - pushT);           // ease-out suave (0..1)
+    const reach   = (rig.pushReach || 10) * pushK * s;  // desplazamiento “hacia delante”
+    const lean    = (rig.pushLean  ||  2) * pushK * s;  // pequeña inclinación del torso/cabeza
 
-  function resetAll(opts = {}){
-    const reason = opts.reason || RESET_EVENT;
-    const countBefore = puppets.length;
-    if ((shouldLogDebug() || opts.log) && window.DEBUG_COLLISIONS){
-      try { console.log(`[Puppet] Reset(${reason}) antes: ${countBefore} rigs activos.`); } catch (_) {}
-    }
-    while (puppets.length){
-      const puppet = puppets.pop();
-      cleanupPuppet(puppet);
-    }
-    needsSort = false;
-    activityLog = new WeakMap();
-    if (opts.clearWarnings !== false) missingRigWarnings.clear();
-    if (opts.resetFallbacks !== false) fallbackErrorLabels.clear();
-    if ((shouldLogDebug() || opts.log) && window.DEBUG_COLLISIONS){
-      try { console.log(`[Puppet] Reset(${reason}) después: ${puppets.length} rigs activos.`); } catch (_) {}
-    }
-    return countBefore;
-  }
 
-  function getActiveCount(){
-    return puppets.length;
-  }
+    // Dirección cardinal: si no hay facing, derivamos de vx/vy cuando se mueve.
+    const faceFromHost = (h.facing || rig.state.face || null);
+    let card = (typeof faceFromHost === 'string')
+      ? faceFromHost.toUpperCase()
+      : (moving ? _dirToFace(Math.atan2(h.vy||0, h.vx||0) || 0) : 'S');
+    // lateral = flipX, sin rotación del cuerpo
+    const walkBobNS = (moving && (card==='N' || card==='S')) ? Math.sin(phase) * 1.2 * s : 0;
 
-  function debugListAll(reason = 'manual'){
-    if (!(shouldLogDebug() || window.DEBUG_COLLISIONS)) return;
-    const entities = window.G?.entities;
-    if (!Array.isArray(entities)) return;
-    try { console.groupCollapsed(`[Debug] Auditoría de rigs (${reason})`); } catch (_) {}
-    for (let i = 0; i < entities.length; i++){
-      const ent = entities[i];
-      if (!ent) continue;
-      const label = describeEntity(ent, i);
-      const rigName = ent.rigName || ent.puppet?.rigName || 'default';
-      const kind = ent.kind ?? ent.kindName ?? ent.tag ?? '—';
-      const ok = ent.rigOk === true && rigName && rigName !== 'default';
-      try { console.log(`[Debug] Entidad ${label} kind=${kind} rig=${rigName} rigOk=${ok}`); } catch (_) {}
-    }
-    try { console.groupEnd(); } catch (_) {}
-  }
 
-  if (!registry.default){
-    const defaultRig = {
-      create(e){ return { e }; },
-      update(){},
-      draw(ctx, _cam, entity, state){
-        const target = entity || state?.e;
-        if (!ctx || !target) return;
-        const tile = getTileSize();
-        const w = Number(target.w);
-        const h = Number(target.h);
-        const width = Number.isFinite(w) && w > 0 ? w : tile;
-        const height = Number.isFinite(h) && h > 0 ? h : tile;
-        const cx = (Number(target.x) || 0) + width * 0.5;
-        const cy = (Number(target.y) || 0) + height * 0.5;
-        const radius = Math.max(2, Math.min(width, height) * 0.25);
-        ctx.save();
-        ctx.fillStyle = target.teamColor || target.color || '#ccc';
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      },
-      dispose(){}
-    };
-    registerRig('default', defaultRig);
-  }
+    // colores
+    const skin  = '#f3c89c';
+    const cloth = '#ececec';
+    const shoes = '#dcdcdc';
 
-  PuppetNS.__debugStatus = debugStatus;
-  PuppetNS.__notifyLightsReady = markLightsReady;
+    let pushingNow = pushT > 0 || !!rig.state.pushing;
 
-  function shouldUpdatePuppet(puppet, info, now, tileSize){
-    if (!puppet || !puppet.entity) return false;
-    if (!info) return true;
-    const ent = puppet.entity;
-    if (ent === (window.G?.player)) return true;
-    if (ent._alwaysUpdate === true) return true;
-    const awakeUntil = Number(ent._alwaysUpdateUntil);
-    if (Number.isFinite(awakeUntil) && awakeUntil > now) return true;
-    const w = Number.isFinite(ent.w) ? ent.w : tileSize;
-    const h = Number.isFinite(ent.h) ? ent.h : tileSize;
-    const ex = (Number(ent.x) || 0) + w * 0.5;
-    const ey = (Number(ent.y) || 0) + h * 0.5;
-    const dx = ex - info.hx;
-    const dy = ey - info.hy;
-    return (dx * dx + dy * dy) <= info.radiusSq;
-  }
+    // helpers de pies (paso con circulitos)
+    const stepK  = Math.sin(phase);
+    const stepKL = stepK;                // pie izq
+    const stepKR = Math.sin(phase+Math.PI); // pie der
+    const liftBase = (card==='N' || card==='S') ? (rig.footLiftNS || 8) : (rig.footLift || 6);
+    const lift     = liftBase * (pushingNow ? 0.9 : 1.0) * s;
+    const stride   = ((card==='N' || card==='S') ? (rig.stepStrideNS || 7) : (rig.stepStride || 5))
+                  * (pushingNow ? 0.35 : 1.0) * s;
 
-  function updateAll(state, dt){
-    sortPuppets();
-    const hero = window.G?.hero || window.G?.player || null;
-    const context = computeVisualContext(hero);
-    if (window.G) {
-      if (hero) {
-        window.G.__visualRadiusInfo = {
-          radiusTiles: resolveVisualRadiusTiles(),
-          radiusPx: context.radius,
-          radiusSq: context.radiusSq,
-          hx: context.hx,
-          hy: context.hy,
-          timestamp: context.now
-        };
-      } else {
-        window.G.__visualRadiusInfo = null;
-      }
-    }
-    refreshEntityActivity(context);
-    for (const puppet of puppets){
-      if (!puppet || !puppet.entity) continue;
-      if (puppet.entity._inactive) continue;
-      puppet.time += dt;
-      const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
-      if (!rig) continue;
-      const rigState = ensureRigState(puppet);
-      if (!rigState) continue;
-      if (typeof rig.update === 'function'){
-        try {
-          if (typeof rig.create === 'function' && rig.update.length >= 3){
-            rig.update(rigState, puppet.entity, dt);
-          } else {
-            rig.update(puppet, state, dt);
-          }
-        } catch (err) {
-          if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
-        }
-      }
-    }
-    auditRigs();
-  }
-
-  function drawAll(ctx, cam){
-    if (!ctx) return;
-    sortPuppets();
-    const camera = ensureCamera(ctx, cam);
-    const G = window.G || {};
-    const player = G.player || null;
-    const tileSize = getTileSize();
-    const radiusValue = Number(G.visibleTilesRadius);
-    const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
-    const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
-    const applyCull = !!player && !G.isDebugMap && tileSize > 0;
-    const playerX = player ? (Number(player.x) || 0) : 0;
-    const playerY = player ? (Number(player.y) || 0) : 0;
+    // flip horizontal SOLO cuando mira al Oeste (W)
+    const flipX = (card === 'W') ? -1 : 1;
 
     ctx.save();
-    try {
-      if (typeof window.applyWorldCamera === 'function') {
-        window.applyWorldCamera(ctx);
-      }
-      for (const puppet of puppets){
-        if (!puppet || !puppet.entity || puppet.entity._inactive) continue;
-        if (applyCull && puppet.entity !== player) {
-          const ex = Number(puppet.entity.x) || 0;
-          const ey = Number(puppet.entity.y) || 0;
-          const distTiles = Math.max(Math.abs((ex - playerX) / tileSize), Math.abs((ey - playerY) / tileSize));
-          if (distTiles > entityRadius) continue;
-        }
-        drawOne(puppet, ctx, camera);
-      }
-    } finally {
+    ctx.translate(cx, cy);
+    ctx.scale(flipX, 1); // ...nunca giramos el cuerpo "de lado" o "boca abajo"
+
+    // NUEVO: rama para ratas
+    if (rig.kind === 'rat') {
+      drawRat(rig, ctx, s, card, phase);
       ctx.restore();
+      return; // ya dibujamos la rata, no seguimos con el humano
     }
-  }
 
-  function drawOne(puppet, ctx, cam){
-    if (!puppet || !puppet.entity) return;
-    if (puppet.entity._inactive) return;
-    const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
-    if (!rig || typeof rig.draw !== 'function') return;
-    try {
-      const state = ensureRigState(puppet);
-      const camera = cam || ensureCamera(ctx);
-      if (typeof rig.create === 'function'){
-        rig.draw(ctx, camera, puppet.entity, state, puppet.time);
-      } else if (rig.draw.length >= 4){
-        rig.draw(ctx, camera, puppet.entity, puppet.time);
+    // sombra elíptica
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = 'black';
+    ctx.scale(1, 0.35);
+    ctx.beginPath(); ctx.ellipse(0, 0, 18*s, 10*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // CUERPO
+    ctx.fillStyle = cloth;
+    ctx.save();
+    let bodyOffX = 0, bodyOffY = 0;
+    if (pushingNow){
+      if (card === 'S') bodyOffY =  lean;
+      if (card === 'N') bodyOffY = -lean;
+      if (card === 'E' || card === 'W') bodyOffX =  lean; // flipX ya espeja para W
+    }
+    ctx.translate(rig.parts.body.ox*s + bodyOffX, rig.parts.body.oy*s + breath*0.5 + bodyOffY + walkBobNS);
+    ctx.beginPath(); ctx.ellipse(0, 0, rig.parts.body.rx*s, rig.parts.body.ry*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // CABEZA (frente vs. espalda recortada en círculo)
+    ctx.save();
+    let headOffX = 0, headOffY = 0;
+    if (pushingNow){
+      if (card === 'S') headOffY =  lean;
+      if (card === 'N') headOffY = -lean;
+      if (card === 'E' || card === 'W') headOffX =  lean;
+    }
+    ctx.translate(rig.parts.head.ox*s + headOffX, rig.parts.head.oy*s + breath + headOffY);
+    const R = rig.parts.head.r*s;
+    const imgFront = rig.parts.head.img || null;
+    const imgBack  = rig.parts.head.imgBack || rig.parts.head.backImg || null;
+    const showBack = (card === 'N');
+    const useImg   = showBack ? imgBack : imgFront;
+
+    ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.clip();
+    if (useImg) { ctx.drawImage(useImg, -R, -R, R*2, R*2); }
+    else { ctx.fillStyle = skin; ctx.fill(); }
+    ctx.restore();
+
+    // BRAZOS (empuje realista + manos; vertical en N/S, horizontal en E/W)
+    const armSwing = (rig.armSwing||12) * Math.sin(phase + Math.PI);
+    const pushExtra = pushingNow ? (rig.pushBoost || 0.6) : 0;
+
+    // vector "hacia delante" ya volcado por flipX
+    let ax = 0, ay = 0;
+    if (card === 'S') ay =  1; else if (card === 'N') ay = -1; else ax = 1;
+
+    // pequeño “bombeo” y alcance al empujar
+    const handBop = Math.sin(rig.t * 12) * 1.5 * s * pushExtra;
+    const reachX  = ((rig.pushReach||10) * pushExtra + handBop) * ax;
+    const reachY  = ((rig.pushReach||10) * pushExtra + handBop) * ay;
+    // ángulo del brazo cuando empuja (lateral = horizontal; N/S = vertical)
+    const armAngle = pushingNow ? ((ax !== 0) ? -Math.PI/2 : 0) : 0;
+
+    // ----- BRAZO IZQ -----
+    ctx.fillStyle = skin;
+    ctx.save();
+    ctx.translate((rig.parts.armL.ox*s) + reachX, (rig.parts.armL.oy*s) + reachY);
+    if (!pushingNow){
+      if (card === 'N' || card === 'S'){
+        const pump = (rig.armPumpNS || 5) * Math.sin(phase + Math.PI) * (card==='S'? 1:-1) * s;
+        ctx.translate(0, pump); // N/S: bombeo vertical
       } else {
-        rig.draw(ctx, camera, puppet.entity);
+        ctx.rotate(-armSwing * 0.03);   // E/W: péndulo por rotación
       }
-    } catch (err) {
-      if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.draw', err);
+    } else {
+      ctx.rotate(armAngle);             // empuje
     }
-  }
+    ctx.translate(0, rig.parts.armL.ry*s*0.5 * (pushingNow && ay !== 0 ? ay : 1));
+    ctx.beginPath(); ctx.ellipse(0, 0, rig.parts.armL.rx*s, rig.parts.armL.ry*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -rig.parts.armL.ry*s*0.5, 3*s, 0, Math.PI*2); ctx.fill();
+    // mano visible cuando empuja
+    if (pushingNow){ ctx.beginPath(); ctx.arc(0, rig.parts.armL.ry*s*0.95 * (ay || 1), 3.6*s, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore();
 
-  function updateOne(puppet, dt, state){
-    if (!puppet) return;
-    if (puppet.entity && puppet.entity._inactive) return;
-    puppet.time += dt;
-    const rig = rigs.get(puppet.rigName) || registry[puppet.rigName];
-    if (!rig) return;
-    const rigState = ensureRigState(puppet);
-    if (typeof rig.update === 'function'){
-      try {
-        if (typeof rig.create === 'function' && rig.update.length >= 3){
-          rig.update(rigState, puppet.entity, dt);
-        } else {
-          rig.update(puppet, state, dt);
-        }
-      } catch (err) {
-        if (window.DEBUG_COLLISIONS) console.warn('[PuppetAPI] rig.update', puppet.rigName, err);
+    // ----- BRAZO DER -----
+    ctx.save();
+    ctx.translate((rig.parts.armR.ox*s) + reachX, (rig.parts.armR.oy*s) + reachY);
+    if (!pushingNow){
+      if (card === 'N' || card === 'S'){
+        const pump = (rig.armPumpNS || 5) * Math.sin(phase) * (card==='S'? 1:-1) * s;
+        ctx.translate(0, pump); // N/S: bombeo vertical
+      } else {
+        ctx.rotate(armSwing * 0.03);    // E/W: péndulo por rotación
       }
+    } else {
+      ctx.rotate(armAngle);             // empuje
     }
-  }
+    ctx.translate(0, rig.parts.armR.ry*s*0.5 * (pushingNow && ay !== 0 ? ay : 1));
+    ctx.beginPath(); ctx.ellipse(0, 0, rig.parts.armR.rx*s, rig.parts.armR.ry*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -rig.parts.armR.ry*s*0.5, 3*s, 0, Math.PI*2); ctx.fill();
+    if (pushingNow){ ctx.beginPath(); ctx.arc(0, rig.parts.armR.ry*s*0.95 * (ay || 1), 3.6*s, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore();
 
-  function create(opts={}){
-    if (!opts.host) return null;
-    const puppet = attach(opts.host, { rig: opts.rig || 'biped', scale: opts.scale, z: opts.z ?? 0 });
-    return puppet;
-  }
+    // PIES (circulitos con paso) — E/W en X, N/S en Y
+    ctx.fillStyle = shoes;
 
-  function setHeroHead(puppet, heroKey){
-    const e = puppet?.entity;
-    if (!e) return;
-    e.spec = e.spec || {};
-    if (heroKey) e.spec.skin = `${heroKey}.png`;
-  }
+    // vector “hacia delante” tras el flipX
+    ax = 0, ay = 0;
+    if (card === 'S') ay =  1;        // abajo (se acerca)
+    else if (card === 'N') ay = -1;   // arriba (se aleja)
+    else ax = 1;                      // lateral (E o W) → +X tras flip
 
-  function toggleDebug(){ /* noop placeholder para compat */ }
+    // IZQ
+    ctx.save();
+    const stepX_L = (ax !== 0) ? (stride * stepKL)      : 0;         // paso lateral
+    const stepY_L = (ay !== 0) ? (stride * stepKL * ay) : 0;         // paso frente/espalda
+    const footLX  = rig.parts.legL.ox*s + stepX_L;
+    const footLY  = rig.parts.legL.oy*s + stepY_L - Math.max(0, stepKL)*lift;
+    ctx.translate(footLX, footLY);
+    ctx.beginPath(); ctx.arc(0, 0, rig.parts.legL.rx*s, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
 
-  window.PuppetAPI = {
-    registerRig,
-    attach,
-    bind,
-    detach,
-    reset: resetAll,
-    getActiveCount,
-    debugListAll,
-    updateAll,
-    drawAll,
-    draw: drawOne,
-    update: updateOne,
-    create,
-    setHeroHead,
-    toggleDebug
-  };
-  PuppetNS.bind = bind;
-  PuppetNS.detach = detach;
-  PuppetNS.reset = resetAll;
+    // DER
+    ctx.save();
+    const stepX_R = (ax !== 0) ? (stride * stepKR)      : 0;
+    const stepY_R = (ay !== 0) ? (stride * stepKR * ay) : 0;
+    const footRX  = rig.parts.legR.ox*s + stepX_R;
+    const footRY  = rig.parts.legR.oy*s + stepY_R - Math.max(0, stepKR)*lift;
+    ctx.translate(footRX, footRY);
+    ctx.beginPath(); ctx.arc(0, 0, rig.parts.legR.rx*s, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // DEBUG HUESOS
+    if (rig.debug){
+        ctx.strokeStyle='rgba(0,255,0,0.6)';
+        ctx.beginPath(); ctx.moveTo(-20*s,0); ctx.lineTo(20*s,0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,-30*s); ctx.lineTo(0,30*s); ctx.stroke();
+    }
+
+    ctx.restore();
+    }
+
+// API pública
+window.PuppetAPI = { create, update, draw, setHeroHead, toggleDebug };
 })();

@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Il Divo: Hospital Dash!</title>
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27><rect width=%2732%27 height=%2732%27 fill=%27%230d1117%27/><text x=%2750%25%27 y=%2756%25%27 dominant-baseline=%27middle%27 text-anchor=%27middle%27 font-family=%27Arial%27 font-size=%2720%27 fill=%27%23fff%27>HD</text></svg>">
 
 
@@ -18,12 +18,11 @@
     window.Entities = {};
   </script>
 </head>
-<body>
+<body class="intro-playing">
   <div id="game-container" aria-label="Contenedor del juego">
     <!-- Lienzo principal que dibuja TODO el juego -->
     <canvas id="gameCanvas" width="960" height="540" aria-label="Lienzo del juego"></canvas>
     <canvas id="fogCanvas"></canvas>
-    <canvas id="guideCanvas"></canvas>
     <canvas id="hudCanvas"></canvas>
 
     <!-- START -->
@@ -31,8 +30,10 @@
       <div class="menu-box">
         <h1>Il Divo: Hospital Dash!</h1>
         <p class="subtitle">WASD para moverte · E para empujar/usar · ESC pausa · R reinicia</p>
-        <h2>Elige tu personaje</h2>
 
+        <h2 class="section-title">Elige tu personaje</h2>
+
+        <!-- Grid de personajes -->
         <div class="char-grid" role="listbox" aria-label="Selección de personaje">
           <button class="char-card selected" role="option" aria-selected="true" data-hero="enrique" tabindex="0">
             <div class="char-avatar char-enrique" aria-hidden="true"></div>
@@ -61,18 +62,15 @@
             </div>
           </button>
         </div>
+
         <div class="options">
           <label><input type="checkbox" id="opt-reduce-flash" checked /> Reducir destellos</label>
           <label><input type="checkbox" id="opt-humor" /> Modo “Humor Suave”</label>
-          <label><input type="checkbox" id="opt-narrator" checked /> Narrador épico activo</label>
-          <button id="btn-3dacc" type="button" aria-describedby="accel-joke">Activar aceleración gráfica 3D</button>
+          <button id="btn-3dacc" type="button">activa aceleración gráfica 3d</button>
         </div>
-        <div id="accel-joke" class="joke-output" role="status" aria-live="polite"></div>
 
         <button id="start-button" class="primary">Empezar turno</button>
-      </div>
-      <div class="tip objective-tip">
-        Objetivo: atiende todos los <b>P</b> para abrir <b>D</b>, y acerca el <b>carro C</b> al jefe <b>X</b> (≤ 2 casillas).
+        <p class="tip">Objetivo: atiende todos los <b>P</b> para abrir <b>D</b>, y acerca el <b>carro C</b> al jefe <b>X</b> (≤ 2 casillas).</p>
       </div>
     </div>
 
@@ -86,116 +84,67 @@
 
     <!-- NIVEL COMPLETADO -->
     <div id="level-complete-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box scoreboard" role="dialog" aria-modal="true" aria-labelledby="scoreboard-title">
-        <header class="scoreboard-header">
-          <h2 id="scoreboard-title">¡Nivel completado!</h2>
-          <p id="scoreboard-subtitle">Resumen de puntuación</p>
-        </header>
-        <div class="scoreboard-body">
-          <div class="scoreboard-rows" id="scoreboard-rows" role="list"></div>
-        </div>
-        <div class="scoreboard-total" aria-live="polite">
-          <span>Total</span>
-          <strong id="scoreboard-total">0</strong>
-        </div>
-        <button id="scoreboard-continue" class="primary" type="button">Continuar</button>
-        <p class="tip">Pulsa <b>Enter</b> o haz clic para continuar.</p>
+      <div class="menu-box">
+        <h2>¡NIVEL COMPLETADO!</h2>
+        <p>¡Has salvado el turno! 🎉</p>
+        <p>Pulsa <b>R</b> para jugar de nuevo.</p>
       </div>
     </div>
 
     <!-- GAME OVER -->
     <div id="game-over-screen" class="overlay hidden" aria-live="polite">
-      <div class="menu-box" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
-        <h2 id="game-over-title">GAME OVER</h2>
-        <p class="game-over-message">El caos te ha superado 😵‍💫</p>
+      <div class="menu-box">
+        <h2>GAME OVER</h2>
+        <p>El caos te ha superado 😵‍💫</p>
         <p>Pulsa <b>R</b> para intentarlo de nuevo.</p>
-      </div>
-    </div>
-
-    <!-- READY / LEVEL INTRO -->
-    <div id="ready-overlay" class="overlay hidden" aria-live="polite">
-      <div class="ready-box" role="dialog" aria-modal="true" aria-labelledby="ready-level">
-        <p id="ready-level" class="ready-level">Turno 1</p>
-        <div class="ready-count" id="ready-count">3</div>
-        <p id="ready-message" class="ready-message">¡Preparados!</p>
       </div>
     </div>
   </div>
 
   <!-- JS (no modules para funcionar con file://) -->
-  <!-- 1) constants / utils / logs -->
-  <script defer src="./assets/plugins/patients.names.js"></script>
-  <script defer src="./assets/plugins/sprites.plugin.js"></script>
-  <script defer src="./assets/plugins/logs.plugin.js"></script>
-  <script defer src="./assets/plugins/cinefx.plugin.js"></script>
-
-  <!-- 2) physics, camera, mapgen, placement -->
-  <script defer src="./assets/plugins/entity.groups.plugin.js"></script>
-  <script defer src="./assets/plugins/physics.plugin.js"></script>
-  <script defer src="./assets/plugins/mapgen.plugin.js"></script>
-  <script defer src="./assets/plugins/utils/xml.config.js"></script>
-  <script defer src="./assets/plugins/placement.plugin.js"></script>
-
-  <!-- IA común de humanos (debe cargarse antes de las entidades humanas) -->
-  <script defer src="./assets/plugins/ai/human_ai.plugin.js"></script>
-
-  <!-- 3) entities (orden único) -->
-  <script defer src="./assets/plugins/entities/heroes.entities.js"></script>
-  <script defer src="./assets/plugins/entities/patients.entities.js"></script>
-  <script defer src="./assets/plugins/entities/objects.entities.js"></script>
-  <script defer src="./assets/plugins/entities/carts.entities.js"></script>
-  <script defer src="./assets/plugins/entities/doors.entities.js"></script>
-  <script defer src="./assets/plugins/entities/elevators.entities.js"></script>
-  <script defer src="./assets/plugins/entities/lights.entities.js"></script>
-  <script defer src="./assets/plugins/entities/hazards.entities.js"></script>
-  <script defer src="./assets/plugins/entities/fire.plugin.js"></script>
-  <script defer src="./assets/plugins/entities/spawner.entities.js"></script>
-  <script defer src="./assets/plugins/entities/mosquito.entities.js"></script>
-  <script defer src="./assets/plugins/entities/rats.entities.js"></script>
-  <script defer src="./assets/plugins/entities/bossrush.entities.js"></script>
-  <script defer src="./assets/plugins/entities/medico.entities.js"></script>
-  <script defer src="./assets/plugins/entities/jefe_servicio.entities.js"></script>
-  <script defer src="./assets/plugins/entities/supervisora.entities.js"></script>
-  <script defer src="./assets/plugins/entities/cleaner.entities.js"></script>
-  <script defer src="./assets/plugins/entities/celador.entities.js"></script>
-  <script defer src="./assets/plugins/entities/tcae.entities.js"></script>
-  <script defer src="./assets/plugins/entities/guardia.entities.js"></script>
-  <script defer src="./assets/plugins/entities/familiar_molesto.entities.js"></script>
-  <script defer src="./assets/plugins/entities/enfermera_sexy.entities.js"></script>
-  <script defer src="./assets/plugins/entities/humans.entities.js"></script>
-
-  <!-- 4) ai -->
-  <script defer src="./assets/plugins/ai/ai.registry.plugin.js"></script>
-  <script defer src="./assets/plugins/ai/builtin.ai.plugin.js"></script>
-  <script defer src="./assets/plugins/ai/furious.plugin.js"></script>
-
-  <!-- 5) puppet systems -->
-  <script defer src="./assets/plugins/puppet.plugin.js"></script>
-  <script defer src="./assets/plugins/puppet.rigs.plugin.js"></script>
-
-  <!-- 6) hud / audio / ui -->
-  <script defer src="./assets/plugins/hud.plugin.js"></script>
-  <script defer src="./assets/plugins/audio.plugin.js"></script>
-  <script defer src="./assets/plugins/music.plugin.js"></script>
-  <script defer src="./assets/plugins/music.manager.plugin.js"></script>
-  <script defer src="./assets/plugins/dialog.plugin.js"></script>
-  <script defer src="./assets/plugins/presentation.plugin.js"></script>
-  <script defer src="./assets/plugins/mouse.control.plugin.js"></script>
-  <script defer src="./assets/plugins/narrator.plugin.js"></script>
-  <script defer src="./assets/plugins/objectiveflow.plugin.js"></script>
-  <script defer src="./assets/plugins/bells.plugin.js"></script>
-  <script defer src="./assets/plugins/damage.plugin.js"></script>
-  <script defer src="./assets/plugins/lighting.plugin.js"></script>
-  <script defer src="./assets/plugins/skyweather.plugin.js"></script>
-  <script defer src="./assets/plugins/test.plugin.js"></script>
-
-  <!-- 7) arrowguide, score, gameflow -->
-  <script defer src="./assets/plugins/arrowguide.plugin.js"></script>
-  <script defer src="./assets/plugins/score.plugin.js"></script>
-  <script defer src="./assets/plugins/gameflow.plugin.js"></script>
-
-  <!-- 8) núcleo del juego -->
-  <script defer src="./assets/plugins/game.js"></script>
+  <script src="assets/entities/heroes.entities.js"></script>
+  <script src="assets/entities/carts.entities.js"></script>
+  <script src="assets/entities/mosquito.entities.js"></script>
+  <script src="assets/entities/rats.entities.js"></script>
+  <script src="assets/entities/celador.entities.js"></script>
+  <script src="assets/entities/cleaner.entities.js"></script>
+  <script src="assets/entities/doors.entities.js"></script>
+  <script src="assets/entities/elevators.entities.js"></script>
+  <script src="assets/entities/enfermera_sexy.entities.js"></script>
+  <script src="assets/entities/jefe_servicio.entities.js"></script>
+  <script src="assets/entities/medico.entities.js"></script>
+  <script src="assets/entities/objects.entities.js"></script>
+  <script src="assets/entities/patients.entities.js"></script>
+  <script src="assets/entities/spawner.entities.js"></script>
+  <script src="assets/entities/supervisora.entities.js"></script>
+  <script src="assets/entities/tcae.entities.js"></script>
+  <script src="assets/entities/medico.entities.js"></script>
+  <script src="assets/entities/jefe_servicio.entities.js"></script>
+  <script src="assets/entities/familiar_molesto.entities.js"></script>
+  <script src="assets/entities/hazards.entities.js"></script>
+  <script src="assets/entities/bossrush.entities.js"></script>
+  <script src="assets/entities/guardia.entities.js"></script>
+  <script src="assets/entities/lights.entities.js"></script>
+  <!-- Plugins utilitarios -->
+  <script src="arrowguide.plugin.js"></script>
+  <script src="skyweather.plugin.js"></script>
+  <script src="puppet.plugin.js"></script>
+  <script src="lighting.plugin.js"></script>
+  <script src="mouse.control.api.js"></script>
+  <script src="furious.plugin.js"></script>
+  <script src="bells.plugin.js"></script>
+  <script src="gameflow.api.js"></script>
+  <script src="placement.api.js"></script>
+  <script src="presentation.api.js"></script>
+  <script src="music.api.js"></script>
+  <!--<script src="audio.api.js"></script>-->
+  <script src="score.api.js"></script>
+  <script src="physics.plugin.js"></script>
+  <script src="mapgen.plugin.js"></script>
+  <script src="dialog.plugin.js"></script>
+  <script src="hud.api.js"></script>
+  <!-- ⬇️ NUEVO: sprites unificado, SIEMPRE ANTES de game.js -->
+  <script src="sprites.plugin.js"></script>
 
   <script id="sprites-manifest" type="application/json">
   [
@@ -228,21 +177,15 @@
     "foto_los3.png","foto_navidad.png"
   ]
   </script>
-  <script>
-    // Ajuste defensivo para alturas de viewport inconsistentes
-    function fitStartScreen(){
-      const ss = document.getElementById('start-screen');
-      if (ss) ss.style.setProperty('--vh', window.innerHeight + 'px');
-    }
-    window.addEventListener('resize', fitStartScreen, {passive:true});
-    window.addEventListener('orientationchange', fitStartScreen, {passive:true});
-    fitStartScreen();
-  </script>
 
-  <script>
-    (function(){
-      // === Botón de "aceleración 3D" (gag) ===
-      const gags = [
+
+  <!-- Motor central SIEMPRE el último -->
+  <script src="game.js"></script>
+
+<script>
+(function(){
+  // === Botón de "aceleración 3D" (gag) ===
+  const gags = [
     "No existe ninguna aceleración 3D, es broma 😜",
     "En serio: esto es 2D con mucho cariño.",
     "¿Otra vez? No funciona. Deja de clicar.",
@@ -271,10 +214,10 @@
 </script>
 
 <script>
-  window.addEventListener('load', () => {
+  window.addEventListener('load', () => { 
     // ---- flujo normal (sin ?mini=1 ni ?map=mini|debug) ----
-    if (window.MusicManager && MusicManager.init) {
-      MusicManager.init({ volume: 0.8, fadeTime: 2.0 });
+    if (window.MusicAPI && MusicAPI.init) {
+      MusicAPI.init({ urls: { intro: 'assets/music/intro.ogg' } });
     }
     if (window.PresentationAPI && PresentationAPI.playIntroSequence) {
       PresentationAPI.playIntroSequence();

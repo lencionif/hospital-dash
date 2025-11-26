@@ -117,7 +117,6 @@
     _marker:null,               // {x,y,t,mode}
     _path:[],                   // lista de puntos mundo (centros de tile)
     _pendingInteract:null,      // entidad a usar al llegar
-    _arrivalTarget:null,        // último punto de destino
     _enabled:true,
 
     // Configuración de cursores (pon tus PNG si quieres)
@@ -274,32 +273,6 @@
           this._path.push({ x: gx*t + t*0.5, y: gy*t + t*0.5 });
         }
       }
-      this._arrivalTarget = this._path.length ? this._path[this._path.length - 1] : null;
-    },
-
-    _snapToArrival(player){
-      if (!this._arrivalTarget || !player) return false;
-      const centerX = (player.x || 0) + (player.w || 0) * 0.5;
-      const centerY = (player.y || 0) + (player.h || 0) * 0.5;
-      const dx = this._arrivalTarget.x - centerX;
-      const dy = this._arrivalTarget.y - centerY;
-      const distSq = dx * dx + dy * dy;
-      if (distSq < 1) {
-        player.x = this._arrivalTarget.x - (player.w || 0) * 0.5;
-        player.y = this._arrivalTarget.y - (player.h || 0) * 0.5;
-        player.vx = 0; player.vy = 0;
-        if (typeof player.ax === 'number') player.ax = 0;
-        if (typeof player.ay === 'number') player.ay = 0;
-        player.speed = 0;
-        if (typeof player.setAnimation === 'function') {
-          try { player.setAnimation('idle'); } catch (_) {}
-        } else if (player.state) {
-          player.state.animation = 'idle';
-        }
-        this._arrivalTarget = null;
-        return true;
-      }
-      return false;
     },
 
     update(dt){
@@ -372,7 +345,6 @@
             softFacing(p, ndx, ndy, dt, /*fromMouse=*/true);
           }
           this._path.shift();
-          this._snapToArrival(p);
         }
 
         // Si no quedan puntos y había interacción pendiente -> orientar + usar
@@ -395,7 +367,6 @@
             if (Math.abs(p.vy) < 0.25) p.vy = 0;
             p.usingMouse = false;
           }
-          this._snapToArrival(p);
       }
 
       // Animación del marcador

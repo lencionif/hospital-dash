@@ -10,134 +10,22 @@
   // ------------------------------------------------------------
   // Parámetros globales y utilidades
   // ------------------------------------------------------------
-  const RAW_SEARCH = location.search || '';
-  const NORMALIZED_SEARCH = RAW_SEARCH.replace(/;/g, '&');
-  const SEARCH_PARAMS = new URLSearchParams(NORMALIZED_SEARCH);
-  const MAP_PARAM = (getParamCaseInsensitive('map') || '').toLowerCase();
-  const DEBUG_MAP_MODE = MAP_PARAM === 'debug';
-  const DEFAULT_DEBUG_MAP_PATH = 'assets/config/debug-map.txt';
-  const DEBUG_MAP_FILE_PARAM = (() => {
-    const raw = SEARCH_PARAMS.get('debugMap')
-      || SEARCH_PARAMS.get('debugMapFile')
-      || SEARCH_PARAMS.get('mapfile');
-    if (!raw) return null;
-    try {
-      return decodeURIComponent(raw.replace(/\+/g, ' '));
-    } catch (_) {
-      return raw;
-    }
-  })();
-  const DEBUG_MAP_FILE = DEBUG_MAP_FILE_PARAM || DEFAULT_DEBUG_MAP_PATH;
-  window.DEBUG_MAP_FILE_PARAM = DEBUG_MAP_FILE_PARAM;
-  window.DEBUG_MAP_FILE = DEBUG_MAP_FILE;
-  const DIAG_MODE = SEARCH_PARAMS.get('diag') === '1';
-  const LEVEL_PARAM_RAW = getParamCaseInsensitive('level') || getParamCaseInsensitive('nivel');
-  const MAP_DEBUG_LEVEL_PARAM_RAW = getParamCaseInsensitive('MapDebug')
-    || (DEBUG_MAP_MODE ? getParamCaseInsensitive('nivel') : null);
-  const DEFAULT_LEVEL_ID = 'level1';
-  const NORMALIZED_LEVEL_ID = normalizeLevelParam(LEVEL_PARAM_RAW);
-  const NORMALIZED_MAP_DEBUG_LEVEL = normalizeLevelParam(MAP_DEBUG_LEVEL_PARAM_RAW);
-  const DEBUG_LEVEL_ID = DEBUG_MAP_MODE
-    ? (NORMALIZED_MAP_DEBUG_LEVEL || NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID)
-    : null;
-  const DEBUG_LEVEL_NUMBER = DEBUG_LEVEL_ID ? extractLevelNumber(DEBUG_LEVEL_ID) : null;
-  const CURRENT_LEVEL_ID = DEBUG_MAP_MODE
-    ? (DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID)
-    : (NORMALIZED_LEVEL_ID || DEFAULT_LEVEL_ID);
-  const CURRENT_LEVEL_NUMBER = extractLevelNumber(CURRENT_LEVEL_ID) || 1;
-  // Bandera global de cooperativo:
-  // - Solo se declara aquí.
-  // - El resto de archivos la usan sin redeclararla.
-  const ENABLE_COOP = false;
-  window.ENABLE_COOP = ENABLE_COOP;
-  window.DEBUG_MAP_MODE = DEBUG_MAP_MODE;
-  window.DEBUG_LEVEL_PARAM = MAP_DEBUG_LEVEL_PARAM_RAW || LEVEL_PARAM_RAW || null;
-  window.DEBUG_LEVEL_ID = DEBUG_LEVEL_ID;
-  window.DEBUG_LEVEL_NUMBER = DEBUG_LEVEL_NUMBER;
-  if (DEBUG_MAP_MODE) {
-    console.debug('[LEVEL_DEBUG] Selected debug level', DEBUG_LEVEL_ID || DEFAULT_LEVEL_ID);
-  }
-
-  function logThrough(level, ...args){
-    const logger = window.LOG;
-    if (logger && typeof logger[level] === 'function') {
-      try { logger[level](...args); return; }
-      catch (err){ console.warn('[LOG proxy]', err); }
-    }
-    const fallback = (level === 'error') ? console.error
-      : (level === 'warn') ? console.warn : console.log;
-    fallback(...args);
-  }
-
-  function getParamCaseInsensitive(name){
-    if (!name) return null;
-    const direct = SEARCH_PARAMS.get(name);
-    if (direct != null) return direct;
-    const needle = name.toLowerCase();
-    for (const [key, value] of SEARCH_PARAMS.entries()) {
-      if (key.toLowerCase() === needle) return value;
-    }
-    return null;
-  }
-
-  function normalizeLevelParam(value){
-    if (value == null) return null;
-    const raw = value.toString().trim().toLowerCase();
-    if (!raw) return null;
-    if (/^level\d+$/.test(raw)) return raw;
-    if (/^\d+$/.test(raw)) return `level${raw}`;
-    return null;
-  }
-
-  function extractLevelNumber(id){
-    if (!id) return null;
-    const match = /level(\d+)/.exec(String(id).toLowerCase());
-    if (!match) return null;
-    const num = parseInt(match[1], 10);
-    return Number.isFinite(num) ? num : null;
-  }
-
   const TILE = 32;
   const VIEW_W = 960;
   const VIEW_H = 540;
-  const FORCE_PLAYER = 100.0;
+  const FORCE_PLAYER = 40.0;
 
-  const ENT = (() => {
-    const root = (typeof window !== 'undefined') ? window : globalThis;
-    const existing = (root && typeof root.ENT === 'object')
-      ? root.ENT
-      : (root && typeof root.G === 'object' && typeof root.G.ENT === 'object')
-        ? root.G.ENT
-        : {};
-    const defaults = {
-      PLAYER: 1,
-      PATIENT: 2,
-      PILL: 3,
-      BED: 4,
-      CART: 5,
-      RAT: 6,
-      MOSQUITO: 7,
-      DOOR: 8,
-      BOSS: 9,
-    };
-    for (const [key, value] of Object.entries(defaults)) {
-      existing[key] = value;
-    }
-    if (root && typeof root === 'object') {
-      root.ENT = existing;
-    }
-    return existing;
-  })();
-
-  function matchesKind(entity, key){
-    if (!entity) return false;
-    const target = String(key).toUpperCase();
-    if (typeof entity.kind === 'string' && entity.kind.toUpperCase() === target) return true;
-    if (typeof entity.kind === 'number' && ENT[target] === entity.kind) return true;
-    if (typeof entity.kindName === 'string' && entity.kindName.toUpperCase() === target) return true;
-    if (typeof entity.type === 'string' && entity.type.toUpperCase() === target) return true;
-    return false;
-  }
+  const ENT = {
+    PLAYER: 1,
+    PATIENT: 2,
+    PILL: 3,
+    BED: 4,
+    CART: 5,
+    RAT: 6,
+    MOSQUITO: 7,
+    DOOR: 8,
+    BOSS: 9,
+  };
 
   const COLORS = {
     floor: '#111418',
@@ -156,12 +44,6 @@
     hudBg: '#0b0d10',
   };
 
-  const musicTrackForLevel = (level) => {
-    if (level === 2) return 'level2';
-    if (level === 3) return 'level3';
-    return 'level1';
-  };
-
   // Balance (ligero; extensible sin romper APIs)
   const BALANCE = {
     physics: {
@@ -170,8 +52,8 @@
       playerFriction: 0.86,
       restitution: 0.65,
       pushImpulse: 340,
-      maxSpeedPlayer: 240,
-      maxSpeedObject: 1040
+      maxSpeedPlayer: 165,
+      maxSpeedObject: 360
     },
     enemies: {
       mosquito: {
@@ -193,23 +75,14 @@
     time: 0,
     score: 0,
     health: 6, // medias vidas (0..6)
-    levelState: 'READY_TO_START', // READY_TO_START | LOADING | READY | PLAYING | PAUSED | IDLE
-    pendingLevel: null,
-    level: CURRENT_LEVEL_NUMBER,
-    debugLevelId: DEBUG_LEVEL_ID || CURRENT_LEVEL_ID || DEFAULT_LEVEL_ID,
-    debugLevelNumber: DEBUG_LEVEL_NUMBER || CURRENT_LEVEL_NUMBER,
-    currentLevelId: CURRENT_LEVEL_ID,
-    currentLevelNumber: CURRENT_LEVEL_NUMBER,
     entities: [],
     movers: [],
-    hostiles: [],
-    humans: [],
-    animals: [],
-    objects: [],
+    enemies: [],
     patients: [],
     pills: [],
     lights: [],       // lógicas (para info)
     roomLights: [],   // focos de sala
+    npcs: [],         // (los pacientes cuentan como NPC)
     mosquitoSpawn: null,
     door: null,
     cart: null,
@@ -222,560 +95,9 @@
     delivered: 0,
     lastPushDir: { x: 1, y: 0 },
     carry: null,      // <- lo que llevas en la mano (pastilla)
-    patientsTotal: 0,
-    patientsPending: 0,
-    patientsCured: 0,
-    patientsFurious: 0,
-    cycleSeconds: 0,
-    TILE_SIZE: TILE,
-    visibleTilesRadius: 8,
-    visualRadiusTiles: 8,
-    visualRadiusPx: 8 * TILE,
-    isDebugMap: DEBUG_MAP_MODE,
-    firstBellDelayMinutes: 5,
-    firstBellDelaySeconds: 300,
-    firstBellDeadline: null,
-    firstBellTriggered: false,
-    _firstBellPendingLog: false
+    cycleSeconds: 0
   };
-
-  const PINBALL_GROUPS = new Set(['cart', 'human', 'animal']);
-
-  function pinballGroupName(ent){
-    return (ent && ent.group ? String(ent.group) : '').toLowerCase();
-  }
-
-  function isPinballCandidate(ent){
-    if (!ent || ent.dead || ent.pinballExempt) return false;
-    if (ent.static) return false;
-    if (ent.pushable) return true;
-    if (ent.kind === ENT.PLAYER) return true;
-    if (typeof isCartEntity === 'function' && isCartEntity(ent)) return true;
-    const group = pinballGroupName(ent);
-    return PINBALL_GROUPS.has(group);
-  }
-
-  function approximatePinballMass(ent){
-    if (!ent) return 0;
-    if (Number.isFinite(ent.mass)) return Math.max(0.2, ent.mass);
-    if (ent.kind === ENT.PLAYER) return 1.0;
-    if (typeof isCartEntity === 'function' && isCartEntity(ent)) return 3.5;
-    if (PINBALL_GROUPS.has(pinballGroupName(ent))) return 1.1;
-    return 1.0;
-  }
-
-  function pinballRestitution(ent){
-    const phys = physicsConfig();
-    let rest = (phys?.restitution ?? 0.32);
-    if (typeof isCartEntity === 'function' && isCartEntity(ent)) {
-      rest = Math.max(rest, phys?.cartRestitution ?? rest);
-    }
-    if (Number.isFinite(ent?.rest)) rest = Math.max(rest, ent.rest);
-    if (Number.isFinite(ent?.restitution)) rest = Math.max(rest, ent.restitution);
-    return Math.max(0.2, Math.min(0.98, rest));
-  }
-
-  function shouldDebugPushLogs(){
-    try {
-      if (window.DEBUG_PUSH || window.DEBUG_FORCE_ASCII) return true;
-      return typeof window.location?.search === 'string' && window.location.search.includes('map=debug');
-    } catch (_) {
-      return false;
-    }
-  }
   window.G = G; // (expuesto)
-  G.ENT = ENT;
-  if (typeof window === 'object') {
-    window.ENT = ENT;
-  }
-
-  let currentVisualInfo = null;
-
-  function detachEntityRig(ent){
-    if (!ent) return;
-    try {
-      if (typeof window.detachEntityRig === 'function' && window.detachEntityRig !== detachEntityRig) {
-        window.detachEntityRig(ent);
-        return;
-      }
-    } catch (_) {}
-    try {
-      window.PuppetAPI?.detach?.(ent);
-    } catch (err){
-      if (window.DEBUG_FORCE_ASCII) console.warn('[Game] detachEntityRig error', err);
-    }
-  }
-  window.detachEntityRig = detachEntityRig;
-
-  function resolveVisualRadiusTiles(){
-    const candidates = [
-      Number.isFinite(G?.visualRadiusTiles) ? G.visualRadiusTiles : null,
-      G?.levelRules?.level?.visualRadius,
-      G?.levelRules?.globals?.visualRadius,
-      G?.globals?.visualRadius
-    ];
-    for (const value of candidates){
-      if (Number.isFinite(value) && value > 0) return value;
-    }
-    return null;
-  }
-
-  function computeVisualRadiusInfo(){
-    const hero = G.player;
-    if (!hero){
-      currentVisualInfo = null;
-      if (G) G.__visualRadiusInfo = null;
-      return null;
-    }
-    const radiusTiles = resolveVisualRadiusTiles();
-    if (!Number.isFinite(radiusTiles) || radiusTiles <= 0){
-      currentVisualInfo = null;
-      G.__visualRadiusInfo = null;
-      return null;
-    }
-    const tileSize = window.TILE_SIZE || window.TILE || TILE;
-    const radiusPx = radiusTiles * tileSize;
-    const info = {
-      radiusTiles,
-      radiusPx,
-      radiusSq: radiusPx * radiusPx,
-      hx: hero.x + (hero.w || tileSize) * 0.5,
-      hy: hero.y + (hero.h || tileSize) * 0.5,
-      timestamp: (typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now()
-        : Date.now()
-    };
-    currentVisualInfo = info;
-    G.__visualRadiusInfo = info;
-    return info;
-  }
-
-  function setEntityActivity(ent, active){
-    if (!ent) return;
-    const wasInactive = ent._inactive === true;
-    const nowInactive = !active;
-    if (wasInactive === nowInactive) return;
-    ent._inactive = nowInactive;
-    const hooks = active
-      ? ['onActivate', 'onWake', 'onWakeUp']
-      : ['onDeactivate', 'onSleep', 'onSleepy'];
-    for (const name of hooks){
-      const fn = ent && typeof ent[name] === 'function' ? ent[name] : null;
-      if (!fn) continue;
-      try {
-        fn.call(ent, G, currentVisualInfo);
-      } catch (err){
-        if (window.DEBUG_FORCE_ASCII) console.warn(`[Entity:${name}] error`, err);
-      }
-      break;
-    }
-  }
-
-  function shouldUpdateEntity(ent){
-    if (!ent) return false;
-    if (ent === G.player){
-      setEntityActivity(ent, true);
-      return true;
-    }
-    const info = currentVisualInfo;
-    if (!info){
-      setEntityActivity(ent, true);
-      return true;
-    }
-    if (ent._alwaysUpdate === true){
-      setEntityActivity(ent, true);
-      return true;
-    }
-    const now = info.timestamp || ((typeof performance !== 'undefined' && typeof performance.now === 'function')
-      ? performance.now()
-      : Date.now());
-    const awakeUntil = Number(ent._alwaysUpdateUntil);
-    if (Number.isFinite(awakeUntil) && awakeUntil > now){
-      setEntityActivity(ent, true);
-      return true;
-    }
-    const w = Number.isFinite(ent.w) ? ent.w : TILE;
-    const h = Number.isFinite(ent.h) ? ent.h : TILE;
-    const ex = (Number(ent.x) || 0) + w * 0.5;
-    const ey = (Number(ent.y) || 0) + h * 0.5;
-    const dx = ex - info.hx;
-    const dy = ey - info.hy;
-    const active = (dx * dx + dy * dy) <= info.radiusSq;
-    setEntityActivity(ent, active);
-    return active;
-  }
-  const PATH_BLOCK_LOG_INTERVAL_MS = 220;
-  const isPathDebugEnabled = () => {
-    try {
-      const root = typeof window !== 'undefined'
-        ? window
-        : (typeof globalThis !== 'undefined' ? globalThis : null);
-      if (!root) return false;
-      return !!(root.PATH_DEBUG || root.DEBUG_PATHS || root.DEBUG_FORCE_PATHS);
-    } catch (_) {
-      return false;
-    }
-  };
-  function describeEntity(ent){
-    if (!ent) return 'entity';
-    return ent.id || ent.name || ent.kindName || ent.kind || 'entity';
-  }
-  function logPathBlocked(ent, reason){
-    if (!ent || !isPathDebugEnabled()) return;
-    const nowTs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-      ? performance.now()
-      : Date.now();
-    if (ent._lastPathBlockedLog && nowTs - ent._lastPathBlockedLog < PATH_BLOCK_LOG_INTERVAL_MS) return;
-    ent._lastPathBlockedLog = nowTs;
-    const suffix = reason ? ` (${reason})` : '';
-    console.debug(`[PATH_BLOCKED] ${describeEntity(ent)}${suffix}`);
-  }
-  function snapEntityInsideMap(ent){
-    try {
-      if (window.Physics?.snapInsideMap) {
-        window.Physics.snapInsideMap(ent);
-      }
-    } catch (_) {}
-  }
-
-  const MovementSystem = (() => {
-    const states = new WeakMap();
-    const movers = new Set();
-    let currentMap = null;
-    let tileSize = TILE;
-
-    function ensure(e){
-      if (!e) return null;
-      let st = states.get(e);
-      if (st) return st;
-      st = {
-        x: e.x || 0,
-        y: e.y || 0,
-        vx: e.vx || 0,
-        vy: e.vy || 0,
-        intentVx: e.vx || 0,
-        intentVy: e.vy || 0,
-        targetX: Number.isFinite(e.targetX) ? e.targetX : null,
-        targetY: Number.isFinite(e.targetY) ? e.targetY : null,
-        teleportX: e.x || 0,
-        teleportY: e.y || 0,
-        forceTeleport: false,
-        teleportFromX: e.x || 0,
-        teleportFromY: e.y || 0,
-        lastSafeX: e.x || 0,
-        lastSafeY: e.y || 0,
-        pendingTeleportApproved: true,
-        pendingTeleportReason: null,
-        friction: typeof e.mu === 'number' ? Math.max(0, Math.min(1, e.mu)) : 0
-      };
-      states.set(e, st);
-      defineProps(e, st);
-      if (!e.static) movers.add(e);
-      return st;
-    }
-
-    function defineProps(e, st){
-      Object.defineProperty(e, 'x', {
-        configurable: true,
-        enumerable: true,
-        get(){ return st.x; },
-        set(value){
-          const v = Number(value) || 0;
-          st.teleportFromX = st.x;
-          st.teleportX = v;
-          st.x = v;
-          st.forceTeleport = true;
-          st.pendingTeleportApproved = false;
-        }
-      });
-      Object.defineProperty(e, 'y', {
-        configurable: true,
-        enumerable: true,
-        get(){ return st.y; },
-        set(value){
-          const v = Number(value) || 0;
-          st.teleportFromY = st.y;
-          st.teleportY = v;
-          st.y = v;
-          st.forceTeleport = true;
-          st.pendingTeleportApproved = false;
-        }
-      });
-      Object.defineProperty(e, 'vx', {
-        configurable: true,
-        enumerable: true,
-        get(){ return st.vx; },
-        set(value){
-          const v = Number(value) || 0;
-          st.intentVx = v;
-          st.vx = v;
-        }
-      });
-      Object.defineProperty(e, 'vy', {
-        configurable: true,
-        enumerable: true,
-        get(){ return st.vy; },
-        set(value){
-          const v = Number(value) || 0;
-          st.intentVy = v;
-          st.vy = v;
-        }
-      });
-    }
-
-    function unregister(e){
-      if (!e) return;
-      if (!e.__loggedDespawn){
-        e.__loggedDespawn = true;
-        try {
-          window.LOG?.event?.('DESPAWN', {
-            id: e.id || e.name || null,
-            kind: e.kindName || e.kind || null,
-            x: Number.isFinite(e.x) ? Math.round(e.x) : null,
-            y: Number.isFinite(e.y) ? Math.round(e.y) : null,
-          });
-        } catch (_) {}
-      }
-      movers.delete(e);
-      states.delete(e);
-    }
-
-    function setMap(map, size){
-      currentMap = map || null;
-      tileSize = size || TILE;
-    }
-
-    function isBlocked(x, y, w, h){
-      if (!currentMap) return false;
-      const tx1 = Math.floor(x / tileSize);
-      const ty1 = Math.floor(y / tileSize);
-      const tx2 = Math.floor((x + w) / tileSize);
-      const ty2 = Math.floor((y + h) / tileSize);
-      const H = currentMap.length;
-      const W = H ? currentMap[0].length : 0;
-      const clamped = (tx,ty)=> tx<0 || ty<0 || tx>=W || ty>=H;
-      if (clamped(tx1,ty1) || clamped(tx2,ty1) || clamped(tx1,ty2) || clamped(tx2,ty2)) return true;
-      return (
-        currentMap[ty1][tx1] === 1 ||
-        currentMap[ty1][tx2] === 1 ||
-        currentMap[ty2][tx1] === 1 ||
-        currentMap[ty2][tx2] === 1
-      );
-    }
-
-    function collidesEntity(e, x, y){
-      if (!Array.isArray(G.entities)) return false;
-      for (const other of G.entities){
-        if (!other || other === e) continue;
-        if (!other.solid || other.dead) continue;
-        if (!other.static && isPinballCandidate(e) && isPinballCandidate(other)) continue;
-        const stOther = states.get(other);
-        const ox = stOther ? stOther.x : other.x;
-        const oy = stOther ? stOther.y : other.y;
-        const ow = other.w || 0;
-        const oh = other.h || 0;
-        if (x + e.w <= ox || x >= ox + ow) continue;
-        if (y + e.h <= oy || y >= oy + oh) continue;
-        return true;
-      }
-      return false;
-    }
-
-    function consumeTeleport(e, st){
-      const targetX = st.teleportX;
-      const targetY = st.teleportY;
-      const fromX = st.teleportFromX ?? targetX;
-      const fromY = st.teleportFromY ?? targetY;
-      const delta = Math.hypot(targetX - fromX, targetY - fromY);
-      const needsApproval = !e.static && delta > tileSize * 0.5;
-      const allowed = st.pendingTeleportApproved || !needsApproval;
-      const blocked = isBlocked(targetX, targetY, e.w, e.h) || collidesEntity(e, targetX, targetY);
-      if (!allowed) {
-        logPathBlocked(e, 'teleport_denied');
-        snapEntityInsideMap(e);
-        st.x = st.lastSafeX ?? st.x;
-        st.y = st.lastSafeY ?? st.y;
-      } else if (blocked) {
-        logPathBlocked(e, 'teleport_blocked');
-        snapEntityInsideMap(e);
-        st.x = st.lastSafeX ?? st.x;
-        st.y = st.lastSafeY ?? st.y;
-      } else {
-        st.x = targetX;
-        st.y = targetY;
-        st.lastSafeX = st.x;
-        st.lastSafeY = st.y;
-      }
-      st.forceTeleport = false;
-      st.pendingTeleportApproved = false;
-      st.pendingTeleportReason = null;
-    }
-
-    function moveAxis(e, st, dt, axis){
-      const vel = axis === 'x' ? st.vx : st.vy;
-      if (Math.abs(vel) < 1e-6) return;
-      let pos = axis === 'x' ? st.x : st.y;
-      const delta = vel * dt;
-      const steps = Math.max(1, Math.ceil(Math.abs(delta)));
-      const step = delta / steps;
-      for (let i = 0; i < steps; i++){
-        const next = pos + step;
-        const nx = axis === 'x' ? next : st.x;
-        const ny = axis === 'y' ? next : st.y;
-        const hitWall = isBlocked(nx, ny, e.w, e.h);
-        const hitSolid = !hitWall && collidesEntity(e, nx, ny);
-        if (hitWall || hitSolid){
-          logPathBlocked(e, axis === 'x' ? 'axis-x' : 'axis-y');
-          const bounce = isPinballCandidate(e);
-          const rest = bounce ? pinballRestitution(e) : 0;
-          if (axis === 'x') {
-            st.vx = bounce ? -st.vx * rest : 0;
-          } else {
-            st.vy = bounce ? -st.vy * rest : 0;
-          }
-          return;
-        }
-        pos = next;
-        if (axis === 'x') st.x = pos; else st.y = pos;
-      }
-      if (!isBlocked(st.x, st.y, e.w, e.h)) {
-        st.lastSafeX = st.x;
-        st.lastSafeY = st.y;
-      }
-    }
-
-    function applyFriction(e, st){
-      const mu = (typeof e.mu === 'number') ? Math.max(0, Math.min(1, e.mu)) : (st.friction || 0);
-      st.friction = mu;
-      const fr = 1 - Math.max(0, Math.min(0.95, mu || 0));
-      st.vx *= fr;
-      st.vy *= fr;
-      if (Math.abs(st.vx) < 0.0001) st.vx = 0;
-      if (Math.abs(st.vy) < 0.0001) st.vy = 0;
-    }
-
-    function applyTargetMotion(e, st){
-      if (!Number.isFinite(st.targetX) || !Number.isFinite(st.targetY)) return false;
-      const threshold = Math.max(4, (tileSize || TILE) * 0.15);
-      const snapDx = st.targetX - (e.x || 0);
-      const snapDy = st.targetY - (e.y || 0);
-      if (snapDx * snapDx + snapDy * snapDy < threshold * threshold) {
-        st.vx = 0; st.vy = 0; st.intentVx = 0; st.intentVy = 0;
-        if (e) {
-          e.x = st.targetX;
-          e.y = st.targetY;
-          e.speed = 0;
-          if (typeof e.setAnimation === 'function') {
-            try { e.setAnimation('idle'); } catch (_) {}
-          } else if (e.state) {
-            e.state.animation = 'idle';
-          }
-        }
-        st.targetX = null; st.targetY = null;
-        return true;
-      }
-      const cx = (st.x || 0) + (e.w || 0) * 0.5;
-      const cy = (st.y || 0) + (e.h || 0) * 0.5;
-      const dx = st.targetX - cx;
-      const dy = st.targetY - cy;
-      const distSq = dx * dx + dy * dy;
-      const stopDist = Math.max(1, (tileSize || TILE) * 0.25);
-      if (distSq < stopDist * stopDist) {
-        st.targetX = null; st.targetY = null;
-        st.vx = 0; st.vy = 0; st.intentVx = 0; st.intentVy = 0;
-        if (e) {
-          e.speed = 0;
-          if (typeof e.setAnimation === 'function') {
-            try { e.setAnimation('idle'); } catch (_) {}
-          } else if (e.state) {
-            e.state.animation = 'idle';
-          }
-        }
-        return true;
-      }
-
-      const len = Math.hypot(dx, dy) || 1;
-      const desiredSpeed = Number.isFinite(e.speed)
-        ? e.speed
-        : (Number.isFinite(e.maxSpeed) ? e.maxSpeed : 160);
-      const ndx = dx / len;
-      const ndy = dy / len;
-      st.vx = ndx * desiredSpeed;
-      st.vy = ndy * desiredSpeed;
-      st.intentVx = st.vx;
-      st.intentVy = st.vy;
-      if (typeof e.setAnimation === 'function') {
-        try { e.setAnimation('walk'); } catch (_) {}
-      }
-      return false;
-    }
-
-    function step(dt){
-      if (!dt || dt <= 0) return;
-      for (const e of movers){
-        if (!e || e.dead) continue;
-        const st = ensure(e);
-        if (!st) continue;
-        if (st.forceTeleport){
-          consumeTeleport(e, st);
-          continue;
-        }
-        if (!shouldUpdateEntity(e)){
-          st.intentVx = 0;
-          st.intentVy = 0;
-          st.vx = 0;
-          st.vy = 0;
-          continue;
-        }
-        applyTargetMotion(e, st);
-        st.vx = st.intentVx;
-        st.vy = st.intentVy;
-        const maxSp = (typeof e.maxSpeed === 'number') ? e.maxSpeed : null;
-        if (maxSp != null){
-          const sp = Math.hypot(st.vx, st.vy);
-          if (sp > maxSp){
-            const k = maxSp / (sp || 1);
-            st.vx *= k;
-            st.vy *= k;
-          }
-        }
-        moveAxis(e, st, dt, 'x');
-        moveAxis(e, st, dt, 'y');
-        applyFriction(e, st);
-        st.intentVx = st.vx;
-        st.intentVy = st.vy;
-      }
-    }
-
-    return {
-      register: ensure,
-      unregister,
-      step,
-      setMap,
-      getState(e){ return ensure(e); },
-      setTarget(e, x, y){
-        const st = ensure(e);
-        if (!st) return null;
-        const tx = Number(x);
-        const ty = Number(y);
-        st.targetX = Number.isFinite(tx) ? tx : null;
-        st.targetY = Number.isFinite(ty) ? ty : null;
-        if (e) {
-          e.targetX = st.targetX;
-          e.targetY = st.targetY;
-        }
-        return st;
-      },
-      allowTeleport(e, opts = {}) {
-        const st = ensure(e);
-        if (!st) return null;
-        st.pendingTeleportApproved = true;
-        st.pendingTeleportReason = opts.reason || 'manual';
-        return st;
-      }
-    };
-  })();
-  window.MovementSystem = MovementSystem;
   // Control de respawn diferido (solo al morir)
   const SPAWN = {
     max: BALANCE.enemies.mosquito.max,
@@ -788,14 +110,11 @@
   };
 
   // Canvas principal + fog + HUD (capas independientes)
-  const canvas      = document.getElementById('gameCanvas');
-  const ctx         = canvas.getContext('2d');
-  const fogCanvas   = document.getElementById('fogCanvas');
-  const fogCtx      = fogCanvas ? fogCanvas.getContext('2d') : null;
-  const guideCanvas = document.getElementById('guideCanvas');
-  const guideCtx    = guideCanvas ? guideCanvas.getContext('2d') : null;
-  const hudCanvas   = document.getElementById('hudCanvas');
-  const hudCtx      = hudCanvas.getContext('2d');
+  const canvas    = document.getElementById('gameCanvas');
+  const ctx       = canvas.getContext('2d');
+  const fogCanvas = document.getElementById('fogCanvas');
+  const hudCanvas = document.getElementById('hudCanvas');
+  const hudCtx    = hudCanvas.getContext('2d');
 
   window.DEBUG_POPULATE = window.DEBUG_POPULATE || { LOG:false, VERBOSE:false };
   // SkyFX listo desde el menú (antes de startGame)
@@ -809,7 +128,6 @@
     })
   });
   if (fogCanvas){ fogCanvas.width = VIEW_W; fogCanvas.height = VIEW_H; }
-  if (guideCanvas){ guideCanvas.width = VIEW_W; guideCanvas.height = VIEW_H; }
   if (hudCanvas){ hudCanvas.width = VIEW_W; hudCanvas.height = VIEW_H; }
 
   // === Sprites (plugin unificado) ===
@@ -839,141 +157,6 @@
   const pausedScreen = document.getElementById('pause-screen');
   const levelCompleteScreen = document.getElementById('level-complete-screen');
   const gameOverScreen = document.getElementById('game-over-screen');
-
-  function clearLights(){
-    try { window.LightingAPI?.clear?.(); } catch (_) {}
-    try { window.LightingAPI?.removeAllLights?.(); } catch (_) {}
-    if (typeof document !== 'undefined'){
-      const nodes = document.querySelectorAll('.fx-light, .fx-fire, .fx-glow');
-      nodes.forEach((node) => {
-        try { node.remove(); } catch (_) {}
-      });
-    }
-    if (Array.isArray(G?.lights)) G.lights.length = 0;
-    if (Array.isArray(G?.roomLights)) G.roomLights.length = 0;
-    if (Array.isArray(G?.dynamicLights)) G.dynamicLights.length = 0;
-    if (Array.isArray(G?.lightFX)) G.lightFX.length = 0;
-  }
-
-  function clearCanvasContext(targetCtx, width, height){
-    if (!targetCtx) return;
-    const w = Number.isFinite(width) && width > 0
-      ? width
-      : (targetCtx.canvas && Number.isFinite(targetCtx.canvas.width) ? targetCtx.canvas.width : VIEW_W);
-    const h = Number.isFinite(height) && height > 0
-      ? height
-      : (targetCtx.canvas && Number.isFinite(targetCtx.canvas.height) ? targetCtx.canvas.height : VIEW_H);
-    try {
-      targetCtx.save();
-      targetCtx.setTransform(1, 0, 0, 1, 0, 0);
-      targetCtx.clearRect(0, 0, w, h);
-      targetCtx.restore();
-    } catch (err){
-      try {
-        targetCtx.clearRect(0, 0, w, h);
-      } catch (_) {}
-    }
-  }
-
-  function syncGuideCanvasResolution(){
-    if (!guideCanvas) return;
-    const cssW = guideCanvas.clientWidth || VIEW_W;
-    const cssH = guideCanvas.clientHeight || VIEW_H;
-    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-    const targetW = Math.max(1, Math.round(cssW * dpr));
-    const targetH = Math.max(1, Math.round(cssH * dpr));
-    if (guideCanvas.__hudDpr !== dpr || guideCanvas.width !== targetW || guideCanvas.height !== targetH){
-      guideCanvas.__hudDpr = dpr;
-      guideCanvas.width = targetW;
-      guideCanvas.height = targetH;
-    }
-  }
-
-  function resetGameWorld(opts = {}){
-    const options = opts || {};
-    const levelState = options.levelState || 'READY_TO_START';
-    const reason = options.reason || 'world-reset';
-
-    clearCanvasContext(ctx, canvas?.width, canvas?.height);
-    clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
-    clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-    clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
-
-    if (camera) camera.zoom = 1;
-
-    try { window.FogAPI?.reset?.(); } catch (_) {}
-    try { window.FogAPI?.clear?.(); } catch (_) {}
-    try { window.LightingAPI?.reset?.(); } catch (_) {}
-    try { window.SkyFX?.reset?.(); } catch (_) {}
-    try { window.SkyFX?.clear?.(); } catch (_) {}
-    try { window.Physics?.reset?.(); } catch (_) {}
-    try { window.ArrowGuide?.reset?.(); } catch (_) {}
-    try { window.GameFlowAPI?.cancelReadyOverlay?.(); } catch (_) {}
-
-    resetGlobalLevelState();
-
-    if (options.pendingLevel !== undefined) {
-      const pending = Number(options.pendingLevel);
-      G.pendingLevel = Number.isFinite(pending) ? pending : options.pendingLevel;
-    } else if (options.keepPendingLevel !== true) {
-      G.pendingLevel = null;
-    }
-
-    G.levelState = levelState;
-
-    window.LOG?.event?.('WORLD_RESET', {
-      reason,
-      state: levelState,
-      debug: DEBUG_MAP_MODE
-    });
-  }
-
-  function placeHeroAtControlRoom(){
-    const tile = (typeof TILE !== 'undefined' && TILE) || window.TILE_SIZE || window.TILE || 32;
-    const ctrl = G?.mapAreas?.control || null;
-    const safeRect = G?.safeRect || null;
-    const centerX = ctrl ? (ctrl.x + ctrl.w * 0.5) * tile : (safeRect ? safeRect.x + safeRect.w * 0.5 : (G.mapW || 1) * tile * 0.5);
-    const centerY = ctrl ? (ctrl.y + ctrl.h * 0.5) * tile : (safeRect ? safeRect.y + safeRect.h * 0.5 : (G.mapH || 1) * tile * 0.5);
-    const x = Math.round(centerX);
-    const y = Math.round(centerY);
-    G.startControlRoom = { x, y };
-    if (G.player) {
-      G.player.x = x;
-      G.player.y = y;
-      G.player._lastSafeX = x;
-      G.player._lastSafeY = y;
-      try { window.MovementSystem?.register?.(G.player); } catch (_) {}
-      camera.x = x + (G.player.w || 0) * 0.5;
-      camera.y = y + (G.player.h || 0) * 0.5;
-    }
-  }
-
-  function resetAndLoadLevel(levelNumber){
-    const numericLevel = Number(levelNumber);
-    const nextLevel = Number.isFinite(numericLevel) && numericLevel > 0
-      ? numericLevel
-      : (G.level || 1);
-    G.pendingLevel = nextLevel;
-    if (G.levelState !== 'READY_TO_START') {
-      resetGameWorld({ levelState: 'READY_TO_START', pendingLevel: nextLevel, reason: 'queue-level', keepPendingLevel: true });
-    }
-    requestAnimationFrame(() => startGame({ level: nextLevel, heroId: window.START_HERO_ID }));
-  }
-
-  function fitStartScreen(){
-    if (typeof window === 'undefined') return;
-    const root = document.querySelector('#start-screen');
-    if (!root) return;
-    const viewportH = Math.max(window.innerHeight || document.documentElement?.clientHeight || 0, 320);
-    root.style.height = `${viewportH}px`;
-    root.style.maxHeight = `${viewportH}px`;
-    root.style.setProperty('--start-screen-height', `${viewportH}px`);
-  }
-  if (typeof window !== 'undefined'){
-    window.addEventListener('resize', fitStartScreen, { passive: true });
-    window.addEventListener('orientationchange', fitStartScreen, { passive: true });
-    setTimeout(fitStartScreen, 0);
-  }
 
   // ---- Construye desglose de puntuación para el scoreboard ---------------
   function buildLevelBreakdown(){
@@ -1016,167 +199,17 @@
 
     // Al pulsar "Empezar turno", asegúrate de tener una clave
     document.getElementById('start-button')?.addEventListener('click', () => {
-      const selectedCard = document.querySelector('#start-screen .char-card.selected')
-        || document.querySelector('#start-screen .char-card[data-hero]');
-      const chosen = (selectedCard?.dataset?.hero || window.selectedHeroKey || 'enrique').toLowerCase();
-      window.selectedHeroKey = chosen;
-      window.START_HERO_ID = chosen || 'francesco';
-      window.G.selectedHero = window.START_HERO_ID;
+      if (!window.selectedHeroKey) {
+        const first = document.querySelector('#start-screen .char-card[data-hero]');
+        window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
+        window.G.selectedHero = window.selectedHeroKey;
+      }
     });
   })();
-
-  const JOKES_3D_ACCEL = [
-    "Compilando triángulos en cuatro dimensiones...",
-    "Insertando disquete de texturas de 1993...",
-    "Sacudiendo el monitor CRT para alinear los píxeles mágicos...",
-    "Persuadiendo a la tarjeta Voodoo para que despierte...",
-    "Inflando el shader con aire de fallas...",
-    "Desempolvando la aceleradora Matrox mística...",
-    "Reservando 8 KB extra para la niebla dramática...",
-    "Calibrando el giroscopio imaginario del ratón...",
-    "Pidiendo permiso al jefe de planta para usar ray-tracing...",
-    "Limpiando con alcohol isopropílico las normales invertidas...",
-    "Leyendo el manual secreto del turbo botón...",
-    "Armonizando el ventilador con ópera belcantista...",
-    "Aplicando graxa valenciana a los FPS...",
-    "Convenciendo a los vóxeles de que canten a tres voces...",
-    "Colocando stickers de NOS sobre la GPU...",
-    "Engrasando el eje Z con aceite de oliva virgen extra...",
-    "Sacando brillo al busto de Guybrush para la suerte...",
-    "Cronometrando el dithering con metrónomo de hospital...",
-    "Invocando al shamán de DirectX 3.1...",
-    "Cazando polígonos rebeldes detrás de la cafetería...",
-    "Sintiendo el aura térmica de los condensadores...",
-    "Agitando la coctelera de partículas especulares...",
-    "Prestando gafas de realidad virtual al bedel...",
-    "Cantando serenatas a los fotogramas perdidos...",
-    "Abriendo un portal extra para los sprites tímidos...",
-    "Sobornando al bus PCI con horchata fría...",
-    "Alineando la constelación de píxeles con regla T...",
-    "Dándole vacaciones al clipping frontal...",
-    "Solicitando turno al santo patrón de los polígonos...",
-    "Midiendo a ojo el parallax con cinta de carrocero..."
-  ];
-
-  let accelJokesPool = [];
-
-  function shuffleAccelJokes(){
-    const pool = [...JOKES_3D_ACCEL];
-    for (let i = pool.length - 1; i > 0; i--){
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool;
-  }
-
-  function showRandom3DAccelerationJoke(){
-    if (typeof document === 'undefined' || !JOKES_3D_ACCEL.length) return '';
-    if (!accelJokesPool.length) {
-      accelJokesPool = shuffleAccelJokes();
-    }
-    const next = accelJokesPool.shift() || '';
-    const out = document.getElementById('accel-joke');
-    if (out && next){
-      out.textContent = next;
-      out.classList.add('visible');
-    }
-    return next;
-  }
-  window.showRandom3DAccelerationJoke = showRandom3DAccelerationJoke;
-
-  (function setup3DAccelerationButton(){
-    const btn = document.getElementById('btn-3dacc');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-      showRandom3DAccelerationJoke();
-    });
-  })();
-
-  function ensureHeroSelected(){
-    let key = (window.selectedHeroKey || '').toLowerCase();
-    if (!key){
-      const first = document.querySelector('#start-screen .char-card.selected')
-        || document.querySelector('#start-screen .char-card[data-hero]');
-      key = (first?.dataset?.hero || 'enrique').toLowerCase();
-    }
-    if (!key) key = 'enrique';
-    window.selectedHeroKey = key;
-    window.G = window.G || {};
-    window.G.selectedHero = key;
-    window.START_HERO_ID = key;
-    return key;
-  }
   const metrics = document.getElementById('metricsOverlay') || document.createElement('pre'); // por si no existe
 
   // Cámara
   const camera = { x: 0, y: 0, zoom: 0.45 }; // ⬅️ arranca ya alejado
-  G.camera = camera;
-
-  function getCameraState(){
-    const base = G.camera || camera || { x: 0, y: 0, zoom: 1 };
-    const zoom = Number.isFinite(base.zoom) && base.zoom > 0 ? base.zoom : 1;
-    const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
-    return {
-      cam: base,
-      zoom,
-      offsetX: VIEW_W * 0.5 + (shake.x || 0),
-      offsetY: VIEW_H * 0.5 + (shake.y || 0)
-    };
-  }
-
-  function applyWorldCamera(ctx){
-    if (!ctx) return;
-    const state = getCameraState();
-    const cam = state.cam || {};
-    const cx = Number(cam.x) || 0;
-    const cy = Number(cam.y) || 0;
-    const tx = Math.round(state.offsetX - cx * state.zoom);
-    const ty = Math.round(state.offsetY - cy * state.zoom);
-    ctx.setTransform(state.zoom, 0, 0, state.zoom, tx, ty);
-  }
-  window.applyWorldCamera = applyWorldCamera;
-
-  function worldToScreenBasic(worldX, worldY, cam = camera, viewportWidth = VIEW_W, viewportHeight = VIEW_H) {
-    const ref = cam || camera || {};
-    const zoom = Number(ref.zoom) || 1;
-    const shake = window.CineFX?.getCameraShake?.() || { x: 0, y: 0 };
-    const baseX = Number(ref.x) || 0;
-    const baseY = Number(ref.y) || 0;
-    const viewportX = Number.isFinite(ref.viewportX) ? ref.viewportX : (viewportWidth * 0.5);
-    const viewportY = Number.isFinite(ref.viewportY) ? ref.viewportY : (viewportHeight * 0.5);
-    const offsetX = Number.isFinite(ref.viewportOffsetX) ? ref.viewportOffsetX : 0;
-    const offsetY = Number.isFinite(ref.viewportOffsetY) ? ref.viewportOffsetY : 0;
-    return {
-      x: (worldX - baseX) * zoom + viewportX + offsetX + (shake.x || 0),
-      y: (worldY - baseY) * zoom + viewportY + offsetY + (shake.y || 0),
-    };
-  }
-
-  function worldToScreen(x, y, cam = camera) {
-    const viewW = cam?.viewportWidth ?? VIEW_W;
-    const viewH = cam?.viewportHeight ?? VIEW_H;
-    const point = worldToScreenBasic(x, y, cam, viewW, viewH);
-    return { sx: Math.round(point.x), sy: Math.round(point.y), x: point.x, y: point.y };
-  }
-  window.worldToScreen = worldToScreen;
-
-  function bridgeToScreen(a, b, c, d) {
-    if (typeof a === 'number') {
-      const projected = worldToScreen(a, b, c);
-      return { x: projected.x ?? projected.sx, y: projected.y ?? projected.sy };
-    }
-    const projected = worldToScreen(c, d, a);
-    return { x: projected.x ?? projected.sx, y: projected.y ?? projected.sy };
-  }
-
-  let invalidZoomLogged = false;
-  let pushableOverlapCooldown = 0;
-
-  try {
-    window.GameFlowAPI?.init?.(G, { cartBossTiles: 2.0 });
-  } catch (err) {
-    console.warn('[GameFlow] init error:', err);
-  }
 
   // RNG simple (semilla fija por demo)
   function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
@@ -1215,36 +248,21 @@ function __onKeyDown__(e){
     keys[k] = true;
     __preventNavKeys__(k, e);
 
-    if (window.GameFlowAPI?.isReadyOverlayActive?.()) {
-      e.preventDefault();
-      return;
-    }
-
     // === Atajos comunes ===
     if (k === '0'){ e.preventDefault(); fitCameraToMap(); }
     if (k === 'q'){ window.camera.zoom = clamp(window.camera.zoom - 0.1, 0.6, 2.5); }
     if (k === 'r'){
       if (G.state === 'GAMEOVER' || G.state === 'COMPLETE'){
         e.preventDefault();
-        startGame({ level: G.level || 1, heroId: window.START_HERO_ID });
+        try { PresentationAPI.levelIntro(G.level || 1, () => startGame()); }
+        catch(_){ startGame(); }
         return;
-      } else {
+      }else{
         window.camera.zoom = clamp(window.camera.zoom + 0.1, 0.6, 2.5);
       }
     }
-    if (code === 'Space' || k === ' '){
-      if (G.state === 'PLAYING'){
-        e.preventDefault();
-        window.__toggleMinimapMode?.();
-      }
-      return;
-    }
     if (k === 'f1'){ e.preventDefault(); metrics.style.display = (metrics.style.display === 'none' ? 'block' : 'none'); }
     if (k === 'escape'){ togglePause(); }
-    if (k === 'f'){
-      if (G.state === 'PLAYING'){ e.preventDefault(); try { window.Entities?.Hero?.startAttack?.(G.player, { heavy: G.player?.hero === 'enrique' }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] attack trigger error', err); } }
-      return;
-    }
 
     // === Clima/Fog — protegidas con try/catch ===
     if (code === 'Digit1'){ e.preventDefault(); try{ SkyFX?.setLevel?.(1); FogAPI?.setEnabled?.(true); FogAPI?.setDarkness?.(0); if (window.DEBUG_FORCE_ASCII) console.log('[Key1] Día'); }catch(err){ console.warn('[Key1] error:', err); } }
@@ -1318,37 +336,36 @@ document.addEventListener('keydown', (e)=>{
 
   // ------------------------------------------------------------
   // Mapa ASCII — leyenda completa (usa placement.api.js)
-  // S: héroe principal (jugador)
-  // p: paciente en cama          | f: paciente furiosa (debug)
-  // i: pastilla vinculada al paciente
-  // d: puerta normal               | u: puerta de urgencias cerrada (boss)
-  // X: paciente crítico final (boss)
-  // U: carro de urgencias        | +: carro de medicinas | F: carro de comida
-  // N: spawner de humanos (NPC)  | C: spawner de carros
-  // A: spawner de animales (ratas/mosquitos)
-  // m: enemigo mosquito directo  | r: enemigo rata directo
-  // k: médico NPC                | H: jefa de enfermería
-  // t: técnico T.C.A.E.          | c: celador
-  // n: enfermera cameo           | h: personal de limpieza
-  // g: guardia de seguridad      | v: familiar visitante
-  // L: luz funcionando           | l: luz rota
-  // ~: charco de agua            | E: ascensor
+  // S: spawn del héroe
+  // P: paciente encamado
+  // I: pastilla vinculada al paciente (target = primer P si no se indica)
+  // D: puerta boss cerrada (se abre al terminar pacientes normales)
+  // X: boss (inmóvil)
+  // C: carro de urgencias (1º ER, 2º MED, resto FOOD)
+  // M: spawner de mosquito (tiles)
+  // R: spawner de rata (tiles)
+  // m: enemigo directo mosquito (px)
+  // r: enemigo directo rata (px)
+  // E: ascensor
+  // H: NPC médico    | U: supervisora | T: TCAE
+  // G: guardia       | F: familiar    | N: enfermera sexy
+  // L: luz de sala
   // #: pared  · .: suelo
   // ------------------------------------------------------------
     // Mapa por defecto (inmutable)
-    const FALLBACK_DEBUG_ASCII_MAP = [
+    const DEFAULT_ASCII_MAP = [
     "##############################",
-    "#............................#",
+    "#............m...............#",
     "#....####............####....#",
-    "#....d..#....p.i#....#X.#....#",
-    "#....#.S#.......#....#..D....#",
-    "#....####..U+.#......####....#",
-    "#...........#....N...A....c..#",
-    "#...H..t..n..#..m............#",
-    "#..............E.....F.......#",
-    "#....b.......####.......i....#",
-    "#......k.....#.r#............#",
+    "#......S#....P.I#....#X.#....#",
+    "#....#..#.......#....#..D....#",
+    "#....####....C..#....####....#",
     "#...............#............#",
+    "#...............#............#",
+    "#............####............#",
+    "#............#..#............#",
+    "#..............r#............#",
+    "#............####............#",
     "##############################",
     ];
     // --- Flags globales de modo mapa ---
@@ -1364,7 +381,7 @@ document.addEventListener('keydown', (e)=>{
     })();
 
     // Mapa ASCII mini (para pruebas rápidas con ?map=mini)
-    const DEBUG_ASCII_MINI = FALLBACK_DEBUG_ASCII_MAP;
+    const DEBUG_ASCII_MINI = DEFAULT_ASCII_MAP;
 
   // --- selector de mapa por URL ---
   // ?map=debug  → fuerza el mapa ASCII de arriba
@@ -1394,7 +411,7 @@ document.addEventListener('keydown', (e)=>{
 
 
 // Mapa activo (se puede sustituir por el de MapGen)
-let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
+let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
   // ------------------------------------------------------------
   // Creación de entidades
@@ -1434,52 +451,56 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     e.rest = (opts.rest ?? def.rest);
     e.mu   = (opts.mu   ?? def.mu);
     e.invMass = e.mass > 0 ? 1 / e.mass : 0;
-    MovementSystem.register(e);
     return e;
   }
 
-  function createMainHero(opts = {}) {
-    const heroId = opts.heroId || window.START_HERO_ID || window.selectedHeroKey || (G.selectedHero) || 'enrique';
-    const x = opts.x ?? 0;
-    const y = opts.y ?? 0;
+  function makePlayer(x, y) {
+    // Lee la selección (si no la hay, cae en 'enrique')
+    const key =
+      (window.selectedHeroKey) ||
+      ((window.G && G.selectedHero) ? G.selectedHero : null) ||
+      'enrique';
 
-    if (!ENABLE_COOP && G.player) return G.player;
-
+    // Camino correcto: usa la API de héroes (aplica corazones y stats)
     if (window.Entities?.Hero?.spawnPlayer) {
-      const hero = window.Entities.Hero.spawnPlayer(x, y, { heroId, skin: heroId });
-      hero.heroId = hero.heroId || heroId;
-      hero.hero = hero.hero || heroId;
-      if (!hero.inventory) hero.inventory = {};
-      G.player = hero;
-      console.debug('[HERO_CREATE]', { id: hero.heroId, x: hero.x, y: hero.y, isCoop: !!hero.isCoop, isMain: true });
-      return hero;
+      const p = window.Entities.Hero.spawnPlayer(x, y, { skin: key });
+      // 🛡️ Defaults “sanos” si la skin no los define:
+      p.mass     = (p.mass     != null) ? p.mass     : 1.00;
+      p.rest     = (p.rest     != null) ? p.rest     : 0.10;
+      p.mu       = (p.mu       != null) ? p.mu       : 0.12;
+      p.maxSpeed = (p.maxSpeed != null) ? p.maxSpeed : (BALANCE.physics.maxSpeedPlayer || 165);
+      p.accel    = (p.accel    != null) ? p.accel    : 800;
+      p.pushForce= (p.pushForce!= null) ? p.pushForce: FORCE_PLAYER;
+      p.facing   = p.facing || 'S';
+
+      // === Giro más sensible por defecto ===
+      p.turnSpeed = (p.turnSpeed != null) ? p.turnSpeed : 4.5;
+      p.lookAngle = (typeof p.lookAngle === 'number')
+        ? p.lookAngle
+        : (p.facing === 'E' ? 0 :
+           p.facing === 'S' ? Math.PI/2 :
+           p.facing === 'W' ? Math.PI : -Math.PI/2);
+
+      G.player = p;
+      return p;
     }
 
+    // Fallback de emergencia (por si faltara la API)
     const p = makeRect(x, y, TILE * 0.8, TILE * 0.8, ENT.PLAYER, COLORS.player, false);
     p.speed = 4.0;
     p.pushForce = FORCE_PLAYER;
     p.invuln = 0;
     p.facing = 'S';
     p.pushAnimT = 0;
-    p.skin = heroId;
-    p.hero = heroId;
-    p.heroId = heroId;
-    p.inventory = p.inventory || {};
-    p.maxSpeed = 440;
-    p.accel = 1000;
+    p.skin = key;
+
+    // === Giro más sensible por defecto ===
     p.turnSpeed = 4.5;
-    p.lookAngle = Math.PI / 2;
+    p.lookAngle = Math.PI / 2; // SUR
+    // Asegura corazones mínimos si no hay API
     p.hp = p.hp || 3;
     p.hpMax = p.hpMax || 3;
-    MovementSystem.register(p);
-    G.player = p;
-    console.debug('[HERO_CREATE]', { id: p.heroId, x: p.x, y: p.y, isCoop: !!p.isCoop, isMain: true });
     return p;
-  }
-
-  function makePlayer(x, y) {
-    const key = (window.START_HERO_ID) || (window.selectedHeroKey) || (G.selectedHero) || 'enrique';
-    return createMainHero({ x, y, heroId: key });
   }
   // --------- Spawn de mosquito (enemigo básico) ----------
   function spawnMosquito(x, y) {
@@ -1495,68 +516,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     e.bouncy = false;
     e.static = false;
     G.entities.push(e);
-    e.group = 'animal';
-    e.hostile = true;
-    G.hostiles = G.hostiles || [];
-    G.hostiles.push(e);
-    try { window.EntityGroups?.assign?.(e); } catch (_) {}
-    try { window.EntityGroups?.register?.(e, G); } catch (_) {}
-    window.LOG?.event?.('SPAWN', { kind: 'MOSQUITO', id: e.id || null, x: e.x, y: e.y });
+    G.enemies.push(e);
     return e;
-  }
-
-  function spawnBossForLevel(level, x, y) {
-    const lvl = Number(level) || 1;
-    const px = Number.isFinite(x) ? x : ((G.mapW || 0) * TILE * 0.5 + TILE * 0.5);
-    const py = Number.isFinite(y) ? y : ((G.mapH || 0) * TILE * 0.5 + TILE * 0.5);
-
-    let spawnFn = null;
-    if (lvl === 1) {
-      spawnFn = window.Entities?.PatientHematologic?.spawn;
-    } else if (lvl === 2) {
-      spawnFn = window.Entities?.JefaLimpiadoras?.spawn
-        || window.Entities?.jefa_limpiadoras_lvl2
-        || window.CleanerBossAPI?.spawn
-        || window.Entities?.JefaLimpiadorasDesmayada?.spawn;
-    } else if (lvl === 3) {
-      spawnFn = window.Entities?.PacientePyromana?.spawn
-        || window.Entities?.PyroPatientLvl3?.spawn
-        || window.Entities?.paciente_pyromana_lvl3;
-    }
-
-    if (typeof spawnFn !== 'function') {
-      const fallbackFn = window.Entities?.PatientHematologic?.spawn;
-      if (fallbackFn) {
-        spawnFn = fallbackFn;
-        if (window.DEBUG_COLLISIONS) {
-          console.warn('[BossLoadError] Boss factory missing, usando fallback de nivel 1', lvl);
-        }
-      } else {
-        if (window.DEBUG_COLLISIONS) console.error('[BossLoadError] Boss factory missing for level', lvl);
-        if (lvl !== 1) return spawnBossForLevel(1, x, y);
-        return null;
-      }
-    }
-
-    let bossEnt = null;
-    try {
-      bossEnt = spawnFn(px, py, { level: lvl });
-    } catch (err) {
-      if (window.DEBUG_COLLISIONS) console.warn('[BossLoadError] spawn error', err);
-      try { bossEnt = spawnFn(px, py); } catch (_) {}
-    }
-
-    if (!bossEnt) {
-      if (window.DEBUG_COLLISIONS) console.error('[BossLoadError] Boss factory returned no entity for level', lvl);
-      if (lvl !== 1) return spawnBossForLevel(1, x, y);
-      return null;
-    }
-
-    G.boss = bossEnt;
-    if (!G.entities.includes(bossEnt)) {
-      G.entities.push(bossEnt);
-    }
-    return bossEnt;
+    if (window.Physics && typeof Physics.registerEntity === 'function') Physics.registerEntity(e);
   }
 
   function loadLevelWithMapGen(level=1) {
@@ -1568,16 +530,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
                 :               {w:180,h:120};
 
     // Limpieza de estado como haces al cargar ASCII
-    G.entities = []; G.movers = [];
-    G.hostiles = [];
-    G.humans = [];
-    G.animals = [];
-    G.objects = [];
+    G.entities = []; G.movers = []; G.enemies = []; G.npcs = [];
     G.patients = []; G.pills = []; G.map = []; G.mapW = dims.w; G.mapH = dims.h;
-    G.patientsTotal = 0;
-    G.patientsPending = 0;
-    G.patientsCured = 0;
-    G.patientsFurious = 0;
     G.player = null; G.cart = null; G.door = null; G.boss = null;
 
     MapGen.init(G);                               // vincula el estado del juego
@@ -1587,9 +541,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       place: true,                                // que coloque entidades vía callbacks
       callbacks: {
         placePlayer: (tx,ty) => {
-          const key = (window.START_HERO_ID || window.selectedHeroKey || (window.G && G.selectedHero) || null);
+          const key = (window.selectedHeroKey || (window.G && G.selectedHero) || null);
           const p =
-            (window.Entities?.Hero?.spawnPlayer?.(tx*TILE+4, ty*TILE+4, { skin: key, heroId: key })) ||
+            (window.Entities?.Hero?.spawnPlayer?.(tx*TILE+4, ty*TILE+4, { skin: key })) ||
             makePlayer(tx*TILE+4, ty*TILE+4);
           G.player = p;
           if (!G.entities.includes(p)) G.entities.push(p);
@@ -1607,19 +561,12 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
           G.entities.push(b); G.boss = b;
         },
         placeEnemy: (kind,tx,ty)=>{
-          const cx = tx*TILE+TILE/2;
-          const cy = ty*TILE+TILE/2;
-          if (kind==='mosquito') spawnMosquito(cx, cy);
-          else if (kind==='rat' && window.RatsAPI?.spawn) window.RatsAPI.spawn(cx, cy, { _units:'px' });
+          if (kind==='mosquito') spawnMosquito(tx*TILE+TILE/2, ty*TILE+TILE/2);
+          // añade aquí más tipos si MapGen los emite (ratas, etc.)
         },
         placeSpawner: (kind,tx,ty)=>{
-          const cx = tx*TILE+TILE/2;
-          const cy = ty*TILE+TILE/2;
-          if (kind==='mosquito') G.mosquitoSpawn = {x:cx, y:cy, t:0, n:0};
-          else if (kind==='animal') {
-            G.animalSpawners = Array.isArray(G.animalSpawners) ? G.animalSpawners : [];
-            G.animalSpawners.push({ x: cx, y: cy, tx, ty });
-          }
+          // si usas spawners, guarda sus coords para tus sistemas
+          if (kind==='mosquito') G.mosquitoSpawn = {x:tx*TILE+TILE/2, y:ty*TILE+TILE/2, t:0, n:0};
         },
         placeNPC: (kind,tx,ty)=>{ /* según tus factories existentes */ },
         placeElevator: (tx,ty)=>{ /* si tienes elevators.plugin */ },
@@ -1632,10 +579,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     G.map   = res.map;             // matriz 0/1
     G.mapW  = res.width;
     G.mapH  = res.height;
-    MovementSystem.setMap(G.map, TILE);
-    if (Array.isArray(G.entities)){
-      for (const ent of G.entities){ MovementSystem.register(ent); }
-    }
 
     return true;
   }
@@ -1655,12 +598,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // === Reset de listas (como la antigua, estable) ===
     G.entities.length = 0;
     G.movers.length = 0;
-    G.hostiles.length = 0;
+    G.enemies.length = 0;
     G.patients.length = 0;
     G.pills.length = 0;
-    G.humans.length = 0;
-    G.animals.length = 0;
-    G.objects.length = 0;
+    G.npcs.length = 0;
     G.lights.length = 0;
     G.roomLights.length = 0;
 
@@ -1678,8 +619,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       return;
     }
 
-    G.asciiMap = Array.isArray(lines) ? lines.slice() : [];
-
     // === Tamaño y buffer de mapa ===
     G.mapH = lines.length;
     G.mapW = lines[0].length;
@@ -1687,15 +626,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // Recogeremos aquí los placements derivados del ASCII (en píxeles)
     const asciiPlacements = [];
-    // Guarda referencia global para Placement.applyFromAsciiMap
+    // Guarda referencia global para applyPlacementsFromMapgen
     G.__asciiPlacements = asciiPlacements;
-
-    const reportUnknownChar = (char, lineIndex, colIndex) => {
-      if (!char || char === '.' || char === ' ' || char === '\u0000') return;
-      try {
-        console.warn(`[MAP_PARSE] Carácter desconocido '${char}' en línea ${lineIndex + 1}, columna ${colIndex + 1}`);
-      } catch (_) {}
-    };
 
     for (let y = 0; y < G.mapH; y++){
       const row = [];
@@ -1703,146 +635,90 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       for (let x = 0; x < G.mapW; x++){
         const ch = line[x] || ' ';
         const wx = x * TILE, wy = y * TILE;
-        let recognized = false;
-        const addPlacement = (payload) => {
-          if (!payload) return;
-          asciiPlacements.push({ ...payload, char: ch });
-          recognized = true;
-        };
 
         // pared/espacio (igual que la antigua)
-        if (ch === '#') { row.push(1); recognized = true; }
-        else { row.push(0); if (ch === '.' || ch === ' ') recognized = true; }
+        if (ch === '#') { row.push(1); } else { row.push(0); }
 
         // === MARCAS ASCII ===
-        if (ch === 'S' || ch === 's') {
-          addPlacement({ type:'player', x: wx+4, y: wy+4, _units:'px' });
-          // sala segura (5x5 tiles centrados en S)
-          G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
-          // luz blanca suave en sala de control
-          G.roomLights.push({ x: wx + TILE/2, y: wy + TILE/2, r: 5.5*TILE, baseA: 0.28 });
+        if (ch === 'S') {
+          // HÉROE: se crea INMEDIATO como antes (no depende de factories)
+          const p = (typeof makePlayer === 'function')
+            ? makePlayer(wx+4, wy+4)
+            : (window.Entities?.Hero?.spawnPlayer?.(wx+4, wy+4, {}) || null);
+
+          if (p){
+            G.player = p; G.entities.push(p);
+            // sala segura (5x5 tiles centrados en S)
+            G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
+            // luz blanca suave en sala de control
+            G.roomLights.push({ x: (p.x||wx)+TILE/2, y: (p.y||wy)+TILE/2, r: 5.5*TILE, baseA: 0.28 });
+          }
         }
-        else if (ch === 'p' || ch === 'P') {
+        else if (ch === 'P') {
           // Paciente: placement (NO instanciamos aquí)
-          addPlacement({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
+          asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
           // luz clara de sala (igual que antigua)
           G.roomLights.push({ x: wx+TILE/2, y: wy+TILE/2, r: 5.0*TILE, baseA: 0.25 });
         }
-        else if (ch === 'f') {
-          addPlacement({ type:'enemy', sub:'furious', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'i' || ch === 'I') {
-          addPlacement({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
-        }
-        else if (ch === 'b') {
-          addPlacement({ type:'bell', x: wx+TILE*0.1, y: wy+TILE*0.1, _units:'px' });
-        }
-        else if (ch === 'U') {
-          addPlacement({ type:'cart', sub:'er', x: wx+6, y: wy+8, _units:'px' });
-        }
-        else if (ch === '+') {
-          addPlacement({ type:'cart', sub:'med', x: wx+6, y: wy+8, _units:'px' });
-        }
-        else if (ch === 'F') {
-          addPlacement({ type:'cart', sub:'food', x: wx+6, y: wy+8, _units:'px' });
+        else if (ch === 'I') {
+          asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
         }
         else if (ch === 'C') {
-          addPlacement({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          // Orden debug: 1º ER, 2º MED, 3º+ FOOD
+          window.G = window.G || {};
+          const n = (G._debugCartCount = (G._debugCartCount|0) + 1);
+          const sub = (n === 1) ? 'er' : (n === 2 ? 'med' : 'food');
+          asciiPlacements.push({ type:'cart', sub, x: wx+6, y: wy+8, _units:'px' });
         }
-        else if (ch === 'V') { // legacy cart spawner
-          addPlacement({ type:'spawn_cart', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'V' });
+        else if (ch === 'M') {
+          // Spawner mosquito: SOLO lo apuntamos (si lo apagas en debug/HTML no romperá)
+          asciiPlacements.push({ type:'spawn_mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'N') {
-          addPlacement({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'R') {
+          asciiPlacements.push({ type:'spawn_rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'B') { // legacy humano spawner
-          addPlacement({ type:'spawn_staff', x: wx+TILE/2, y: wy+TILE/2, _units:'px', legacy:'B' });
-        }
-        else if (ch === 'A') {
-          addPlacement({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'M') { // legacy mosquito spawner
-          addPlacement({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'mosquito', legacy:'M' });
-        }
-        else if (ch === 'R') { // legacy rat spawner
-          addPlacement({ type:'spawn_animal', x: wx+TILE/2, y: wy+TILE/2, _units:'px', prefers:'rat', legacy:'R' });
-        }
-        else if (ch === 'D' || ch === 'd') {
-          addPlacement({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
-        }
-        else if (ch === 'u') {
-          addPlacement({ type:'boss_door', x: wx, y: wy, locked:true, bossDoor:true, _units:'px' });
+        else if (ch === 'D') {
+          asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
         }
         else if (ch === 'X') {
-          addPlacement({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
+          asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
         }
         else if (ch === 'L') {
-          addPlacement({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'l') {
-          addPlacement({ type:'light', x: wx+TILE/2, y: wy+TILE/2, broken:true, _units:'px' });
+          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'm') { // enemigo directo: mosquito
-          addPlacement({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'r') { // enemigo directo: rata
-          addPlacement({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          asciiPlacements.push({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'E') { // ascensor activo
-          addPlacement({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
+          asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
         }
-        else if (ch === 'k' || ch === 'K') { // NPC: médico
-          addPlacement({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'H') { // NPC: médico
+          asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'H') { // NPC: jefa enfermería
-          addPlacement({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'U') { // NPC: supervisora
+          asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 't' || ch === 'T') { // NPC: tcae
-          addPlacement({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'c') { // NPC: celador
-          addPlacement({ type:'npc', sub:'celador', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'h') { // NPC: limpieza
-          addPlacement({ type:'npc', sub:'limpieza', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'n') { // NPC: enfermera cameo
-          addPlacement({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'T') { // NPC: tcae
+          asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'G') { // NPC: guardia
-          addPlacement({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'g') { // charco de agua
-          const spawnedWet = window.HazardsAPI?.spawnWet?.(x, y);
-          if (!spawnedWet) {
-            addPlacement({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          }
-          recognized = true;
+        else if (ch === 'F') { // NPC: familiar molesto
+          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === 'v') { // visitante molesto
-          addPlacement({ type:'npc', sub:'familiar_molesto', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
+        else if (ch === 'N') { // NPC: enfermera sexy
+          asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
-        else if (ch === '~') {
-          const spawned = window.HazardsAPI?.spawnWet?.(x, y);
-          if (!spawned) {
-            addPlacement({ type:'hazard_wet', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-          }
-          recognized = true;
+        else if (ch === 'L') { // luz de sala
+          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         // Si añades más letras ASCII, convierte aquí a placements (en píxeles).
-
-        if (!recognized) {
-          reportUnknownChar(ch, y, x);
-        }
       }
       G.map.push(row);
-    }
-
-    if (!asciiPlacements.some((p) => p && String(p.type).toLowerCase() === 'player')) {
-      asciiPlacements.push({ type: 'player', x: TILE*2, y: TILE*2, _units: 'px', char: 'S' });
-      if (!G.safeRect) {
-        G.safeRect = { x: TILE * 0, y: TILE * 0, w: 5 * TILE, h: 5 * TILE };
-      }
     }
 
     // Mezclamos con placements del generador (si ya existían)
@@ -1861,22 +737,13 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     } catch(_){}
     // =======================================
 
-    MovementSystem.setMap(G.map, TILE);
-
-    const width = G.mapW || (lines[0]?.length || 0);
-    const height = G.mapH || lines.length;
-    window.LOG?.event?.('ASCII_MAP_READY', {
-      mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
-      width,
-      height,
-      source: G.debugAsciiSource || (DEBUG_MAP_MODE ? 'debug' : 'procedural')
-    });
-    logThrough('info', '[map] ASCII preparado', {
-      mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
-      width,
-      height,
-      source: G.debugAsciiSource || (DEBUG_MAP_MODE ? 'debug' : 'procedural')
-    });
+    // Fallback por si el mapa no trae 'S' (igual que la antigua)
+    if (!G.player) {
+      const p = (typeof makePlayer === 'function')
+        ? makePlayer(TILE*2, TILE*2)
+        : (window.Entities?.Hero?.spawnPlayer?.(TILE*2, TILE*2, {}) || null);
+      if (p){ G.player = p; G.entities.push(p); }
+    }
   }
 
 
@@ -1997,10 +864,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       e.dead = true;
       if (window.ScoreAPI){ try{ ScoreAPI.awardForDeath(e, Object.assign({cause:'killEnemy'}, meta||{})); }catch(_){} }
     // saca de las listas
-    G.hostiles = G.hostiles.filter(x => x !== e);
+    G.enemies = G.enemies.filter(x => x !== e);
     G.entities = G.entities.filter(x => x !== e);
-    detachEntityRig(e);
-    MovementSystem.unregister(e);
     // notificar respawn diferido
     SPAWN.pending = Math.min(SPAWN.pending + 1, SPAWN.max);
     // Planificar respawn si hay spawner de este tipo
@@ -2018,11 +883,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     // quítalo de todas las listas donde pueda estar
     G.entities = G.entities.filter(x => x !== e);
     G.movers   = G.movers.filter(x => x !== e);
-    G.hostiles  = G.hostiles.filter(x => x !== e);
-    detachEntityRig(e);
-    try { window.EntityGroups?.unregister?.(e, G); } catch (_) {}
+    G.enemies  = G.enemies.filter(x => x !== e);
+    G.npcs     = G.npcs.filter(x => x !== e);
     G.patients = G.patients.filter(x => x !== e);
-    MovementSystem.unregister(e);
 
     // si era enemigo “con vida”, respawn por su sistema
     if (e.kind === ENT.MOSQUITO) {
@@ -2200,482 +1063,17 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     if (dx || dy) G.lastPushDir = { x: Math.sign(dx || 0), y: Math.sign(dy || 0) };
   }
 
-  function onPickupPill(hero, pill) {
-    try { window.GameFlowAPI?.onPickupPill?.(hero, pill); } catch (_) {}
-    try { window.ScoreAPI?.onPickupPill?.(hero, pill); } catch (_) {}
-  }
-
-  function onGivePill(hero, patient) {
-    try { window.GameFlowAPI?.onGivePill?.(hero, patient); } catch (_) {}
-    try { window.ScoreAPI?.onGivePill?.(hero, patient); } catch (_) {}
-  }
-
-  function clearHeroCarry(hero){
-    if (!hero) return;
-    hero.carry = null;
-    hero.currentPill = null;
-    if (hero.inventory?.medicine) hero.inventory.medicine = null;
-    G.carry = null;
-    G.currentPill = null;
-  }
-
-  function heroHasPillFor(patient, hero = G.player) {
-    if (!patient || patient.attended) return false;
-    const carrier = hero || G.player || null;
-    if (!carrier) return false;
-    const carry = carrier.currentPill || carrier.carry || carrier.inventory?.medicine || G.carry || G.currentPill || null;
-    if (!carry || (carry.kind !== 'PILL' && carry.type !== 'PILL')) return false;
-    const targetId = carry.targetPatientId || carry.forPatientId || carry.patientId || null;
-    return !!(targetId && patient.id && patient.id === targetId);
-  }
-
-  function assignCarryFromPill(hero, pill) {
-    if (!pill || pill.dead) return false;
-    const carrier = hero || G.player || null;
-    if (!carrier) return false;
-    if (carrier.carry || G.carry) return false;
-    const carry = {
-      type: 'PILL',
-      kind: 'PILL',
-      id: pill.id,
-      label: pill.label || 'Pastilla',
-      patientName: pill.targetName || pill.patientName || null,
-      pairName: pill.pairName || null,
-      anagram: pill.anagram || null,
-      forPatientId: pill.forPatientId || pill.patientId || null,
-      patientId: pill.patientId || pill.forPatientId || null,
-      targetPatientId: pill.forPatientId || pill.patientId || null,
-    };
-    carrier.carry = carry;
-    G.carry = carry;
-    carrier.currentPill = carry;
-    G.currentPill = carry;
-    carrier.inventory = carrier.inventory || {};
-    carrier.inventory.medicine = Object.assign({}, carry);
-    onPickupPill(carrier, pill);
-    if (typeof window.LogCollision === 'function') {
-      try {
-        window.LogCollision('PILL_PICKUP', { pillId: carry.id || pill.id || null, targetPatientId: carry.targetPatientId || null });
-      } catch (_) {}
-    }
-    try { window.ObjectiveSystem?.onPillPicked?.(carry); } catch (_) {}
-    try { window.LOG?.event?.('PILL_PICKUP', { pill: pill.id, for: carry.forPatientId || null }); } catch (_) {}
-    if (Array.isArray(G.entities)) G.entities = G.entities.filter((x) => x !== pill);
-    if (Array.isArray(G.movers)) G.movers = G.movers.filter((x) => x !== pill);
-    if (Array.isArray(G.pills)) G.pills = G.pills.filter((x) => x !== pill);
-    detachEntityRig(pill);
-    pill.dead = true;
-    try {
-      window.HUD?.showFloatingMessage?.(carrier, `Has cogido medicina para ${carry.patientName || 'un paciente'}`, 1.6);
-    } catch (_) {}
-    return true;
-  }
-
-  function afterManualDelivery(patient){
-    if (patient) {
-      try { patient.onCure?.(); } catch (_) {}
-    }
-    G.delivered = (G.delivered || 0) + 1;
-    const stats = G.stats || {};
-    const snapshot = typeof window.patientsSnapshot === 'function' ? window.patientsSnapshot() : null;
-    const pending = snapshot ? snapshot.pending : (stats.remainingPatients || 0);
-    const furious = snapshot ? snapshot.furious : (stats.activeFuriosas || 0);
-    if (pending === 0 && furious === 0) {
-      try { window.ArrowGuide?.setTargetBossOrDoor?.(); } catch (_) {}
-    }
-  }
-
-  function shouldLogPillDeliveryDebug() {
-    return !!(window.DEBUG_PILL_DELIVERY || window.DEBUG_FORCE_ASCII || window.DEBUG_MAP_MODE);
-  }
-
-  function logPillDeliveryDebug(hero, patient, extra = {}) {
-    if (!shouldLogPillDeliveryDebug()) return;
-    const carry = hero?.currentPill || hero?.carry || hero?.inventory?.medicine || G.carry || G.currentPill || null;
-    const payload = {
-      playerHasPill: !!carry,
-      pillId: carry?.id || null,
-      pillTarget: carry?.targetPatientId || carry?.forPatientId || carry?.patientId || null,
-      patientId: patient?.id || null,
-      patientName: patient?.displayName || patient?.name || null,
-      distance: extra.distance ?? null,
-      canDeliver: extra.canDeliver ?? null,
-      reason: extra.reason || null,
-    };
-    console.debug('[PILL_DELIVERY_DEBUG]', payload);
-  }
-
-  function tryDeliverPillFromAction(hero) {
-    const carrying = hero?.carry || G.carry;
-    if (!carrying || (carrying.kind !== 'PILL' && carrying.type !== 'PILL')) return false;
-    const patients = Array.isArray(G.patients) ? G.patients : [];
-    const hx = hero.x + hero.w * 0.5;
-    const hy = hero.y + hero.h * 0.5;
-    const maxRange = (window.TILE_SIZE || window.TILE || 32) * 1.2;
-    let target = null;
-    let bestDist = Infinity;
-    for (const pac of patients) {
-      if (!pac || pac.dead || pac.attended) continue;
-      if (!nearAABB(hero, pac, 12)) continue;
-      const px = pac.x + (pac.w || 0) * 0.5;
-      const py = pac.y + (pac.h || 0) * 0.5;
-      const dist = Math.hypot(px - hx, py - hy);
-      if (dist <= maxRange && dist < bestDist) {
-        bestDist = dist;
-        target = pac;
-      }
-    }
-    if (!target) return false;
-    const canDeliver = heroHasPillFor(target, hero)
-      || ((window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
-        ? window.PatientsAPI.canDeliver(hero, target)
-        : false);
-    const safeDist = Number.isFinite(bestDist) ? Number(bestDist.toFixed(2)) : null;
-    logPillDeliveryDebug(hero, target, { distance: safeDist, canDeliver, reason: canDeliver ? 'match' : 'target_mismatch' });
-    if (typeof window.LogCollision === 'function') {
-      try {
-        window.LogCollision('PATIENT_TOUCH', { patientId: target.id || null, distance: safeDist, canDeliver });
-      } catch (_) {}
-    }
-    if (canDeliver) {
-      onGivePill(hero, target);
-      const delivered = window.PatientsAPI?.deliverPill?.(hero, target);
-      if (delivered) {
-        clearHeroCarry(hero);
-        afterManualDelivery(target);
-      }
-      return true;
-    }
-    window.PatientsAPI?.wrongDelivery?.(target);
-    return true;
-  }
-
-  function deliverPillToPatient(hero, patient, opts = {}) {
-    if (!hero || !patient || patient.dead || patient.attended) return false;
-    const maxRange = (window.TILE_SIZE || TILE) * 1.35;
-    const hx = hero.x + hero.w * 0.5;
-    const hy = hero.y + hero.h * 0.5;
-    const px = patient.x + (patient.w || 0) * 0.5;
-    const py = patient.y + (patient.h || 0) * 0.5;
-    const dist = Math.hypot(px - hx, py - hy);
-    if (dist > maxRange) return false;
-    const canDeliver = heroHasPillFor(patient, hero)
-      || ((window.PatientsAPI && typeof window.PatientsAPI.canDeliver === 'function')
-        ? window.PatientsAPI.canDeliver(hero, patient)
-        : false);
-    logPillDeliveryDebug(hero, patient, { distance: Number(dist.toFixed(2)), canDeliver, reason: opts.reason || 'click' });
-    if (!canDeliver) {
-      window.PatientsAPI?.wrongDelivery?.(patient);
-      return false;
-    }
-    onGivePill(hero, patient);
-    const delivered = window.PatientsAPI?.deliverPill?.(hero, patient);
-    if (delivered) {
-      clearHeroCarry(hero);
-      afterManualDelivery(patient);
-      return true;
-    }
-    return false;
-  }
-
-  function isCartEntity(ent){
-    if (!ent) return false;
-    const ENT = window.ENT || {};
-    if (typeof ENT.CART === 'number' && ent.kind === ENT.CART) return true;
-    if (ent.kind === 5) return true;
-    if (ent.cartType || ent._tag === 'cart' || ent.type === 'cart') return true;
-    const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
-    if (rig.includes('cart')) return true;
-    const tag = (ent.tag || '').toString().toLowerCase();
-    if (tag.includes('cart') || tag.includes('carro')) return true;
-    const name = (ent.kindName || '').toString().toLowerCase();
-    return name.includes('cart') || name.includes('carro');
-  }
-
-  function isBedEntity(ent){
-    if (!ent) return false;
-    const ENT = window.ENT || {};
-    if (typeof ENT.BED === 'number' && ent.kind === ENT.BED) return true;
-    const tag = (ent.tag || ent.type || '').toString().toLowerCase();
-    if (tag.includes('bed') || tag.includes('cama')) return true;
-    const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
-    return rig.includes('bed');
-  }
-
-  function physicsConfig(){
-    const api = window.Physics || null;
-    if (!api) return null;
-    return api.PHYS || api.DEFAULTS || null;
-  }
-
-  function ensurePushableProfile(ent){
-    if (!ent) return null;
-    const existing = ent._physProfile;
-    if (existing && typeof existing.maxSpeedPx === 'number') return existing;
-    const phys = physicsConfig();
-    if (!phys) return existing || null;
-    const tile = window.TILE_SIZE || window.TILE || TILE;
-
-    if (isCartEntity(ent) && phys.cartProfiles){
-      const raw = (ent.cartType || ent.type || ent.kindName || '').toString().toLowerCase();
-      const key = raw.includes('er') || raw.includes('urgencias') ? 'er'
-        : raw.includes('med') || raw.includes('medicine') ? 'med'
-        : 'food';
-      const profile = phys.cartProfiles[key] || phys.cartProfiles.food || null;
-      if (profile){
-        if (Number.isFinite(profile.mass)) {
-          ent.mass = profile.mass;
-          ent.invMass = profile.mass > 0 ? 1 / profile.mass : 0;
-        }
-        if (Number.isFinite(profile.restitution)) {
-          ent.rest = profile.restitution;
-          ent.restitution = profile.restitution;
-        }
-        const frictionValue = Number.isFinite(profile.friction) ? Math.max(0, Math.min(profile.friction, 1)) : null;
-        if (Number.isFinite(profile.mu)) {
-          ent.mu = Math.max(0, Math.min(profile.mu, 0.25));
-        } else if (frictionValue != null) {
-          ent.mu = Math.max(0, Math.min((1 - frictionValue) * 0.5, 0.25));
-        }
-        if (Number.isFinite(profile.slideFriction)) {
-          const slide = Math.max(0.002, Math.min(profile.slideFriction, 0.3));
-          ent._slideFrictionOverride = slide;
-          ent.slideFriction = slide;
-        } else if (frictionValue != null) {
-          const slide = Math.max(0.002, Math.min(0.22, (1 - frictionValue) * 0.2 + 0.002));
-          ent._slideFrictionOverride = slide;
-          ent.slideFriction = slide;
-        }
-        if (Number.isFinite(profile.drag)) {
-          const drag = Math.max(0.005, Math.min(profile.drag, 0.25));
-          ent._frictionOverride = drag;
-          ent.friction = drag;
-        }
-        if (Number.isFinite(profile.vmax)) ent.maxSpeed = profile.vmax;
-        const maxSpeedPx = Number.isFinite(profile.vmax) ? profile.vmax * tile : null;
-        ent._physProfile = {
-          type: 'cart',
-          key,
-          vmax: profile.vmax,
-          maxSpeedPx,
-          restitution: profile.restitution,
-          mu: ent.mu,
-          slide: ent._slideFrictionOverride,
-          drag: ent._frictionOverride
-        };
-        ent.slide = true;
-        return ent._physProfile;
-      }
-    }
-
-    if (isBedEntity(ent) && phys.bedProfiles){
-      const rig = (ent.rigName || ent.puppet?.rigName || '').toString().toLowerCase();
-      const key = rig.includes('patient') || rig.includes('paciente') ? 'bed_patient' : 'bed';
-      const profile = phys.bedProfiles[key] || phys.bedProfiles.bed || null;
-      if (profile){
-        if (Number.isFinite(profile.mass)) {
-          ent.mass = profile.mass;
-          ent.invMass = profile.mass > 0 ? 1 / profile.mass : 0;
-        }
-        if (Number.isFinite(profile.restitution)) {
-          ent.rest = profile.restitution;
-          ent.restitution = profile.restitution;
-        }
-        if (Number.isFinite(profile.friction)) {
-          const friction = Math.max(0, Math.min(profile.friction, 1));
-          const slip = Math.max(0, Math.min((1 - friction) * 0.45, 0.25));
-          const slide = Math.max(0.004, Math.min(0.2, (1 - friction) * 0.18 + 0.004));
-          ent.mu = slip;
-          ent._slideFrictionOverride = slide;
-        }
-        if (Number.isFinite(profile.vmax)) ent.maxSpeed = profile.vmax;
-        const maxSpeedPx = Number.isFinite(profile.vmax) ? profile.vmax * tile : null;
-        ent._physProfile = {
-          type: 'bed',
-          key,
-          vmax: profile.vmax,
-          maxSpeedPx,
-          restitution: profile.restitution
-        };
-        ent.slide = true;
-        return ent._physProfile;
-      }
-    }
-
-    return existing || ent._physProfile || null;
-  }
-
-  function computePushForce(baseForce){
-    const phys = physicsConfig();
-    const mulCfg = phys?.pushMultipliers || {};
-    let multiplier = Number.isFinite(mulCfg.base) ? mulCfg.base : 1;
-    const hero = G.player;
-    const heroKey = ((hero && (hero.heroId || hero.hero || hero.skin)) || window.selectedHeroKey || '').toString().toLowerCase();
-    if (heroKey && Number.isFinite(mulCfg[heroKey])) {
-      multiplier *= mulCfg[heroKey];
-    }
-    const baseBuff = Number.isFinite(G.pushMultiplier) ? G.pushMultiplier : 1;
-    const syringeMul = (G.powerup && G.powerup.type === 'syringe-red' && Number.isFinite(mulCfg.syringeRed))
-      ? mulCfg.syringeRed
-      : 1;
-    multiplier *= Math.max(baseBuff, syringeMul);
-    return baseForce * multiplier;
-  }
-
-  function pushEntityWithImpulse(target, dir, baseForce){
-    if (!target) return null;
-    const pushDir = normalizeVec(dir.x || 0, dir.y || 0);
-    if (!pushDir.x && !pushDir.y) return null;
-    const physCfg = physicsConfig() || {};
-    const totalForce = computePushForce(baseForce);
-    const profile = ensurePushableProfile(target);
-    const isCart = isCartEntity(target);
-    const isBed = isBedEntity(target);
-    const mass = Number.isFinite(target.mass) ? Math.max(0.25, target.mass) : 1;
-    let impulse;
-    if (isCart || isBed){
-      const boost = Number.isFinite(physCfg.cartPushBoost) ? physCfg.cartPushBoost : 1.6;
-      const massFactor = Number.isFinite(physCfg.cartPushMassFactor) ? physCfg.cartPushMassFactor : 0.28;
-      impulse = totalForce * boost / Math.max(0.25, mass * massFactor);
-    } else {
-      impulse = totalForce / Math.max(1, mass * 0.5);
-    }
-
-    const ix = pushDir.x * impulse;
-    const iy = pushDir.y * impulse;
-    target.vx = (target.vx || 0) + ix;
-    target.vy = (target.vy || 0) + iy;
-
-    const tile = window.TILE_SIZE || window.TILE || TILE;
-    let maxSpeedPx = profile && Number.isFinite(profile.maxSpeedPx) ? profile.maxSpeedPx : null;
-    if (!Number.isFinite(maxSpeedPx) && Number.isFinite(target.maxSpeed)) {
-      maxSpeedPx = target.maxSpeed * tile;
-    }
-    if ((isCart || isBed) && !Number.isFinite(maxSpeedPx) && Number.isFinite(physCfg.cartMaxSpeed)) {
-      maxSpeedPx = physCfg.cartMaxSpeed;
-    }
-    let minSpeedPx = null;
-    if (isCart || isBed){
-      if (profile && Number.isFinite(profile.maxSpeedPx)) {
-        const baseMin = Number.isFinite(physCfg.cartMinSpeed) ? physCfg.cartMinSpeed : 0;
-        const derived = profile.maxSpeedPx * 0.35;
-        minSpeedPx = Math.max(baseMin, derived);
-      } else if (Number.isFinite(physCfg.cartMinSpeed)) {
-        minSpeedPx = physCfg.cartMinSpeed;
-      }
-    }
-
-    const speed = Math.hypot(target.vx || 0, target.vy || 0);
-    if (Number.isFinite(minSpeedPx) && speed < minSpeedPx){
-      const factor = minSpeedPx / Math.max(speed, 1);
-      target.vx *= factor;
-      target.vy *= factor;
-    }
-    if (Number.isFinite(maxSpeedPx) && speed > maxSpeedPx){
-      const factor = maxSpeedPx / speed;
-      target.vx *= factor;
-      target.vy *= factor;
-    }
-
-    if (profile && Number.isFinite(profile.restitution)) {
-      const rest = profile.restitution;
-      if (!Number.isFinite(target.restitution) || target.restitution < rest) target.restitution = rest;
-      if (!Number.isFinite(target.rest) || target.rest < rest) target.rest = rest;
-    }
-    return { ix, iy, impulse, totalForce, minSpeedPx, maxSpeedPx };
-  }
-
   function doAction() {
     const p = G.player;
     if (!p) return;
-    if (G.state !== 'PLAYING') return;
-    if (window.GameFlowAPI?.isReadyOverlayActive?.()) return;
-
-    if (Array.isArray(G.onInteract)) {
-      for (const fn of [...G.onInteract]) {
-        try {
-          if (typeof fn === 'function' && fn(p)) {
-            return;
-          }
-        } catch (err) {
-          console.warn('[Interact] handler error', err);
-        }
-      }
-    }
-
-    const talkRange = TILE * 1.2;
-    if (Array.isArray(G.humans) && window.DialogAPI?.open){
-      const px = p.x + p.w * 0.5;
-      const py = p.y + p.h * 0.5;
-      for (const npc of G.humans){
-        if (!npc || npc.dead) continue;
-        const nx = npc.x + (npc.w || 0) * 0.5;
-        const ny = npc.y + (npc.h || 0) * 0.5;
-        const dist = Math.hypot(nx - px, ny - py);
-        if (dist > talkRange) continue;
-        const lines = Array.isArray(npc.dialogLines)
-          ? npc.dialogLines
-          : (npc.dialog ? [String(npc.dialog)] : null);
-      if (lines && lines.length){
-        const title = npc.dialogTitle || npc.name || 'Conversación';
-        const text = lines.join('\n\n');
-        window.DialogAPI.open({
-          title,
-          text,
-          buttons: [{ id: 'ok', label: 'Cerrar', action: () => window.DialogAPI.close() }]
-        });
-        try { window.Entities?.Hero?.setTalking?.(p, true, Math.max(2.5, lines.length * 1.2)); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] talk trigger error', err); }
-        return;
-      }
-    }
-    }
-
-    if (!p.carry && !G.carry) {
-      const range = Math.max(p.w || 0, p.h || 0, (window.TILE_SIZE || window.TILE || 32) * 0.9);
-      let best = null;
-      let bestDist = Infinity;
-      const hx = p.x + (p.w || 0) * 0.5;
-      const hy = p.y + (p.h || 0) * 0.5;
-      const source = Array.isArray(G.pills) && G.pills.length ? G.pills : G.entities;
-      for (const pill of source || []) {
-        if (!pill || pill.dead || !matchesKind(pill, 'PILL')) continue;
-        const px = pill.x + (pill.w || 0) * 0.5;
-        const py = pill.y + (pill.h || 0) * 0.5;
-        const dist = Math.hypot(px - hx, py - hy);
-        if (dist <= range && dist < bestDist) {
-          best = pill;
-          bestDist = dist;
-        }
-      }
-      if (best && assignCarryFromPill(p, best)) {
-        return;
-      }
-    }
-
-    if (tryDeliverPillFromAction(p)) {
-      return;
-    }
 
     // 1 segundo de anim de empuje
     p.pushAnimT = 1;
 
     // Dirección desde el facing actual
-    const dir = resolvePushDirection(p);
+    const dir = facingDir(p.facing);
     const hit = findPushableInFront(p, dir);
-    if (shouldDebugPushLogs()){
-      console.debug('[PUSH] Player intent', {
-        playerId: p.id || p.heroId || 'player',
-        dir,
-        targetId: hit?.id || null,
-        targetKind: hit?.kindName || hit?.kind || null,
-        group: hit?.group || null
-      });
-    }
-    try { window.Entities?.Hero?.triggerPush?.(p, { heavy: !!(hit && (hit.mass || 0) > 140) }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] push trigger error', err); }
     if (hit) {
-      if (isCartEntity(hit) && (G.urgenciasOpen || window.GameFlowAPI?.getState?.()?.bossDoorOpened)) {
-        try { window.ObjectiveSystem?.onCartEngaged?.(hit); } catch (_) {}
-      }
       // 1) Desatasco preventivo: si está tocando muro, sácalo o colócalo en un punto libre cercano
       try { if (window.Physics?.snapInsideMap) Physics.snapInsideMap(hit); } catch(_){}
       if (typeof isWallAt === 'function' && isWallAt(hit.x, hit.y, hit.w, hit.h)) {
@@ -2686,49 +1084,15 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
       // 2) Empuje normal
       const F = (p.pushForce ?? p.push ?? FORCE_PLAYER);
-      let scaledForce = F;
-      const aheadX = hit.x + hit.w * 0.5 + dir.x * (hit.w * 0.5 + 4) - hit.w * 0.5;
-      const aheadY = hit.y + hit.h * 0.5 + dir.y * (hit.h * 0.5 + 4) - hit.h * 0.5;
-      let blockedAhead = (typeof isWallAt === 'function' && isWallAt(aheadX, aheadY, hit.w, hit.h));
-      if (!blockedAhead && Array.isArray(G.entities)){
-        const aheadBox = { x: aheadX, y: aheadY, w: hit.w, h: hit.h };
-        blockedAhead = G.entities.some((ent) => ent && ent !== hit && ent.solid && ent.static && !ent.dead && AABB(aheadBox, ent));
-      }
-      if (blockedAhead) {
-        scaledForce *= 0.25;
-        if (shouldDebugPushLogs()){
-          console.debug('[PUSH] Blocked by wall/solid', { targetId: hit.id || null, reducedForce: scaledForce });
-        }
-      }
-      const impulseMeta = pushEntityWithImpulse(hit, dir, scaledForce);
-      if (shouldDebugPushLogs()){
-        console.debug('[PUSH] Impulse applied', {
-          targetId: hit.id || null,
-          vx: hit.vx || 0,
-          vy: hit.vy || 0,
-          impulse: impulseMeta || null
-        });
-      }
+      const scale = 1 / Math.max(1, (hit.mass || 1) * 0.5); // objetos muy pesados salen menos
+      hit.vx += dir.x * F * scale;
+      hit.vy += dir.y * F * scale;
 
       // 3) Marca de autor del empuje (para atribuir kills)
       hit._lastPushedBy   = (p.tag==='follower' ? 'HERO' : 'PLAYER');
       hit._lastPushedId   = p.id || p._nid || p._uid || 'player1';
       hit._pushedByEnt    = p;                // referencia útil si la necesitas
       hit._lastPushedTime = performance.now();
-      if (hit.kind === ENT.CART && !hit.dead) {
-        const cartType = (hit.cartType || hit.type || '').toLowerCase();
-        const isEmergency = cartType === 'er' || hit.cart === 'urgencias' || hit.tag === 'emergency';
-        if (isEmergency) {
-          const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-          if (!hit._narratorCartCue || now - hit._narratorCartCue > 6000) {
-            hit._narratorCartCue = now;
-            try {
-              window.Narrator?.say?.('cart_push', {});
-              window.Narrator?.progress?.();
-            } catch (_) {}
-          }
-        }
-      }
     }
   }
 
@@ -2737,33 +1101,26 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     const isRatHit = !!src && (src.kind === ENT.RAT || src.kindName === 'rat');
     if (!p) return;
     if (!isRatHit && p.invuln > 0) return;
-    const source = src || (isRatHit ? 'bite' : 'impact');
-    if (typeof p.takeDamage === 'function') {
-      p.takeDamage(amount, { source, attacker: src, knockbackFrom: src });
-    } else {
-      const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));
-      const halvesAfter  = Math.max(0, halvesBefore - (amount|0));
-      G.player.hp = Math.ceil(halvesAfter / 2);
-      G.health     = halvesAfter;
-      p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
-      try { window.Entities?.Hero?.notifyDamage?.(p, { source, duration: isRatHit ? 0.4 : 0.6 }); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] damage notify error', err); }
+    const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));
+    const halvesAfter  = Math.max(0, halvesBefore - (amount|0));
+    G.player.hp = Math.ceil(halvesAfter / 2);
+    G.health     = halvesAfter;
+    p.invuln = (isRatHit ? 0.50 : 1.0); // mordisco de rata: 0,5 s; resto: 1 s
 
-      // knockback desde 'src' hacia fuera
-      if (src){
-        const dx = (p.x + p.w/2) - (src.x + src.w/2);
-        const dy = (p.y + p.h/2) - (src.y + src.h/2);
-        const n = Math.hypot(dx,dy) || 1;
-        p.vx += (dx/n) * 160;
-        p.vy += (dy/n) * 160;
-      }
+    // knockback desde 'src' hacia fuera
+    if (src){
+      const dx = (p.x + p.w/2) - (src.x + src.w/2);
+      const dy = (p.y + p.h/2) - (src.y + src.h/2);
+      const n = Math.hypot(dx,dy) || 1;
+      p.vx += (dx/n) * 160;
+      p.vy += (dy/n) * 160;
     }
 
     if (G.health <= 0){
-      G.health = 0;
-      G._gameOverReason = isRatHit ? 'rat_hit' : 'health_zero';
-      try { window.Entities?.Hero?.setDeathCause?.(p, isRatHit ? 'bite' : (src || 'impact')); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[Hero] set death cause error', err); }
-      setGameState('GAMEOVER');
-      window.GameFlowAPI?.notifyHeroDeath?.();
+      G.state = 'GAMEOVER';
+      gameOverScreen.classList.remove('hidden');
+      // Muestra la viñeta animada "GAME OVER" (debajo o encima según zIndex)
+      PresentationAPI.gameOver({ mode: 'under' }); // 'under' = deja ver tu texto de "El caos te ha superado"
     }
   }
 
@@ -2776,23 +1133,6 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     }
   }
 
-  function normalizeVec(x, y){
-    const len = Math.hypot(x, y);
-    if (!len || !isFinite(len)) return { x: 0, y: 0 };
-    return { x: x / len, y: y / len };
-  }
-
-  function resolvePushDirection(p){
-    if (!p) return { x: 0, y: 0 };
-    const vel = Math.hypot(p.vx || 0, p.vy || 0);
-    if (vel > 0.1) return normalizeVec(p.vx || 0, p.vy || 0);
-    if (G.lastPushDir && (G.lastPushDir.x || G.lastPushDir.y)) {
-      return normalizeVec(G.lastPushDir.x || 0, G.lastPushDir.y || 0);
-    }
-    const facing = facingDir(p.facing);
-    return normalizeVec(facing.x, facing.y);
-  }
-
   function findPushableInFront(p, dir) {
     // AABB delante del jugador
     const range = 18;
@@ -2802,93 +1142,11 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
                   y: ry - (dir.y ? range/2 : p.h/2),
                   w: dir.x ? range : p.w,
                   h: dir.y ? range : p.h };
-    const list = Array.isArray(G.entities) && G.entities.length ? G.entities : G.movers;
-    if (!Array.isArray(list)) return null;
-    const px = p.x + p.w * 0.5;
-    const py = p.y + p.h * 0.5;
-    let best = null;
-    let bestDist = Infinity;
-    for (const e of list) {
-      if (!e || e === p || e.dead) continue;
-      if (!isPinballCandidate(e)) continue;
-      if (!AABB(box, e)) continue;
-      const cx = e.x + e.w * 0.5;
-      const cy = e.y + e.h * 0.5;
-      const toX = cx - px;
-      const toY = cy - py;
-      if ((toX * dir.x + toY * dir.y) < -4) continue;
-      const dist = Math.hypot(toX, toY);
-      if (dist < bestDist) {
-        best = e;
-        bestDist = dist;
-      }
-    }
-    if (p) p._pushCandidate = best || null;
-    G.pushCandidate = best || null;
-    return best;
-  }
 
-  // Paso de IA específica por entidad hostil (antes de la física)
-  function runEntityAI(dt){
-    const ents = Array.isArray(G.entities) ? G.entities : null;
-    const useCulling = !!currentVisualInfo && Array.isArray(ents);
-    const toProcess = useCulling
-      ? ents.filter((ent) => ent && !ent.dead && shouldUpdateEntity(ent))
-      : (Array.isArray(ents) ? ents : []);
-    let ragdollSuppressed = null;
-    let originalEntities = null;
-    if (window.AI?.update) {
-      if (toProcess && toProcess.length){
-        ragdollSuppressed = [];
-        for (const ent of toProcess){
-          if (!ent || ent.dead) continue;
-          const ragdolling = (ent._ragdollTimer || 0) > 0 || ent.ragdolling || ent.ragdoll;
-          if (!ragdolling) continue;
-          ragdollSuppressed.push(ent);
-          if (typeof ent.intentVx === 'number'){ ent._ragAI_prevVX = ent.intentVx; ent.intentVx = 0; }
-          if (typeof ent.intentVy === 'number'){ ent._ragAI_prevVY = ent.intentVy; ent.intentVy = 0; }
-        }
-      }
-      if (useCulling && toProcess !== ents){
-        originalEntities = G.entities;
-        G.entities = toProcess;
-      }
-      try {
-        window.AI.update(G, dt);
-        return;
-      } catch (err) {
-        if (window.DEBUG_FORCE_ASCII) console.warn('[AI] update error', err);
-      } finally {
-        if (useCulling && originalEntities) {
-          G.entities = originalEntities;
-        }
-        if (ragdollSuppressed && ragdollSuppressed.length){
-          for (const ent of ragdollSuppressed){
-            if (!ent) continue;
-            if (typeof ent._ragAI_prevVX === 'number'){ ent.intentVx = ent._ragAI_prevVX; }
-            if (typeof ent._ragAI_prevVY === 'number'){ ent.intentVy = ent._ragAI_prevVY; }
-            delete ent._ragAI_prevVX;
-            delete ent._ragAI_prevVY;
-          }
-        }
-      }
+    for (const e of G.movers) {
+      if (!e.dead && e.pushable && AABB(box, e)) return e;
     }
-
-    if (!Array.isArray(toProcess) || !toProcess.length) return;
-    const dbg = !!window.DEBUG_FORCE_ASCII;
-    for (const ent of toProcess){
-      if (!ent || ent.dead) continue;
-      if ((ent._ragdollTimer || 0) > 0 || ent.ragdolling || ent.ragdoll) continue;
-      try {
-        if (matchesKind(ent, 'RAT') && window.Rats?.ai){
-          window.Rats.ai(ent, G, dt);
-        } else if (matchesKind(ent, 'MOSQUITO') && window.Mosquitos?.ai){
-          window.Mosquitos.ai(ent, G, dt);
-        }
-      } catch (err){
-        if (dbg) console.warn('[AI] error', ent.kind || ent.kindName || ent, err);
-      }
-    }
+    return null;
   }
 
   // Actualiza TODAS las entidades del juego: enemigos, NPC, carros, puertas, ascensores, etc.
@@ -2897,314 +1155,159 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // - Ejecuta la lógica de respawn desde SpawnerManager (para enemigos, NPC y carros).
   // - Muestra logs de depuración en modo debug (?map=debug).
   // Actualiza TODAS las entidades (IA + física) evitando doble movimiento
-  function updateEntities(dt){
-    const dbg = !!window.DEBUG_FORCE_ASCII;
-    if (!Array.isArray(G.entities)) return;
-    for (const e of G.entities){
-      if (!e || e.dead) continue;
-      MovementSystem.register(e);
-      const ragTimer = Number.isFinite(e?._ragdollTimer) ? e._ragdollTimer : 0;
-      if (!shouldUpdateEntity(e)){
-        if (ragTimer > 0){
-          e._ragdollTimer = Math.max(0, ragTimer - dt);
-        }
-        continue;
-      }
-      if (ragTimer > 0){
-        if (!e.ragdolling){
-          e.ragdolling = true;
-          e.ragdoll = true;
-        }
-        if (e._ragdollPrevMu == null && typeof e.mu === 'number'){
-          e._ragdollPrevMu = e.mu;
-        }
-        if (typeof e.mu === 'number'){
-          e.mu = Math.min(e.mu, 0.02);
-        }
-        if (typeof e.intentVx === 'number') e.intentVx *= 0.4;
-        if (typeof e.intentVy === 'number') e.intentVy *= 0.4;
-        e.vx *= 0.96;
-        e.vy *= 0.96;
-        if (typeof e.onRagdollTick === 'function'){
-          try { e.onRagdollTick(dt, ragTimer); }
-          catch (err){ if (dbg) console.warn('[updateEntities] ragdoll tick', err); }
-        }
-        continue;
-      } else if (e.ragdolling || e.ragdoll){
-        e.ragdolling = false;
-        e.ragdoll = false;
-        if (typeof e._ragdollPrevMu === 'number'){
-          e.mu = e._ragdollPrevMu;
-        }
-        delete e._ragdollPrevMu;
-        if (Math.abs(e.vx || 0) < 12) e.vx = 0;
-        if (Math.abs(e.vy || 0) < 12) e.vy = 0;
-        if (typeof e.onRagdollRecover === 'function'){
-          try { e.onRagdollRecover(); }
-          catch (err){ if (dbg) console.warn('[updateEntities] ragdoll recover', err); }
-        }
-      }
-      if (typeof e.update === 'function'){
-        try { e.update(dt); }
-        catch(err){
-          if (dbg) console.warn('[updateEntities] error update', e.id || e.kindName || e, err);
-        }
+function updateEntities(dt){
+  const dbg = !!window.DEBUG_FORCE_ASCII;
+  // sin lista, no hay nada que hacer
+  if (!Array.isArray(G.entities)) return;
+  const num = G.entities.length;
+  //if (dbg) console.log('[updateEntities] dt:', (dt ?? 0).toFixed(4), 'ents:', num);
+
+  for (const e of G.entities){
+    if (!e || e.dead) continue;
+    // posición inicial (para detectar saltos bruscos)
+    const bx = e.x, by = e.y;
+
+    // 1) IA propia
+    if (typeof e.update === 'function'){
+      try { e.update(dt); }
+      catch(err){
+        if (dbg) console.warn('[updateEntities] error update', e.id || e.kindName || e, err);
       }
     }
 
-    if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
-      try { SpawnerManager.update(dt); }
-      catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
+    // 2) Movimiento y colisiones — lo hace Physics.step(dt). No mover aquí para evitar doble integración.
+    // (Dejamos un clamp suave de seguridad sobre la velocidad)
+    if (typeof e.vx === 'number' && typeof e.vy === 'number'){
+      const LIM = 160;
+      e.vx = Math.max(-LIM, Math.min(LIM, e.vx));
+      e.vy = Math.max(-LIM, Math.min(LIM, e.vy));
+    }
+
+    // 3) Anti‑warp: limita la distancia recorrida en un solo frame
+    const dx = e.x - bx, dy = e.y - by;
+    const step = Math.hypot(dx, dy);
+    // Usa e.maxSpeed si existe, de lo contrario 90 px/s por defecto
+    const maxStep = ((typeof e.maxSpeed === 'number' ? e.maxSpeed : 90) * dt * 1.5);
+    if (step > maxStep && maxStep > 0){
+      const s = maxStep / step;
+      e.x = bx + dx * s;
+      e.y = by + dy * s;
+      if (dbg) console.warn('[updateEntities] CLAMP_WARP', e.id || e.kindName || e.kind, 'step', step.toFixed(3), 'limit', maxStep.toFixed(3));
     }
   }
 
-  function updateDoorEntities(dt){
-    if (!window.Doors?.update) return;
-    if (!Array.isArray(G.entities)) return;
-    const dbg = !!window.DEBUG_FORCE_ASCII;
-    for (const ent of G.entities){
-      if (!ent || ent.dead) continue;
-      if (!matchesKind(ent, 'DOOR')) continue;
-      if (!shouldUpdateEntity(ent)) continue;
-      try {
-        window.Doors.update(ent, G, dt);
-      } catch (err){
-        if (dbg) console.warn('[Doors] update error', err);
-      }
-    }
+  // 4) Actualiza spawners (mosquitos, ratas, etc.)
+  if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
+    try { SpawnerManager.update(dt); }
+    catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
   }
-
-  function maybeTriggerFirstBell(){
-    if (G.firstBellTriggered) return;
-    if (!window.BellsAPI || !Array.isArray(window.BellsAPI.bells) || !window.BellsAPI.bells.length) return;
-    const hasActive = window.BellsAPI.bells.some((entry) => entry && entry.state === 'ringing');
-    if (hasActive) {
-      G.firstBellTriggered = true;
-      return;
-    }
-    const delaySeconds = Number.isFinite(G.firstBellDelaySeconds) ? G.firstBellDelaySeconds : 300;
-    const deadline = Number.isFinite(G.firstBellDeadline) ? G.firstBellDeadline : delaySeconds;
-    if (G.time < deadline) return;
-    const bell = window.BellsAPI.forceActivateFirstBell?.({ reason: 'first_bell_auto' });
-    if (bell) {
-      G.firstBellTriggered = true;
-      G.firstBellDeadline = null;
-      G._firstBellPendingLog = false;
-      console.debug(`[FIRST_BELL] Forced activation at ${G.time.toFixed(2)}s`, bell?.id || '');
-      return;
-    }
-    G.firstBellDeadline = G.time + 1;
-    if (!G._firstBellPendingLog) {
-      console.debug('[FIRST_BELL] Waiting for available bell to auto-activate.');
-      G._firstBellPendingLog = true;
-    }
-  }
-
-  function resolvePinballCollisions(dt){
-    const ents = Array.isArray(G.entities) ? G.entities.filter(isPinballCandidate) : [];
-    if (ents.length <= 1) return;
-    const tile = window.TILE_SIZE || TILE;
-    const SLOP = 0.5;
-    const MAX_PUSH = tile * 0.5;
-    const MAX_IMPULSE = 2200;
-    for (let i = 0; i < ents.length; i++){
-      const a = ents[i];
-      for (let k = i + 1; k < ents.length; k++){
-        const b = ents[k];
-        if (!nearAABB(a, b, 6)) continue;
-        if (!AABB(a, b)) continue;
-        const ax = a.x + a.w * 0.5;
-        const ay = a.y + a.h * 0.5;
-        const bx = b.x + b.w * 0.5;
-        const by = b.y + b.h * 0.5;
-        const penX = (a.w * 0.5 + b.w * 0.5) - Math.abs(ax - bx);
-        const penY = (a.h * 0.5 + b.h * 0.5) - Math.abs(ay - by);
-        if (penX <= 0 || penY <= 0) continue;
-        let nx = 0, ny = 0;
-        if (penX < penY) {
-          nx = (ax < bx ? -1 : 1);
-        } else {
-          ny = (ay < by ? -1 : 1);
-        }
-        const invA = a.static ? 0 : (1 / Math.max(0.1, approximatePinballMass(a)));
-        const invB = b.static ? 0 : (1 / Math.max(0.1, approximatePinballMass(b)));
-        const invSum = invA + invB;
-        if (invSum <= 0) continue;
-        const pen = Math.min(penX, penY) + SLOP;
-        const corrA = Math.min((pen * invA) / invSum, MAX_PUSH);
-        const corrB = Math.min((pen * invB) / invSum, MAX_PUSH);
-        if (corrA > 0) { a.x += nx * corrA; a.y += ny * corrA; }
-        if (corrB > 0) { b.x -= nx * corrB; b.y -= ny * corrB; }
-        const stA = MovementSystem.getState?.(a);
-        const stB = MovementSystem.getState?.(b);
-        if (stA) { stA.lastSafeX = stA.x; stA.lastSafeY = stA.y; }
-        if (stB) { stB.lastSafeX = stB.x; stB.lastSafeY = stB.y; }
-        const rvx = (a.vx || 0) - (b.vx || 0);
-        const rvy = (a.vy || 0) - (b.vy || 0);
-        const velN = rvx * nx + rvy * ny;
-        if (velN > 0) continue;
-        const rest = Math.max(pinballRestitution(a), pinballRestitution(b));
-        let j = -(1 + rest) * velN / invSum;
-        j = Math.max(-MAX_IMPULSE, Math.min(MAX_IMPULSE, j));
-        const ix = j * nx;
-        const iy = j * ny;
-        if (!a.static) {
-          a.vx = (a.vx || 0) + ix * invA;
-          a.vy = (a.vy || 0) + iy * invA;
-        }
-        if (!b.static) {
-          b.vx = (b.vx || 0) - ix * invB;
-          b.vy = (b.vy || 0) - iy * invB;
-        }
-      }
-    }
-  }
-
-  function runtimePushableSafety(dt){
-    if (!window.Placement?.ensureNoPushableOverlap) return;
-    if (!Number.isFinite(dt) || dt <= 0) dt = 0;
-    pushableOverlapCooldown = Math.max(0, pushableOverlapCooldown - dt);
-    if (pushableOverlapCooldown > 0) return;
-    pushableOverlapCooldown = 1.0;
-    try {
-      window.Placement.ensureNoPushableOverlap(G, { log: false, maxRadius: 6 });
-    } catch (err) {
-      if (window.DEBUG_FORCE_ASCII) console.warn('[PushableSafety] runtime check failed', err);
-    }
-  }
-
-  function handleHeroContacts(){
-    const hero = G.player;
-    if (!hero) return;
-    const logCollisions = !!window.DEBUG_COLLISIONS;
-    const hostiles = Array.isArray(G.hostiles) ? G.hostiles : [];
-    for (const enemy of hostiles) {
-      if (!enemy || enemy.dead) continue;
-      if (!nearAABB(hero, enemy, 4) || !AABB(hero, enemy)) continue;
-      const dmg = Number.isFinite(enemy.touchDamage) ? enemy.touchDamage : (Number.isFinite(enemy.damage) ? enemy.damage : 1);
-      if (hero.invuln > 0) continue;
-      if (logCollisions) {
-        console.debug('[COLLISION] hero vs enemy', enemy.kind || enemy.kindName || enemy.tag || 'unknown', 'damage=', dmg);
-      }
-      damagePlayer(enemy, dmg);
-    }
-
-    if (hero.carry || G.carry) {
-      const patients = Array.isArray(G.patients) ? G.patients : [];
-      for (const patient of patients) {
-        if (!patient || patient.dead || patient.attended) continue;
-        if (!nearAABB(hero, patient, 8)) continue;
-        if (deliverPillToPatient(hero, patient, { reason: 'touch' })) break;
-      }
-    }
-  }
+}
 
   // ------------------------------------------------------------
   // Reglas de juego base (pill→patient→door→boss with cart)
   // ------------------------------------------------------------
   function gameplay(dt){
     // 1) Recoger píldora (ENT.PILL)
-    const hero = G.player || null;
-    if (!hero?.carry && !G.carry) {
+    if (!G.carry) {
       for (const e of [...G.entities]) {
-        if (!e || e.dead || !matchesKind(e, 'PILL')) continue;
-        if (!AABB(G.player, e)) continue;
-        if (assignCarryFromPill(hero, e)) {
+        if (e.kind !== ENT.PILL || e.dead) continue;
+        if (AABB(G.player, e)) {
+          // Vinculada ya en parseMap (targetName o patientName)
+          G.carry = { label: e.label, patientName: e.targetName };
+          // Quita la píldora del mundo
+          G.entities = G.entities.filter(x => x !== e);
+          G.movers   = G.movers.filter(x => x !== e);
           break;
         }
       }
     }
 
-    // 2) Mantener la puerta de urgencias cerrada hasta atender a todos
-    if ((G.stats?.remainingPatients || 0) > 0) {
-      if (G.door && (G.door.bossDoor || G.door.isBossDoor || G.door.tag === 'bossDoor') && !G.door.locked) {
-        G.door.locked = true;
-        G.door.solid = true;
+    // 2) Entregar al paciente correcto tocándolo (ENT.PATIENT)
+    if (G.carry) {
+      for (const pac of [...G.patients]) {
+        if (pac.dead) continue;
+        const esCorrecto = (pac.name === G.carry.patientName);
+        if (esCorrecto && nearAABB(G.player, pac, 12)) {
+          pac.satisfied = true;
+          pac.dead = true;
+          pac.solid = false;
+          // Elimina paciente del mundo
+          G.entities = G.entities.filter(e => e !== pac);
+          G.patients = G.patients.filter(e => e !== pac);
+          G.npcs     = G.npcs.filter(e => e !== pac);
+          // Actualiza HUD
+          G.carry = null;
+          G.delivered++;
+          break;
+        }
       }
     }
 
+    // 3) Abrir puerta si ya no quedan pacientes
+    if (G.door && G.patients.length === 0) {
+      G.door.color = COLORS.doorOpen;
+      G.door.solid = false;
+    }
+
+    // 4) Victoria: carro de urgencias cerca del boss con puerta abierta
+    if (G.door && G.door.color===COLORS.doorOpen && G.cart && G.boss){
+      const d = Math.hypot(G.cart.x-G.boss.x, G.cart.y-G.boss.y);
+      if (d < TILE*2.2){
+        G.state = 'COMPLETE';
+        levelCompleteScreen.classList.remove('hidden');
+
+        // Desglose + total (animado estilo Metal Slug) y botón "Ir al siguiente turno"
+        const breakdown = buildLevelBreakdown();
+        const total = (window.ScoreAPI && typeof ScoreAPI.getTotals === 'function')
+          ? (ScoreAPI.getTotals().total || 0)
+          : breakdown.reduce((a, r) => a + (r.points|0), 0);
+
+        // Muestra la tarjeta "¡Nivel X completado!" con lista animada y botón
+        PresentationAPI.levelComplete((window.G?.level || 1), { breakdown, total }, () => {
+          // <<<< AQUÍ LO QUE YA USABAS PARA PASAR DE NIVEL >>>>
+          // Si ya tienes una función nextLevel(), úsala:
+          if (typeof nextLevel === 'function') { nextLevel(); return; }
+          // Fallback sencillito: reinicia el turno actual
+          if (typeof startGame === 'function') { startGame(); }
+        });
+
+        PresentationAPI.levelComplete(G.level || 1, { breakdown, total }, () => {
+          // pasa al siguiente nivel
+          nextLevel(); // o GameFlowAPI.nextLevel() si lo usas
+        });
+      }
+    }
   }
 
     // === Flashlights (héroe + NPCs) con colores por entidad ===
-    const HERO_LIGHT_ALPHA = 0.35;
-    const NPC_LIGHT_ALPHA = 0.40;
-    const NPC_RADIUS_RATIO = 0.55;
-
-    function flashlightColorForHero(e){
+    function flashlightColorFor(e){
       const k = ((e.skin || e.spriteKey || '') + '').toLowerCase();
-      if (k.includes('enrique'))   return `rgba(255,235,90,${HERO_LIGHT_ALPHA})`;
-      if (k.includes('roberto'))   return `rgba(255,170,90,${HERO_LIGHT_ALPHA})`;
-      if (k.includes('francesco')) return `rgba(80,160,255,${HERO_LIGHT_ALPHA})`;
-      if (e.isNPC || e.kind === ENT.PATIENT) return `rgba(255,245,170,${NPC_LIGHT_ALPHA})`;
-      return `rgba(210,230,255,${HERO_LIGHT_ALPHA})`;
-    }
-
-    function flashlightProfileForNPC(npc, heroDist){
-      const clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
-      const id = ((npc.aiId || npc.kindName || npc.kind || npc.role || '') + '').toUpperCase();
-      let color = `rgba(255,213,170,${NPC_LIGHT_ALPHA})`;
-      let ratio = NPC_RADIUS_RATIO;
-      let fov = Math.PI * 0.48;
-
-      if (id.includes('MEDIC')) {
-        color = `rgba(107,211,255,${NPC_LIGHT_ALPHA})`;
-        ratio = NPC_RADIUS_RATIO * 1.05;
-      } else if (id.includes('JEFESERVICIO') || id.includes('BOSS')) {
-        color = `rgba(255,212,107,${NPC_LIGHT_ALPHA})`;
-        ratio = NPC_RADIUS_RATIO * 1.08;
-      } else if (id.includes('GUARDIA')) {
-        color = `rgba(185,255,107,${NPC_LIGHT_ALPHA})`;
-        ratio = NPC_RADIUS_RATIO * 0.98;
-      } else if (id.includes('FAMILIAR')) {
-        color = `rgba(255,107,154,${NPC_LIGHT_ALPHA})`;
-        ratio = NPC_RADIUS_RATIO * 0.9;
-        fov = Math.PI * 0.45;
-      }
-
-      const base = heroDist * NPC_RADIUS_RATIO;
-      const dist = clamp(heroDist * ratio, base * 0.85, base * 1.1);
-      return { color, dist, fov };
+      if (k.includes('enrique'))   return 'rgba(255,235,90,0.45)';   // amarillo
+      if (k.includes('roberto'))   return 'rgba(255,170,90,0.45)';   // naranja cálido
+      if (k.includes('francesco')) return 'rgba(80,160,255,0.45)';   // azul frío
+      if (e.isNPC || e.kind === ENT.PATIENT) return 'rgba(255,245,170,0.85)'; // cálida suave
+      return 'rgba(210,230,255,0.85)'; // neutro
     }
 
     function updateEntityFlashlights(){
       const list = [];
-      const hero = (G.player && !G.player.dead) ? G.player : null;
-      const heroDist = hero ? (hero._flashOuter || 740) : 620;
-      const npcRadiusBase = heroDist * NPC_RADIUS_RATIO;
-      const computeAngle = (e) => {
-        if (hero && matchesKind(e, 'PATIENT')) {
-          const ex = (e.x || 0) + (e.w || 0) * 0.5;
-          const ey = (e.y || 0) + (e.h || 0) * 0.5;
-          const hx = (hero.x || 0) + (hero.w || 0) * 0.5;
-          const hy = (hero.y || 0) + (hero.h || 0) * 0.5;
-          return Math.atan2(hy - ey, hx - ex);
-        }
-        if (typeof e.lookAngle === 'number') return e.lookAngle;
-        if (Math.hypot(e.vx || 0, e.vy || 0) > 0.01) {
-          return Math.atan2(e.vy || 0, e.vx || 0);
-        }
-        return Math.PI / 2;
-      };
-      const add = (e, fov, dist, color, opts = {}) => {
+      const add = (e, fov = Math.PI * 0.55, dist = 620) => {
         const cx = e.x + e.w*0.5, cy = e.y + e.h*0.5;
-        const ang = computeAngle(e);
+        const ang = (typeof e.lookAngle === 'number')
+          ? e.lookAngle
+          : (Math.hypot(e.vx||0, e.vy||0) > 0.01 ? Math.atan2(e.vy||0, e.vx||0) : Math.PI/2);
         list.push({
           x: cx, y: cy, angle: ang,
-          fov, dist, color, softness: 0.70,
-          isHero: opts.isHero === true
+          fov, dist, color: flashlightColorFor(e), softness: 0.70
         });
       };
 
-      if (hero) {
-        add(hero, Math.PI * 0.60, heroDist, flashlightColorForHero(hero), { isHero: true });
+      if (G.player && !G.player.dead) {
+        const dist = (G.player._flashOuter || 740);   // ← del héroe
+        add(G.player, Math.PI * 0.60, dist);
       }
-      if (Array.isArray(G.humans)) {
-        for (const npc of G.humans) {
-          if (!npc || npc.dead) continue;
-          const profile = flashlightProfileForNPC(npc, heroDist);
-          const npcDist = Number.isFinite(profile?.dist) ? profile.dist : npcRadiusBase;
-          add(npc, profile.fov || Math.PI * 0.48, npcDist, profile.color);
-        }
+      if (Array.isArray(G.npcs)) {
+        for (const npc of G.npcs) { if (npc && !npc.dead) add(npc, Math.PI * 0.50, 520); }
       }
       G.lights = list;
 
@@ -3217,22 +1320,10 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   // ------------------------------------------------------------
   function update(dt){
     window.SkyFX?.update?.(dt);
-    try { window.MusicManager?.update?.(dt); } catch(err){ if (window.DEBUG_FORCE_ASCII) console.warn('[MusicManager]', err); }
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
-    try { window.Narrator?.tick?.(dt, G); } catch(e){}
-    const isPlaying = (G.state === 'PLAYING');
-    if (isPlaying) {
-      try { window.GameFlowAPI?.update?.(dt); } catch(err){ console.warn('[GameFlow] update error:', err); }
-    }
-    applyStateVisuals();
-    if (!isPlaying || !G.player){
-      currentVisualInfo = null;
-      G.__visualRadiusInfo = null;
-      return; // <-- evita tocar nada sin jugador
-    }
+    if (G.state !== 'PLAYING' || !G.player) return; // <-- evita tocar nada sin jugador
     G.time += dt;
     G.cycleSeconds += dt;
-    const dbg = !!window.DEBUG_FORCE_ASCII;
 
     // input
     handleInput(dt);
@@ -3241,7 +1332,7 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
     
     // alimenta al rig con el mismo ángulo (evita “héroe invertido”)
     if (G.player) G.player.facingAngle = G.player.lookAngle || 0;
-
+    
     // jugador
     const p = G.player;
     if (p){
@@ -3251,37 +1342,23 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
       if (p.pushAnimT>0) p.pushAnimT = Math.max(0, p.pushAnimT - dt);
     }
 
-    computeVisualRadiusInfo();
-
     // Posición del oyente (para paneo/atenuación en SFX posicionales)
     //if (G.player) AudioAPI.setListener(G.player.x + G.player.w/2, G.player.y + G.player.h/2);
 
     // objetos/movers (camas, carros, pastillas sueltas)
     for (const e of G.movers){
       if (e.dead) continue;
-      if (!shouldUpdateEntity(e)) continue;
       // clamp velocidad máxima
       const ms = BALANCE.physics.maxSpeedObject;
       const sp = Math.hypot(e.vx, e.vy);
       if (sp>ms){ e.vx = e.vx*(ms/sp); e.vy = e.vy*(ms/sp); }
     }
 
+    // Puppet: alimentar estado de animación
+    if (G.player?.rig) { PuppetAPI.update(G.player.rig, dt); }  // el plugin deduce el estado del host
+
     // enemigos
-    runEntityAI(dt);
     updateEntities(dt);
-
-    maybeTriggerFirstBell();
-    if (window.BellsAPI?.update) {
-      try { window.BellsAPI.update(dt); }
-      catch (err) { if (dbg) console.warn('[Bells] update error', err); }
-    }
-
-    // integración de movimiento centralizada
-    MovementSystem.step(dt);
-    resolvePinballCollisions(dt);
-    runtimePushableSafety(dt);
-    handleHeroContacts();
-
     // ascensores
     Entities?.Elevator?.update?.(dt);
 
@@ -3289,19 +1366,8 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // reglas
     gameplay(dt);
-
-    updateDoorEntities(dt);
-    if (window.Doors?.gameflow) {
-      try { Doors.gameflow(G); } catch(err){ if (dbg) console.warn('[Doors] gameflow error', err); }
-    }
-
-    if (window.DamageSystem?.update) {
-      try { DamageSystem.update(G, dt); } catch(err){ if (dbg) console.warn('[DamageSystem] update error', err); }
-    }
-
-    if (window.PuppetAPI?.updateAll) {
-      PuppetAPI.updateAll(G, dt);
-    }
+    // === paso de física (rebotes, empujes, aplastamientos, etc.)
+    Physics.step(dt);
 
     updateEntityFlashlights();
 
@@ -3322,7 +1388,9 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
 
     // cámara
     ctx2d.save();
-    applyWorldCamera(ctx2d);
+    ctx2d.translate(VIEW_W/2, VIEW_H/2);
+    ctx2d.scale(camera.zoom, camera.zoom);
+    ctx2d.translate(-camera.x, -camera.y);
 
     // mundo
     drawTiles(ctx2d);
@@ -3337,32 +1405,18 @@ let ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
   }
 
 function drawEntities(c2){
-  const tileSize = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : TILE;
-  const radiusValue = Number(G?.visibleTilesRadius);
-  const baseRadius = Number.isFinite(radiusValue) && radiusValue > 0 ? radiusValue : 8;
-  const entityRadius = Math.max(0, Math.ceil(baseRadius)) + 1;
-  const hasPlayer = !!G.player;
-  const applyCull = hasPlayer && !G.isDebugMap && tileSize > 0;
-  const playerX = hasPlayer ? Number(G.player.x) || 0 : 0;
-  const playerY = hasPlayer ? Number(G.player.y) || 0 : 0;
-
   for (const e of G.entities){
     if (!e || e.dead) continue;
 
-    const isPlayerEntity = (e === G.player || e.kind === ENT.PLAYER);
-    if (applyCull && !isPlayerEntity) {
-      const dx = (Number(e.x) || 0) - playerX;
-      const dy = (Number(e.y) || 0) - playerY;
-      const distTiles = Math.max(Math.abs(dx / tileSize), Math.abs(dy / tileSize));
-      if (distTiles > entityRadius) {
-        continue;
-      }
-    }
-
     // El jugador se pinta aparte con su rig (más nítido)
-    if (isPlayerEntity) continue;
+    if (e === G.player || e.kind === ENT.PLAYER) continue;
 
-    if (e.puppet && window.PuppetAPI) continue;
+    // 1) Si la entidad tiene "muñeco" (rig), dibújalo
+    const rig = e._rig || e.rig;
+    if (rig && window.PuppetAPI && typeof PuppetAPI.draw === 'function'){
+      try { PuppetAPI.draw(rig, c2, camera); } catch(_){}
+      continue; // no dupliques con sprite
+    }
 
     // 2) Si hay sprites, dibuja la sprite de la entidad
     let dibujado = false;
@@ -3380,7 +1434,7 @@ function drawEntities(c2){
     // 3) Fallback visible (rectángulo) si no hay sprites
     if (!dibujado){
       c2.fillStyle = e.color || '#a0a0a0';
-      c2.fillRect(e.x, e.y, e.w, e.h);
+      c2.fillRect(e.x - e.w/2, e.y - e.h/2, e.w, e.h);
     }
   }
 }
@@ -3404,12 +1458,8 @@ function drawEntities(c2){
 
         // (B2) “fade lejano” sutil para realismo (puedes comentar si no lo quieres)
         if (G.player) {
-          const pos = worldToScreenBasic(
-            G.player.x + G.player.w * 0.5,
-            G.player.y + G.player.h * 0.5
-          );
-          const px = pos.x;
-          const py = pos.y;
+          const px = (G.player.x + G.player.w*0.5 - camera.x) * camera.zoom + VIEW_W*0.5;
+          const py = (G.player.y + G.player.h*0.5 - camera.y) * camera.zoom + VIEW_H*0.5;
           const R  = Math.max(VIEW_W, VIEW_H) * 0.55;
           const g  = ctx.createRadialGradient(px, py, R*0.40, px, py, R);
           g.addColorStop(0.00, 'rgba(0,0,0,0)');     // cerca: nítido
@@ -3441,9 +1491,8 @@ function drawEntities(c2){
     ctx.drawImage(blurCanvas, 0, 0);
 
     const p = G.player;
-    const pos = worldToScreenBasic(p.x + p.w / 2, p.y + p.h / 2);
-    const px = pos.x;
-    const py = pos.y;
+    const px = (p.x + p.w/2 - camera.x) * camera.zoom + VIEW_W/2;
+    const py = (p.y + p.h/2 - camera.y) * camera.zoom + VIEW_H/2;
     const R  = TILE * 6.5 * camera.zoom;
 
     const fog = ctx.createRadialGradient(px, py, R*0.65, px, py, R*1.30);
@@ -3457,14 +1506,6 @@ function drawEntities(c2){
   // Draw + loop
   // ------------------------------------------------------------
   function draw(){
-    const canRenderWorld = (G.levelState === 'PLAYING' || G.levelState === 'PAUSED' || G.levelState === 'READY');
-    if (!canRenderWorld) {
-      clearCanvasContext(ctx, canvas?.width, canvas?.height);
-      clearCanvasContext(fogCtx, fogCanvas?.width, fogCanvas?.height);
-      clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-      clearCanvasContext(hudCtx, hudCanvas?.width, hudCanvas?.height);
-      return;
-    }
     // actualizar cámara centrada en jugador
     if (G.player){
       camera.x = G.player.x + G.player.w/2;
@@ -3473,8 +1514,9 @@ function drawEntities(c2){
 
     // composición: mundo borroso fuera de luz + mundo nítido en cono
     drawLightingAndFog();
-    if (window.PuppetAPI?.drawAll){
-      PuppetAPI.drawAll(ctx, camera);
+    // ⬇️ MUÑECO: encima del mundo, pero por DEBAJO de la niebla/luces
+    if (G.player?.rig){
+      PuppetAPI.draw(G.player.rig, ctx, camera);
     }
 
     // Plugins que pintan en sus propios canvas (arriba del mundo)
@@ -3487,22 +1529,13 @@ function drawEntities(c2){
     // Marcador de click del MouseNav (anillo)
     if (window.MouseNav && window._mouseNavInited) { try { MouseNav.render(ctx, camera); } catch(e){} }
 
-    try { window.HUD?.drawWorldOverlays?.(ctx, camera, G); } catch(e){ console.warn('HUD.drawWorldOverlays', e); }
-
-    if (guideCtx){
-      syncGuideCanvasResolution();
-      clearCanvasContext(guideCtx, guideCanvas?.width, guideCanvas?.height);
-      try { window.ArrowGuide?.draw(guideCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
-    }
-
     // 1) Dibuja el HUD (esta función hace clearRect del HUD canvas)
     try { window.HUD && HUD.render(hudCtx, camera, G); } catch(e){ console.warn('HUD.render', e); }
+    try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
 
-    // 2) Flecha (si no hay canvas dedicado) + overlays finales
-    if (!guideCtx){
-      try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
-    }
+    // 2) Dibuja AHORA la flecha y overlays, para que el clear del HUD no las borre
+    try { window.ArrowGuide?.draw(hudCtx, camera, G); } catch(e){ console.warn('ArrowGuide.draw', e); }
     if (window.Sprites?.renderOverlay) { Sprites.renderOverlay(hudCtx); }
   }
 
@@ -3513,26 +1546,8 @@ function drawEntities(c2){
   let frames = 0, dtAcc=0, msFrame=0, FPS=60;
 
   function loop(now){
-    if (!Number.isFinite(camera.zoom) || camera.zoom <= 0){
-      if (!invalidZoomLogged){
-        logThrough('warn', '[camera] zoom inválido, reajustando', { zoom: camera.zoom });
-        window.LOG?.event('CAMERA', { issue: 'invalid-zoom', zoom: camera.zoom });
-        invalidZoomLogged = true;
-      }
-      camera.zoom = 1;
-    } else if (invalidZoomLogged) {
-      invalidZoomLogged = false;
-    }
-
     const delta = (now - lastT)/1000; lastT = now;
-    if (window.CineFX && typeof window.CineFX.update === 'function'){
-      try { window.CineFX.update(delta, { camera, game: G }); }
-      catch (err){ if (window.DEBUG_FORCE_ASCII) console.warn('[CineFX] update error', err); }
-    }
-    const fxScale = window.CineFX && typeof window.CineFX.getTimeScale === 'function'
-      ? clamp(window.CineFX.getTimeScale(), 0.05, 2)
-      : 1;
-    acc += Math.min(delta * fxScale, 0.05);
+    acc += Math.min(delta, 0.05);
     while (acc >= DT){
       update(DT);
       acc -= DT;
@@ -3544,1360 +1559,409 @@ function drawEntities(c2){
       }
     }
     draw();
-    if (window.LOG?.counter){
-      const fpsVal = Number.isFinite(FPS) && FPS > 0 ? Number(FPS.toFixed(1)) : 0;
-      window.LOG.counter('fps', fpsVal);
-      window.LOG.counter('entities', Array.isArray(G.entities) ? G.entities.length : 0);
-      const zoomVal = Number.isFinite(camera.zoom) ? Number(camera.zoom.toFixed(2)) : 0;
-      window.LOG.counter('camera.zoom', zoomVal);
-      const hpVal = (G.player && Number.isFinite(G.player.hp)) ? G.player.hp
-        : Number.isFinite(G.health) ? Number((G.health || 0) / 2) : 0;
-      window.LOG.counter('player.hp', hpVal);
-      window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
-    }
     requestAnimationFrame(loop);
   }
 
   // === Post-parse: instanciar placements SOLO UNA VEZ ===
-  function finalizeLevelBuildOnce(options = {}){
-    const forceFallback = options.forceFallback === true;
-    if (G._placementsFinalized && !forceFallback) return;          // evita duplicados
-    if (!forceFallback) {
-      G._placementsFinalized = true;
-    }
+  function finalizeLevelBuildOnce(){
+    if (G._placementsFinalized) return;          // evita duplicados
+    G._placementsFinalized = true;
 
-    const sourcePlacements = Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length
-      ? G.mapgenPlacements
-      : (Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements : []);
-    if (!sourcePlacements.length) return;
-
-    if (!forceFallback && window.Placement?.applyFromAsciiMap) {
-      return; // el flujo principal se encarga en startGame
-    }
+    if (!Array.isArray(G.mapgenPlacements) || !G.mapgenPlacements.length) return;
 
     try {
-      // Fallback LOCAL: instanciar lo básico si no hay Placement API
+      // Camino “oficial”: si existe el helper, úsalo
+      if (typeof window.applyPlacementsFromMapgen === 'function') {
+        window.applyPlacementsFromMapgen(G.mapgenPlacements);
+        return;
+      }
+
+      // Fallback LOCAL: instanciar lo básico si no hay placement.api.js
       const T = (window.TILE_SIZE || 32);
-      for (const p of sourcePlacements) {
+      for (const p of G.mapgenPlacements) {
         if (!p || !p.type) continue;
 
-        if ((p.type === 'player' || p.type === 'hero' || p.type === 'start') && !G.player) {
-          const px = (p.x ?? 0) | 0;
-          const py = (p.y ?? 0) | 0;
-          const hero = (typeof makePlayer === 'function')
-            ? makePlayer(px, py)
-            : (window.Entities?.Hero?.spawnPlayer?.(px, py, {}) || null);
-          if (hero) {
-            G.player = hero;
-            G.entities.push(hero);
-            MovementSystem.register(hero);
-          }
-        }
-        else if (p.type === 'patient') {
+        if (p.type === 'patient') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.PATIENT, '#ffd166', false, true);
           e.name = p.name || `Paciente_${G.patients.length+1}`;
-          e.group = 'human';
-          G.entities.push(e); G.patients.push(e);
-          try { window.EntityGroups?.assign?.(e); } catch (_) {}
-          try { window.EntityGroups?.register?.(e, G); } catch (_) {}
+          G.entities.push(e); G.patients.push(e); G.npcs.push(e);
         }
         else if (p.type === 'pill') {
           const e = makeRect(p.x|0, p.y|0, T*0.6, T*0.6, ENT.PILL, '#a0ffcf', false, false);
           e.label = p.label || 'Píldora';
           // intenta vincularla al primer paciente existente si no se indicó target
           e.targetName = p.targetName || (G.patients[0]?.name) || null;
-          e.group = 'object';
           G.entities.push(e); G.movers.push(e); G.pills.push(e);
-          try { window.EntityGroups?.assign?.(e); } catch (_) {}
-          try { window.EntityGroups?.register?.(e, G); } catch (_) {}
         }
         else if (p.type === 'door') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.DOOR, '#7f8c8d', false, true, {mass:0,rest:0,mu:0,static:true});
           G.entities.push(e); G.door = e;
         }
         else if (p.type === 'boss') {
-          const bossEnt = spawnBossForLevel(G.level || 1, p.x|0, p.y|0);
-          if (!bossEnt) {
-            const e = makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
-            G.entities.push(e); G.boss = e;
-          }
+          const e = makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
+          G.entities.push(e); G.boss = e;
         }
         else if (p.type === 'cart') {
-          const e = makeRect(p.x|0, p.y|0, T, T, ENT.CART, '#b0956c', true, true, {mass:3.5,rest:0.12,mu:0.02});
+          const e = makeRect(p.x|0, p.y|0, T, T, ENT.CART, '#b0956c', true, true, {mass:6,rest:0.35,mu:0.06});
           G.entities.push(e); G.movers.push(e); G.cart = e;
         }
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
-    if (G.player) placeHeroAtControlRoom();
-    G._placementsFinalized = true;
   }
   // ------------------------------------------------------------
   // Control de estado
   // ------------------------------------------------------------
-  const GAME_OVER_MESSAGES = [
-    'El caos te ha superado…',
-    'Los pasillos del hospital necesitan refuerzos.',
-    'La guardia sigue sin héroe. ¡Inténtalo de nuevo!'
-  ];
-
-  let lastUIState = null;
-
-  function normalizeAsciiFromText(text){
-    const normalized = String(text || '').replace(/\r\n?/g, '\n');
-    const rows = normalized.split('\n');
-    while (rows.length && !rows[0].trim()) rows.shift();
-    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
-    return rows.map((row) => row.replace(/\t/g, ' '));
-  }
-
-  function padAsciiRow(row, width){
-    const base = String(row ?? '');
-    if (!Number.isFinite(width) || width <= 0) return base;
-    if (base.length === width) return base;
-    if (base.length > width) return base.slice(0, width);
-    return base + '.'.repeat(width - base.length);
-  }
-
-  function enforceAsciiDimensions(lines, desiredWidth, desiredHeight){
-    if (!Array.isArray(lines) || !lines.length) return lines;
-    const targetWidth = Number.isFinite(desiredWidth) && desiredWidth > 0
-      ? desiredWidth
-      : null;
-    const targetHeight = Number.isFinite(desiredHeight) && desiredHeight > 0
-      ? desiredHeight
-      : null;
-    if (!targetWidth && !targetHeight) return lines.slice();
-    const adjusted = lines.map((row) => targetWidth ? padAsciiRow(row, targetWidth) : String(row ?? ''));
-    const finalWidth = targetWidth || adjusted[0]?.length || 0;
-    let output = adjusted;
-    if (targetHeight && targetHeight > 0){
-      if (output.length > targetHeight){
-        output = output.slice(0, targetHeight);
-      } else if (output.length < targetHeight){
-        const filler = padAsciiRow('', finalWidth || 0);
-        while (output.length < targetHeight){
-          output.push(filler);
-        }
-      }
-    }
-    return output;
-  }
-
-  function pickVisibleRadiusFromRules(ruleSet){
-    const candidates = [
-      Number.isFinite(ruleSet?.level?.visibleTilesRadius) ? ruleSet.level.visibleTilesRadius : null,
-      Number.isFinite(ruleSet?.globals?.visibleTilesRadius) ? ruleSet.globals.visibleTilesRadius : null,
-    ];
-    for (const value of candidates){
-      if (Number.isFinite(value) && value > 0) return value;
-    }
-    return null;
-  }
-
-  async function loadDebugAsciiMap(fallbackLines){
-    const fallback = {
-      lines: Array.isArray(fallbackLines) ? fallbackLines.slice() : FALLBACK_DEBUG_ASCII_MAP.slice(),
-      source: 'builtin',
-      fromFile: false,
-      file: null
-    };
-    const fallbackWidth = fallback.lines[0]?.length || 0;
-    const fallbackHeight = fallback.lines.length;
-    const fileToLoad = DEBUG_MAP_FILE;
-    const mapFileOrigin = DEBUG_MAP_FILE_PARAM ? 'custom' : 'default';
-
-    try {
-      const response = await fetch(fileToLoad, { cache: 'no-store' });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const text = await response.text();
-      const rows = normalizeAsciiFromText(text);
-      if (!rows.length) {
-        throw new Error('archivo vacío');
-      }
-      const payload = {
-        lines: rows,
-        source: mapFileOrigin === 'custom' ? 'file' : 'file-default',
-        fromFile: true,
-        file: fileToLoad,
-        width: rows[0]?.length || 0,
-        height: rows.length
-      };
-      logThrough('info', '[debug-map] mapa ASCII externo cargado', {
-        file: fileToLoad,
-        width: payload.width,
-        height: payload.height
-      });
-      window.LOG?.event?.('DEBUG_MAP_LOAD', {
-        mode: mapFileOrigin,
-        file: fileToLoad,
-        width: payload.width,
-        height: payload.height
-      });
-      return payload;
-    } catch (err) {
-      logThrough('warn', '[debug-map] fallo al cargar mapa externo, usando fallback', {
-        file: fileToLoad,
-        error: err?.message || String(err)
-      });
-      window.LOG?.event?.('DEBUG_MAP_LOAD', {
-        mode: `${mapFileOrigin}-error`,
-        file: fileToLoad,
-        error: err?.message || String(err)
-      });
-      fallback.source = 'builtin-error';
-      return fallback;
-    }
-  }
-
-  async function resolveAsciiMapForLevel(level){
-    const asciiFallback = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
-    const shouldUseDebugAscii = DEBUG_MAP_MODE;
-    let levelRules = null;
-    let ruleVisibleRadius = null;
-    let targetWidth = null;
-    let targetHeight = null;
-
-    if (!shouldUseDebugAscii && window.XMLRules?.load){
-      try {
-        levelRules = await window.XMLRules.load(level);
-        targetWidth = Number.isFinite(levelRules?.level?.width) ? levelRules.level.width : null;
-        targetHeight = Number.isFinite(levelRules?.level?.height) ? levelRules.level.height : null;
-        ruleVisibleRadius = pickVisibleRadiusFromRules(levelRules);
-      } catch (err) {
-        console.warn('[level_rules] no se pudo cargar level_rules.xml', err);
-      }
-    }
-
-    if (shouldUseDebugAscii) {
-      const payload = await loadDebugAsciiMap(asciiFallback).catch((err) => {
-        console.warn('[debug-map] error inesperado al cargar mapa debug', err);
-        return {
-          lines: asciiFallback.slice(),
-          source: 'builtin-error',
-          fromFile: false,
-          file: null
-        };
-      });
-      const lines = Array.isArray(payload?.lines) && payload.lines.length
-        ? payload.lines.slice()
-        : asciiFallback.slice();
-      return {
-        lines,
-        source: payload?.source || (payload?.fromFile ? 'file' : 'builtin'),
-        file: payload?.file || null,
-        placements: [],
-        areas: null,
-        mode: 'debug'
-      };
-    }
-
-    let asciiLines = null;
-    let placements = [];
-    let areas = null;
-    let source = 'procedural';
-    let meta = null;
-
-    if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-      try {
-        const res = MapGenAPI.generate(level, {
-          seed: G.seed || Date.now(),
-          place: false,
-          defs: null,
-          rules: levelRules || undefined,
-          w: targetWidth || (window.DEBUG_MINIMAP ? 128 : undefined),
-          h: targetHeight || (window.DEBUG_MINIMAP ? 128 : undefined),
-          width: window.DEBUG_MINIMAP ? 128 : undefined,
-          height: window.DEBUG_MINIMAP ? 128 : undefined
-        }) || {};
-        const asciiText = typeof res.ascii === 'string'
-          ? res.ascii
-          : (typeof MapGenAPI.toAscii === 'function' ? MapGenAPI.toAscii(res) : '');
-        let rows = normalizeAsciiFromText(asciiText);
-        if (targetWidth || targetHeight) {
-          rows = enforceAsciiDimensions(rows, targetWidth, targetHeight);
-        }
-        if (rows.length) {
-          asciiLines = rows;
-          placements = Array.isArray(res.placements) ? res.placements.slice() : [];
-          areas = res.areas || null;
-          source = window.DEBUG_MINIMAP ? 'procedural-mini' : 'procedural';
-          meta = {
-            ...(res.meta || {}),
-            seed: res.seed ?? res.meta?.seed ?? (G.seed ?? null),
-            level: res.level ?? res.meta?.level ?? level,
-            width: res.width ?? res.meta?.width ?? (rows[0]?.length || null),
-            height: res.height ?? res.meta?.height ?? rows.length
-          };
-        }
-      } catch (err) {
-        console.warn('[MapGenAPI] generate falló:', err);
-      }
-    }
-
-    if (!asciiLines || !asciiLines.length) {
-      asciiLines = enforceAsciiDimensions(asciiFallback.slice(), targetWidth, targetHeight);
-      source = 'fallback';
-    }
-
-    const finalWidth = asciiLines?.[0]?.length || 0;
-    const finalHeight = asciiLines?.length || 0;
-
-    return {
-      lines: asciiLines,
-      source,
-      file: null,
-      placements,
-      areas,
-      mode: 'normal',
-      meta,
-      levelRules,
-      visibleTilesRadius: ruleVisibleRadius,
-      width: finalWidth,
-      height: finalHeight
-    };
-  }
-
-  async function maybeLogGeneratedMap(levelCfg, payload){
-    try {
-      if (!payload || payload.mode !== 'normal') return;
-      const source = payload.source || '';
-      if (!/procedural/.test(source)) return;
-      if (!levelCfg || !Array.isArray(levelCfg.asciiRows) || !levelCfg.asciiRows.length) return;
-
-      const req = (typeof window !== 'undefined' && typeof window.require === 'function')
-        ? window.require
-        : (typeof require === 'function' ? require : null);
-      if (!req) return;
-
-      let fs;
-      let path;
-      try {
-        fs = req('fs');
-        path = req('path');
-      } catch (err) {
-        console.warn('[MapLog] módulos fs/path no disponibles', err);
-        return;
-      }
-
-      const resolveBaseDir = () => {
-        if (typeof window !== 'undefined' && typeof window.MAP_LOG_DIR === 'string' && window.MAP_LOG_DIR.trim()) {
-          return window.MAP_LOG_DIR.trim();
-        }
-        if (typeof process !== 'undefined' && typeof process.cwd === 'function') {
-          return path.join(process.cwd(), 'logs');
-        }
-        return path.join('.', 'logs');
-      };
-
-      const baseDir = resolveBaseDir();
-      try {
-        fs.mkdirSync(baseDir, { recursive: true });
-      } catch (err) {
-        console.warn('[MapLog] no se pudo preparar el directorio de logs', err);
-        return;
-      }
-
-      const filePath = path.join(baseDir, 'logMAP.txt');
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const timestamp = `[${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
-
-      const meta = payload.meta || {};
-      const params = [];
-      params.push('mode=normal');
-      params.push('difficulty=normal');
-      params.push(`source=${source}`);
-
-      const seed = meta.seed ?? levelCfg.seed ?? ((typeof G !== 'undefined' && G && typeof G.seed !== 'undefined') ? G.seed : null);
-      const roomsCount = Number.isFinite(meta.roomsCount) ? meta.roomsCount : null;
-      const doorsCount = Number.isFinite(meta.doorsCount) ? meta.doorsCount : null;
-      const spawns = meta.spawns || {};
-      const animals = (typeof meta.animalSpawns === 'number' && !Number.isNaN(meta.animalSpawns))
-        ? meta.animalSpawns
-        : ((typeof spawns.mosquito === 'number' ? spawns.mosquito : 0) + (typeof spawns.rat === 'number' ? spawns.rat : 0));
-      const staff = Number.isFinite(spawns.staff) ? spawns.staff : null;
-      const carts = Number.isFinite(spawns.cart) ? spawns.cart : null;
-      const patients = Number.isFinite(meta.patientsCount) ? meta.patientsCount : null;
-      const pills = Number.isFinite(meta.pillsCount) ? meta.pillsCount : null;
-      const bells = Number.isFinite(meta.bellsCount) ? meta.bellsCount : null;
-      const elevators = Number.isFinite(meta.elevatorsCount) ? meta.elevatorsCount : null;
-      const lights = Number.isFinite(meta.lightsCount) ? meta.lightsCount : null;
-
-      const headerDetails = [];
-      const pushDetail = (label, value) => {
-        if (value === null || value === undefined) return;
-        headerDetails.push(`${label}=${value}`);
-      };
-
-      if (seed !== null && seed !== undefined) {
-        params.push(`seed=${seed}`);
-        pushDetail('seed', seed);
-      }
-      pushDetail('difficulty', 'normal');
-      pushDetail('rooms', roomsCount);
-      pushDetail('doors', doorsCount);
-      if (Number.isFinite(animals)) {
-        params.push(`enemies=${animals}`);
-        pushDetail('enemies', animals);
-      }
-      if (staff !== null) params.push(`staff=${staff}`);
-      if (carts !== null) params.push(`carts=${carts}`);
-      if (patients !== null) params.push(`patients=${patients}`);
-      if (pills !== null) params.push(`pills=${pills}`);
-      if (bells !== null) params.push(`bells=${bells}`);
-      if (elevators !== null) params.push(`elevators=${elevators}`);
-      if (lights !== null) params.push(`lights=${lights}`);
-      if (doorsCount !== null) params.push(`doors=${doorsCount}`);
-      if (roomsCount !== null) params.push(`rooms=${roomsCount}`);
-
-      const asciiRows = levelCfg.asciiRows.map((row) => (row == null ? '' : String(row)));
-      const width = levelCfg.width ?? (asciiRows[0]?.length ?? 0);
-      const height = levelCfg.height ?? asciiRows.length;
-      const fallbackLevel = (typeof G !== 'undefined' && G && typeof G.level !== 'undefined') ? G.level : '?';
-      const levelLabel = (typeof levelCfg.level === 'number') ? `Level ${levelCfg.level}` : `Level ${fallbackLevel}`;
-
-      const headerSuffix = headerDetails.length ? ` (Procedural, ${headerDetails.join(', ')})` : ' (Procedural)';
-      const headerLine = `${timestamp} ${levelLabel}${headerSuffix}`;
-      const paramsLine = `Parámetros: ${params.join(', ')}`;
-      const mapHeader = `Mapa ${width}x${height}:`;
-      const separator = '--------------------------------------------------';
-      const entry = `${headerLine}\n${paramsLine}\n${mapHeader}\n${asciiRows.join('\n')}\n${separator}\n`;
-
-      const appendPromise = (fs.promises && typeof fs.promises.appendFile === 'function')
-        ? fs.promises.appendFile(filePath, entry, 'utf8')
-        : new Promise((resolve, reject) => {
-            fs.appendFile(filePath, entry, 'utf8', (err) => (err ? reject(err) : resolve()));
-          });
-
-      await appendPromise;
-    } catch (err) {
-      console.warn('[MapLog] error al escribir log de mapa', err);
-    }
-  }
-
-  async function buildLevelForCurrentMode(levelNumber){
-    const level = typeof levelNumber === 'number' ? levelNumber : (G.level || 1);
-    G.debugMap = DEBUG_MAP_MODE;
-    G.isDebugMap = DEBUG_MAP_MODE;
-    G.mode = DEBUG_MAP_MODE ? 'debug' : 'normal';
-    G._placementMode = G.mode;
-    G._placementsFinalized = false;
-    G._hasPlaced = false;
-    G.mapgenPlacements = [];
-    G.mapAreas = null;
-
-    G.flags = G.flags || {};
-    G.flags.DEBUG_FORCE_ASCII = !!(DEBUG_MAP_MODE || window.DEBUG_FORCE_ASCII);
-
-    const payload = await resolveAsciiMapForLevel(level);
-    if (payload?.levelRules) {
-      G.levelRules = payload.levelRules;
-    }
-    const asciiLines = Array.isArray(payload.lines) && payload.lines.length
-      ? payload.lines.slice()
-      : (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : FALLBACK_DEBUG_ASCII_MAP).slice();
-
-    if (Number.isFinite(payload?.visibleTilesRadius) && payload.visibleTilesRadius > 0) {
-      G.visibleTilesRadius = payload.visibleTilesRadius;
-    }
-
-    ASCII_MAP = asciiLines;
-    G.debugAsciiSource = payload.source || (DEBUG_MAP_MODE ? 'debug' : 'procedural');
-    G.debugAsciiFile = payload.file || null;
-    G.mapgenPlacements = Array.isArray(payload.placements) ? payload.placements.slice() : [];
-    G.mapAreas = payload.areas || null;
-
-    parseMap(ASCII_MAP);
-
-    const width = G.mapW || (ASCII_MAP[0]?.length || 0);
-    const height = G.mapH || ASCII_MAP.length;
-    const asciiString = ASCII_MAP.join('\n');
-
-    G.ascii = () => asciiString;
-    G.asciiString = asciiString;
-    placeHeroAtControlRoom();
-    window.MapAPI = window.MapAPI || {};
-    window.MapAPI.ascii = () => asciiString;
-    if (window.DEBUG_COLLISIONS) {
-      try {
-        console.log('[debug-map] mapa ASCII externo cargado');
-        console.log(asciiString);
-      } catch (_) {}
-    }
-    if (asciiString && typeof fetch === 'function' && window.DEBUG_COLLISIONS) {
-      try {
-        fetch('debug-export.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: asciiString,
-        }).catch((err) => {
-          console.error('[debug-map] Error enviando mapa ASCII al servidor', err);
-        });
-      } catch (e) {
-        console.error('[debug-map] Excepción al enviar mapa ASCII', e);
-      }
-    }
-    if (DEBUG_MAP_MODE && window.DEBUG_COLLISIONS) {
-      try {
-        console.debug(`[debug-map] ASCII (${width}x${height}):\n${asciiString}`);
-      } catch (_) {}
-    }
-    const asciiPlacements = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
-    if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
-      asciiPlacements.push(...G.mapgenPlacements);
-    }
-
-    const levelCfg = {
-      G,
-      mode: G.mode,
-      debug: DEBUG_MAP_MODE,
-      ascii: asciiString,
-      asciiMap: asciiString,
-      asciiRows: ASCII_MAP.slice(),
-      allowAscii: true,
-      forceAscii: true,
-      map: G.map,
-      areas: G.mapAreas,
-      width,
-      height,
-      level,
-      seed: G.seed || null,
-      placements: asciiPlacements
-    };
-
-    G._lastLevelCfg = levelCfg;
-
-    if (window.LOG?.counter) {
-      window.LOG.counter('mapMode', `${payload.mode}:${payload.source}`);
-    }
-
-    const eventPayload = {
-      mode: payload.mode,
-      source: payload.source,
-      width,
-      height
-    };
-    if (payload.file) {
-      eventPayload.file = payload.file;
-    }
-
-    window.LOG?.event?.('MAP_READY', eventPayload);
-    window.LOG?.event?.('MAP_ASCII_READY', {
-      ...eventPayload,
-      source: payload.source
-    });
-    logThrough('info', `[buildLevel] mapa ASCII preparado (${width}x${height})`, {
-      mode: payload.mode,
-      source: payload.source,
-      file: payload.file || null
-    });
-
-    await maybeLogGeneratedMap(levelCfg, payload);
-
-    return levelCfg;
-  }
-
-  function configureLevelSystems(){
-    try {
-      window.SkyFX?.init?.({
-        canvas,
-        getCamera: () => camera,
-        getMapAABB: () => ({ x:0, y:0, w:G.mapW * TILE_SIZE, h:G.mapH * TILE_SIZE }),
-        worldToScreen: (x,y) => ({
-          x: (x - camera.x) * camera.zoom + VIEW_W * 0.5,
-          y: (y - camera.y) * camera.zoom + VIEW_H * 0.5
-        })
-      });
-    } catch (err){
-      console.warn('[SkyFX] init error', err);
-    }
-
-    if (window.MouseNav && !window._mouseNavInited){
-      MouseNav.init({
-        canvas: document.getElementById('gameCanvas'),
-        camera,
-        TILE,
-        getMap:      () => G.map,
-        getEntities: () => G.entities,
-        getPlayer:   () => G.player,
-        isWalkable:  (tx,ty) => !!(G.map[ty] && G.map[ty][tx] === 0)
-      });
-      window._mouseNavInited = true;
-    }
-
-    if (window.MouseNav){
-      const isInteractuable = (ent) => {
-        if (!ent) return false;
-        if (ent.kind === ENT.DOOR) return true;
-        if (ent.kind === ENT.PATIENT || ent.kindName === 'PATIENT') return true;
-        if (ent.pushable === true) return true;
-        return false;
-      };
-      const original = MouseNav._isInteractable?.bind(MouseNav);
-      MouseNav._isInteractable = (ent) => isInteractuable(ent) || (original ? original(ent) : false);
-      MouseNav._performUse = (player, target) => {
-        if (!target) return;
-        if (target.kind === ENT.DOOR){
-          if (window.DoorAPI?.onHeroInteractDoor) {
-            window.DoorAPI.onHeroInteractDoor(G.player, target);
-          } else if (window.Doors?.onHeroInteractDoor) {
-            window.Doors.onHeroInteractDoor(G.player, target);
-          }
-          return;
-        }
-        if (target.kind === ENT.PATIENT || target.kindName === 'PATIENT') {
-          deliverPillToPatient(player, target, { reason: 'click' });
-          return;
-        }
-        if (target.pushable === true){
-          const dx = (target.x + target.w*0.5) - (player.x + player.w*0.5);
-          const dy = (target.y + target.h*0.5) - (player.y + player.h*0.5);
-          const L  = Math.hypot(dx,dy);
-          if (L > 0.0001){
-            const F  = (player.pushForce || FORCE_PLAYER);
-            pushEntityWithImpulse(target, { x: dx / L, y: dy / L }, F);
-          }
-        }
-      };
-    }
-
-    try {
-      SkyFX.init({
-        canvas: document.getElementById('gameCanvas'),
-        getCamera: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom }),
-        getMapAABB: () => ({ x: 0, y: 0, w: G.mapW * TILE_SIZE, h: G.mapH * TILE_SIZE }),
-        worldToScreen: (x,y) => ({
-          x: (x - camera.x) * camera.zoom + VIEW_W * 0.5,
-          y: (y - camera.y) * camera.zoom + VIEW_H * 0.5
-        })
-      });
-      SkyFX.setLevel(G.level);
-    } catch (err){
-      console.warn('[SkyFX] reinit error', err);
-    }
-
-    initSpawnersForLevel();
-
-    try {
-      const basePhys = (window.Physics && (window.Physics.PHYS || window.Physics.DEFAULTS)) || {
-        restitution: 0.18,
-        friction: 0.045,
-        slideFriction: 0.020,
-        crushImpulse: 110,
-        hurtImpulse: 45,
-        explodeImpulse: 170
-      };
-      window.Physics?.init?.(basePhys)?.bindGame(G);
-    } catch (err){
-      console.warn('[Physics] init error', err);
-    }
-
-    try {
-      window.BellsAPI?.init?.(G);
-    } catch (err) {
-      console.warn('[Bells] init error', err);
-    }
-
-    try {
-      window.Narrator?.init?.({
-        container: document.getElementById('game-container'),
-        enabled: document.getElementById('opt-narrator')?.checked !== false
-      });
-    } catch (err) {
-      console.warn('[Narrator] init error', err);
-    }
-
-    if (G.player && typeof G.player.hp === 'number') {
-      G.healthMax = (G.player.hpMax|0) * 2;
-      G.health    = Math.min(G.healthMax, (G.player.hp|0) * 2);
-    }
-  }
-
-  function setGameState(next){
-    if (G.state === next){
-      applyStateVisuals(true);
-      return;
-    }
-    if (next === 'READY') {
-      G.levelState = 'READY';
-    } else if (next === 'PLAYING') {
-      G.levelState = 'PLAYING';
-      G.pendingLevel = null;
-    } else if (next === 'PAUSED') {
-      G.levelState = 'PAUSED';
-    }
-    G.state = next;
-    window.LOG?.event?.('STATE', { state: next, level: G.level || null });
-    applyStateVisuals(true);
-  }
-
-  function applyStateVisuals(force = false){
-    if (!force && lastUIState === G.state) return;
-    lastUIState = G.state;
-
-    switch (G.state){
-      case 'READY': {
-        // Minimap pequeño y visible al comenzar el turno
-        window.__setMinimapMode?.('small');
-        window.__toggleMinimap?.(true);
-        startScreen.classList.add('hidden');
-        pausedScreen.classList.add('hidden');
-        levelCompleteScreen.classList.add('hidden');
-        gameOverScreen.classList.add('hidden');
-        if (!G._readySequenceActive){
-          G._readySequenceActive = true;
-          const beginPlay = () => {
-            G._readySequenceActive = false;
-            setGameState('PLAYING');
-          };
-          const triggerReady = () => {
-            try { window.CineFX?.readyBeat?.(); }
-            catch (err){ if (window.DEBUG_FORCE_ASCII) console.warn('[CineFX] readyBeat error', err); }
-            const played = window.GameFlowAPI?.playReadyOverlay?.({ onComplete: beginPlay });
-            if (!played) beginPlay();
-          };
-          if (window.PresentationAPI?.levelIntro){
-            try {
-              PresentationAPI.levelIntro(G.level || 1, triggerReady);
-            } catch (err){
-              console.warn('[PresentationAPI] levelIntro', err);
-              triggerReady();
-            }
-          } else {
-            triggerReady();
-          }
-        }
-        break;
-      }
-      case 'PLAYING': {
-        startScreen.classList.add('hidden');
-        pausedScreen.classList.add('hidden');
-        levelCompleteScreen.classList.add('hidden');
-        gameOverScreen.classList.add('hidden');
-        window.__toggleMinimap?.(true);
-        G._gameOverShown = false;
-        G._levelCompleteShown = false;
-        break;
-      }
-      case 'GAMEOVER': {
-        if (G.levelState !== 'READY_TO_START') {
-          resetGameWorld({ levelState: 'READY_TO_START', reason: 'gameover' });
-        } else {
-          G.levelState = 'READY_TO_START';
-        }
-        window.__toggleMinimap?.(false);
-        levelCompleteScreen.classList.add('hidden');
-        gameOverScreen.classList.remove('hidden');
-        if (!G._gameOverShown){
-          G._gameOverShown = true;
-          const pool = GAME_OVER_MESSAGES;
-          const message = pool[Math.floor(Math.random() * pool.length)] || 'El caos te ha superado…';
-          const textNode = gameOverScreen?.querySelector('.menu-box .game-over-message');
-          if (textNode) textNode.textContent = message;
-          try { window.PresentationAPI?.gameOver?.({ mode: 'under' }); }
-          catch (err){ console.warn('[PresentationAPI] gameOver', err); }
-        }
-        if (!G._gameOverLogged) {
-          G._gameOverLogged = true;
-          const payload = {
-            level: G.level || 1,
-            reason: G._gameOverReason || 'unknown',
-            time: Number.isFinite(G.time) ? Number(G.time.toFixed(2)) : null,
-            health: Number.isFinite(G.health) ? G.health : null,
-          };
-          window.LOG?.event('GAME_OVER', payload);
-        }
-        break;
-      }
-      case 'COMPLETE': {
-        if (G.levelState !== 'READY_TO_START') {
-          resetGameWorld({ levelState: 'READY_TO_START', reason: 'level-complete', keepPendingLevel: true });
-        } else {
-          G.levelState = 'READY_TO_START';
-        }
-        window.__toggleMinimap?.(false);
-        gameOverScreen.classList.add('hidden');
-        levelCompleteScreen.classList.remove('hidden');
-        try { window.CineFX?.levelCompleteCue?.(); }
-        catch (err){ if (window.DEBUG_FORCE_ASCII) console.warn('[CineFX] levelCompleteCue error', err); }
-        if (!G._levelCompleteShown){
-          G._levelCompleteShown = true;
-          const breakdown = buildLevelBreakdown();
-          const total = (window.ScoreAPI && typeof ScoreAPI.getTotals === 'function')
-            ? (ScoreAPI.getTotals().total || 0)
-            : breakdown.reduce((acc, row) => acc + (row.points|0), 0);
-          const proceed = () => {
-            const advanced = window.GameFlowAPI?.nextLevel?.();
-            if (advanced === false) return;
-            if (!advanced) startGame({ level: (G.level || 1) + 1, heroId: window.START_HERO_ID });
-          };
-          if (window.PresentationAPI?.levelComplete){
-            try {
-              PresentationAPI.levelComplete(G.level || 1, { breakdown, total }, proceed);
-            } catch (err){
-              console.warn('[PresentationAPI] levelComplete', err);
-              proceed();
-            }
-          } else {
-            proceed();
-          }
-          if (!G._levelCompleteLogged) {
-            G._levelCompleteLogged = true;
-            window.LOG?.event('LEVEL_COMPLETE', {
-              level: G.level || 1,
-              total,
-              breakdown,
-            });
-          }
-        }
-        break;
-      }
-      default: {
-        // Minimap pequeño y visible al comenzar el turno
-        window.__setMinimapMode?.('small');
-        window.__toggleMinimap?.(true);
-        break;
-      }
-    }
-  }
-
-  function resetGlobalLevelState(){
-    try {
-      const rigCountBefore = window.PuppetAPI?.getActiveCount?.();
-      const entityCountBefore = Array.isArray(G.entities) ? G.entities.filter(Boolean).length : 0;
-      if (rigCountBefore != null){
-        if (window.DEBUG_COLLISIONS) {
-          console.log(`[Puppet] Reset rigs (level-reset) -> antes: rigs=${rigCountBefore}, entidades=${entityCountBefore}`);
-        }
-      }
-      if (window.PuppetAPI?.reset){
-        window.PuppetAPI.reset({ reason: 'level-reset', log: false });
-      }
-      const rigCountAfter = window.PuppetAPI?.getActiveCount?.();
-      if (rigCountAfter != null){
-        if (window.DEBUG_COLLISIONS) {
-          console.log(`[Puppet] Reset rigs (level-reset) -> después: rigs=${rigCountAfter}`);
-        }
-      }
-    } catch (err){
-      if (window.DEBUG_COLLISIONS) console.warn('[Puppet] resetGlobalLevelState', err);
-    }
-
-    const arrayKeys = [
-      'entities','movers','hostiles','humans','animals','objects','patients','pills','lights','roomLights','items','spawners','onInteract'
-    ];
-    for (const key of arrayKeys) {
-      if (!Array.isArray(G[key])) {
-        G[key] = [];
-      } else {
-        G[key].length = 0;
-      }
-    }
-
-    if (Array.isArray(G.__asciiPlacements)) {
-      G.__asciiPlacements.length = 0;
-    } else {
-      G.__asciiPlacements = [];
-    }
-
-    G.mapgenPlacements = [];
-    G.mapAreas = null;
-    G.map = [];
-    G.mapW = 0;
-    G.mapH = 0;
-    G.asciiMap = [];
-
-    G.player = null;
-    G.cart = null;
-    G.boss = null;
-    G.door = null;
-    G.carry = null;
-    G.mosquitoSpawn = null;
-    G._lastLevelCfg = null;
-    G._placementsFinalized = false;
-    G._hasPlaced = false;
-    G.__placementsApplied = false;
-    G.debugAsciiSource = null;
-    G.debugAsciiFile = null;
-    G.safeRect = null;
-
-    G.flags = G.flags || {};
-    G.flags.DEBUG_FORCE_ASCII = false;
-    G.flags.DEBUG_MINIMAP = !!window.DEBUG_MINIMAP;
-
-    try { MovementSystem?.setMap?.(null, TILE); } catch (_) {}
-    try { window.Placement?.reset?.(); } catch (_) {}
-    try { window.AI?.clearLevel?.(); } catch (_) {}
-    try { window.BellsAPI?.reset?.(); } catch (_) {}
-
-    clearLights();
-
-    window.LOG?.event?.('LEVEL_RESET', { debug: DEBUG_MAP_MODE });
-    logThrough('info', '[startGame] estado global reseteado', { debug: DEBUG_MAP_MODE });
-  }
-
-  function startGame(levelInput){
-    const opts = (levelInput && typeof levelInput === 'object' && !Array.isArray(levelInput)) ? levelInput : {};
-    const requestedLevel = typeof levelInput === 'number'
-      ? levelInput
-      : (Number.isFinite(opts.level) ? opts.level : opts.levelNumber);
-    const fallbackLevel = Number.isFinite(G.currentLevelNumber) ? G.currentLevelNumber : (G.level || 1);
-    const targetLevel = Number.isFinite(requestedLevel) ? requestedLevel : fallbackLevel;
-    const wasRestart = (G.state === 'GAMEOVER' || G.state === 'COMPLETE') && targetLevel === (G.level || targetLevel);
-    G.level = targetLevel;
-    G.currentLevelNumber = targetLevel;
-    G.currentLevelId = `level${targetLevel}`;
-    G.debugMap = DEBUG_MAP_MODE;
-    G.isDebugMap = DEBUG_MAP_MODE;
-    G._hasPlaced = false;
-    G.__placementsApplied = false;
-    G._gameOverLogged = false;
-    G._levelCompleteLogged = false;
-
-    if (window.LOG?.counter) {
-      window.LOG.counter('spawns', 0);
-      window.LOG.counter('duplicates', 0);
-      window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
-    }
-
-    camera.zoom = 1;
-    camera.zoom = clamp(Number.isFinite(camera.zoom) ? camera.zoom : 1, 0.5, 3);
-
-    const heroKey = opts.heroId || opts.hero || window.START_HERO_ID || ensureHeroSelected();
-    if (heroKey) {
-      window.START_HERO_ID = heroKey;
-      window.selectedHeroKey = heroKey;
-      G.selectedHero = heroKey;
-    }
-
-    logThrough('info', '[startGame] preparando turno', {
-      level: targetLevel,
-      debug: DEBUG_MAP_MODE,
-      restart: wasRestart,
-    });
-    window.LOG?.event('START_GAME', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
-    window.LOG?.event('LEVEL_START', { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart });
-    try { window.MusicManager?.fadeTo?.(musicTrackForLevel(targetLevel), { fadeTime: 2.0 }); } catch (_) {}
-
+  function startGame(){
+    G.state = 'PLAYING';
+    // si hay minimapa de debug, muéstralo ahora (no en el menú)
+    window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
     startScreen.classList.add('hidden');
     pausedScreen.classList.add('hidden');
     levelCompleteScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
+    // mostrar mini-mapa solo en juego
+    try { window.__toggleMinimap?.(true); } catch(_){}
 
-    // ⬇️ asegura minimapa pequeño por defecto
-    document.getElementById('minimapOverlay')?.classList.add('hidden');
-    document.getElementById('minimap')?.classList.remove('expanded');
 
-    // ⬇️ modo mini al arrancar
-    // Minimap pequeño y visible al comenzar el turno
-    window.__setMinimapMode?.('small');
-    window.__toggleMinimap?.(true);
-
-    resetGameWorld({ levelState: 'LOADING', pendingLevel: targetLevel, keepPendingLevel: true, reason: 'start-game' });
-    G.levelState = 'LOADING';
-
-    G.time = 0;
-    G.cycleSeconds = 0;
-    const delayMinutes = Number.isFinite(G.firstBellDelayMinutes) ? Math.max(0, G.firstBellDelayMinutes) : 5;
-    G.firstBellDelayMinutes = delayMinutes;
-    G.firstBellDelaySeconds = delayMinutes * 60;
-    G.firstBellDeadline = G.firstBellDelaySeconds;
-    G.firstBellTriggered = false;
-    G._firstBellPendingLog = false;
-    if (!wasRestart) G.score = 0;
-    G.delivered = 0;
-    G.timbresRest = 1;
+    // Reset de estado base
+    G.time = 0; G.score = 0; G.health = 6; G.delivered = 0; G.timbresRest = 1;
     G.carry = null;
-    G._readySequenceActive = false;
-    G._gameOverShown = false;
-    G._levelCompleteShown = false;
+    G._placementsFinalized = false; 
 
-    const mapReadyPromise = Promise.resolve(buildLevelForCurrentMode(targetLevel));
+    // Flag global (lo usará placement.api.js para NO sembrar)
+    window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
+    G.flags = G.flags || {};
+    G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
 
-    const seedOnce = async () => {
-      if (typeof window.resetLevelState === 'function') {
-        try { window.resetLevelState(); } catch (err) { console.warn('[resetLevelState]', err); }
+    // Si fuerzas ASCII → NO LLAMAR a NINGÚN generador/siembra
+    if (DEBUG_FORCE_ASCII) {
+      ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
+      parseMap(ASCII_MAP);
+
+      // Permite instanciación de placements derivados del ASCII, pero SIN algoritmos
+      G.__allowASCIIPlacements = true;
+      if (typeof window.applyPlacementsFromMapgen === 'function') {
+        window.applyPlacementsFromMapgen(G.__asciiPlacements || G.mapgenPlacements || []);
       }
-      G.__placementsApplied = false;
-      let placementApplied = false;
-      const asciiString = Array.isArray(ASCII_MAP) ? ASCII_MAP.join('\n') : String(ASCII_MAP || '');
-      const levelCfg = G._lastLevelCfg || {
-        G,
-        mode: (DEBUG_MAP_MODE ? 'debug' : 'normal'),
-        debug: DEBUG_MAP_MODE,
-        asciiMap: asciiString,
-        ascii: asciiString,
-        asciiRows: Array.isArray(ASCII_MAP) ? ASCII_MAP.slice() : normalizeAsciiFromText(asciiString),
-        allowAscii: !!asciiString,
-        forceAscii: true,
-        map: G.map,
-        areas: G.mapAreas,
-        width: G.mapW,
-        height: G.mapH,
-        level: G.level,
-        seed: G.seed,
-        placements: (() => {
-          const base = Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements.slice() : [];
-          if (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length) {
-            base.push(...G.mapgenPlacements);
-          }
-          return base;
-        })()
-      };
+      finalizeLevelBuildOnce();
+      console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE, '→ ASCII forzado (sin generadores/siembra)');
+    } else {
+      // ---------- Flujo procedural normal ----------
+      let usadoGenerador = false;
       try {
-        if (window.Placement?.applyFromAsciiMap) {
-          const result = await window.Placement.applyFromAsciiMap(levelCfg);
-          placementApplied = (result?.applied === true || result?.reason === 'guard');
-          if (result?.applied) {
-            try { window.Placement?.summarize?.(); } catch(_){}
-          }
+        if (window.MapGen && typeof MapGen.generate === 'function') {
+          if (typeof MapGen.init === 'function') MapGen.init(G);
+          usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
         }
-      } catch (err){
-        console.warn('[Placement] applyFromAsciiMap error', err);
-      }
+      } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
 
-      if (placementApplied) {
-        G._hasPlaced = true;
-        window.LOG?.event?.('PLACEMENT_APPLIED', {
-          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
-          source: 'ascii',
-          entities: Array.isArray(G.entities) ? G.entities.length : null
-        });
-      } else {
-        finalizeLevelBuildOnce({ forceFallback: true });
-        if (Array.isArray(G.entities) && G.entities.length) {
-          G._hasPlaced = true;
-        }
-        window.LOG?.event?.('PLACEMENT_APPLIED', {
-          mode: DEBUG_MAP_MODE ? 'debug' : 'normal',
-          source: 'fallback',
-          entities: Array.isArray(G.entities) ? G.entities.length : null
-        });
-      }
-
-      return placementApplied;
-    };
-
-    const postSeed = (placementApplied) => {
-      try {
-        if (Array.isArray(G.entities)) for (const e of G.entities) window.AI?.register?.(e);
-        window.Minimap?.refresh?.();
-      } catch(_){ }
-
-      document.getElementById('minimapOverlay')?.classList.add('hidden');
-      document.getElementById('minimap')?.classList.remove('expanded');
-      window.__setMinimapMode?.('small');
-      window.__toggleMinimap?.(false);
-      window.__toggleMinimap?.(true);
-
-      configureLevelSystems();
-
-      if (DEBUG_MAP_MODE && !G.boss) {
-        spawnBossForLevel(targetLevel);
-      }
-
-      window.LOG?.event?.('LEVEL_READY', {
-        level: targetLevel,
-        debug: DEBUG_MAP_MODE,
-        placement: placementApplied ? 'ascii' : 'fallback'
-      });
-
-      try {
-        window.GameFlowAPI?.startLevel?.(targetLevel);
-      } catch (err){
-        console.warn('[GameFlow] startLevel error:', err);
-      }
-
-      try {
-        window.ObjectiveSystem?.resetForLevel?.(G);
-      } catch (err) {
-        if (window.DEBUG_FORCE_ASCII) console.warn('[ObjectiveSystem] reset error', err);
-      }
-
-      try {
-        const rigCount = window.PuppetAPI?.getActiveCount?.();
-        const entityCount = Array.isArray(G.entities) ? G.entities.filter(Boolean).length : 0;
-        if (rigCount != null){
-          if (window.DEBUG_COLLISIONS) {
-            console.log(`[Puppet] Rigs tras seed: ${rigCount} / entidades=${entityCount}`);
+      if (!usadoGenerador) {
+        try {
+          if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
+            const res = MapGenAPI.generate(G.level || 1, {
+              seed: G.seed || Date.now(),
+              place: false,
+              defs: null,
+              width:  window.DEBUG_MINIMAP ? 128 : undefined,
+              height: window.DEBUG_MINIMAP ? 128 : undefined
+            });
+            ASCII_MAP = (res.ascii || '').trim().split('\n');
+            G.mapgenPlacements = res.placements || [];
+            G.mapAreas = res.areas || null;
+            parseMap(ASCII_MAP);
+            finalizeLevelBuildOnce();
+            usadoGenerador = true;
+            console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
           }
-        }
-        window.PuppetAPI?.debugListAll?.('level-ready');
-      } catch (err){
-        if (window.DEBUG_COLLISIONS || window.DEBUG_FORCE_ASCII) console.warn('[Puppet] level-ready audit error', err);
+        } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
       }
 
-      setGameState('READY');
-      if (DEBUG_MAP_MODE) {
-        logThrough('info', '[startGame] modo debug activo, esperando confirmación del jugador', {
-          state: G.state
-        });
-        window.LOG?.event?.('DEBUG_WAITING', {
-          level: targetLevel,
-          state: G.state
-        });
+      if (!usadoGenerador) {
+        parseMap(ASCII_MAP);
+        finalizeLevelBuildOnce();
+        console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
       }
-      window.dispatchEvent(new CustomEvent('game:start', {
-        detail: { level: targetLevel, debug: DEBUG_MAP_MODE, restart: wasRestart }
-      }));
-    };
+    }
 
-    mapReadyPromise
-      .catch((err) => {
-        console.warn('[startGame] buildLevelForCurrentMode error', err);
-        if (!Array.isArray(ASCII_MAP) || !ASCII_MAP.length) {
-          ASCII_MAP = FALLBACK_DEBUG_ASCII_MAP.slice();
+    // 1) Generador "nuevo" (MapGen con callbacks y colocación directa)
+    if (!window.DEBUG_FORCE_ASCII) { let usadoGenerador = false;
+    try {
+      if (window.MapGen && typeof MapGen.generate === 'function') {
+        // Vincula el estado del juego al plugin (si lo necesita)
+        if (typeof MapGen.init === 'function') MapGen.init(G);
+
+        // Crea el nivel entero (coloca entidades vía callbacks)
+        usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
+      }
+    } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
+
+    // 2) Generador "API simple" (MapGenAPI → devuelve ASCII)
+    if (!usadoGenerador) {
+      try {
+        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
+          const mini = /[?&]mini=1/.test(location.search) || window.DEBUG_SMALLMAP === true;
+          const res = MapGenAPI.generate(G.level || 1, {
+            seed: G.seed || Date.now(),
+            place: false,       // dejamos que lo coloque parseMap
+            defs: null,         // auto
+            // ↓↓↓ Forzamos mapa pequeño cuando mini=1 en la URL o flag global
+            width:  mini ? 128 : undefined,
+            height: mini ? 128 : undefined
+          });
+          ASCII_MAP = (res.ascii || '').trim().split('\n');   // ⚠️ requiere que sea 'let'
+          G.mapgenPlacements = res.placements || [];
+          G.mapAreas = res.areas || null;
+
           parseMap(ASCII_MAP);
+          finalizeLevelBuildOnce();
+          usadoGenerador = true;
         }
-        finalizeLevelBuildOnce({ forceFallback: true });
-      })
-      .then(() => seedOnce())
-      .then(
-        (placementApplied) => {
-          try {
-            postSeed(placementApplied);
-          } catch (err) {
-            console.warn('[startGame] postSeed error', err);
-          }
-        },
-        (err) => {
-          console.warn('[Placement] async seed error', err);
-          finalizeLevelBuildOnce({ forceFallback: true });
-          try {
-            postSeed(false);
-          } catch (postErr) {
-            console.warn('[startGame] postSeed error tras fallo', postErr);
-          }
+      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
+    }
+
+    // 3) Fallback: usa el ASCII por defecto si no hubo generador
+    if (!usadoGenerador) {
+      parseMap(ASCII_MAP);
+      finalizeLevelBuildOnce();
+    }
+  } // ← cierra el if (!window.DEBUG_FORCE_ASCII) que encapsula el bloque duplicado
+    // --- Selección de mapa por URL ---
+    // ?map=debug  -> fuerza ASCII grande (DEFAULT_ASCII_MAP)
+    // ?map=mini   -> fuerza ASCII pequeño (DEBUG_ASCII_MINI)
+    // ?mini=1     -> sigue usando MapGen/MapGenAPI pero en tamaño reducido
+  const __qs      = new URLSearchParams(location.search);
+  window.__MAP_MODE = (__qs.get('map') || '').toLowerCase();
+
+  if (window.DEBUG_FORCE_ASCII) {
+    // 1) Forzar ASCII sin llamar a generadores ni auto-siembra
+    ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
+    parseMap(ASCII_MAP);
+
+    // Autoriza instanciación de placements derivados del ASCII sin algoritmo
+    G.__allowASCIIPlacements = true;
+    if (typeof window.applyPlacementsFromMapgen === 'function') {
+      window.applyPlacementsFromMapgen(G.__asciiPlacements || []);
+    }
+    finalizeLevelBuildOnce();
+    console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
+    // Mostrar u ocultar minimapa
+    window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
+  } else {
+    // 2) Procedural normal (MapGen/MapGenAPI)
+    let usadoGenerador = false;
+    try {
+      if (window.MapGen && typeof MapGen.generate === 'function') {
+        if (typeof MapGen.init === 'function') MapGen.init(G);
+        usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
+      }
+    } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
+    if (!usadoGenerador) {
+      try {
+        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
+          const res = MapGenAPI.generate(G.level || 1, {
+            seed: G.seed || Date.now(),
+            place: false,
+            defs: null,
+            width:  window.DEBUG_MINIMAP ? 128 : undefined,
+            height: window.DEBUG_MINIMAP ? 128 : undefined
+          });
+          ASCII_MAP = (res.ascii || '').trim().split('\n');
+          G.mapgenPlacements = res.placements || [];
+          G.mapAreas = res.areas || null;
+          parseMap(ASCII_MAP);
+          finalizeLevelBuildOnce();
+          usadoGenerador = true;
+          console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
         }
-      );
+      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
+    }
+    if (!usadoGenerador) {
+      parseMap(ASCII_MAP);
+      finalizeLevelBuildOnce();
+      console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
+    }
+  }
+
+
+
+      // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
+      if (window.PuppetAPI && G.player){
+        const k = (window.selectedHeroKey || window.G?.selectedHero || 'enrique').toLowerCase();
+
+        G.player.rig = PuppetAPI.create({
+          host: G.player,
+          scale: (window.TILE_SIZE||32) / 32
+        });
+
+        // Cara frontal + cara de ESPALDA (si existe <hero>_back.png)
+        PuppetAPI.setHeroHead(G.player.rig, k);
+
+        // Reforzar rango de visión del héroe si FogAPI lo expone
+        try {
+          if (typeof FogAPI.setPlayerVisionTiles === 'function' && G.player?._visionTiles){
+            FogAPI.setPlayerVisionTiles(G.player._visionTiles);
+          }
+        } catch(_) {}
+      }
+
+    window.SkyFX?.init?.({
+    canvas,
+    getCamera: () => camera,
+    getMapAABB: () => ({ x:0, y:0, w:G.mapW*TILE_SIZE, h:G.mapH*TILE_SIZE }),
+    worldToScreen: (x,y) => ({
+      x: (x - camera.x) * camera.zoom + VIEW_W*0.5,
+      y: (y - camera.y) * camera.zoom + VIEW_H*0.5
+    })
+  });
+
+    // === Mouse click-to-move (activar mover con ratón) ===
+    if (window.MouseNav && !window._mouseNavInited) {
+      MouseNav.init({
+        canvas: document.getElementById('gameCanvas'),
+        camera,          // usa la cámara real del juego
+        TILE,            // tamaño de tile (32)
+        getMap:      () => G.map,                   // tu grid 0/1
+        getEntities: () => G.entities,
+        getPlayer:   () => G.player,
+        isWalkable:  (tx,ty) => !!(G.map[ty] && G.map[ty][tx] === 0)
+      });
+      window._mouseNavInited = true; // evita crear múltiples listeners si reinicias nivel
+    }
+
+    // --- Parche para que MouseNav reconozca DOOR/CART con kind numérico ---
+    if (window.MouseNav) {
+      // 1) Qué consideras interactuable en tu juego
+      const isInteractuable = (ent) => {
+        if (!ent) return false;
+        if (ent.kind === ENT.DOOR) return true;      // puertas
+        if (ent.pushable === true) return true;      // carros/camas empujables
+        return false;
+      };
+
+      // 2) Conectar el detector interno de MouseNav con lo anterior (sin romper nada)
+      const _orig = MouseNav._isInteractable?.bind(MouseNav);
+      MouseNav._isInteractable = (ent) => isInteractuable(ent) || (_orig ? _orig(ent) : false);
+
+      // 3) Acción al llegar: abrir puerta / empujar carro
+      MouseNav._performUse = (player, target) => {
+        if (!target) return;
+        if (target.kind === ENT.DOOR) {
+          // abre/cierra cambiando solidez y color (tu puerta ya usa esto)
+          target.solid = !target.solid;
+          target.color = target.solid ? '#7f8c8d' : '#2ecc71';
+          return;
+        }
+        if (target.pushable === true) {
+          const dx = (target.x + target.w*0.5) - (player.x + player.w*0.5);
+          const dy = (target.y + target.h*0.5) - (player.y + player.h*0.5);
+          const L  = Math.hypot(dx,dy) || 1;
+          const F  = (player.pushForce || FORCE_PLAYER);       // misma fuerza que tecla E
+          const scale = 1 / Math.max(1, (target.mass || 1) * 0.5); // más pesado → menos empuje
+          target.vx += (dx/L) * F * scale;
+          target.vy += (dy/L) * F * scale;
+        }
+      };
+    }
+
+    //Init Audio
+    /*
+    AudioAPI.init({
+      urls: {
+        // deja los defaults o sobreescribe aquí tus rutas reales
+        // ui_click: 'assets/sfx/ui_click.ogg', ...
+      },
+      vol: { master: 1, sfx: 0.95, ui: 1, ambient: 0.7, env: 0.9 },
+      maxDistance: 520,
+      minDistance: 48
+    });*/
+    // Compat: si alguien usa "Lighting", apunta al nuevo API
+    window.Lighting = window.LightingAPI || window.Lighting || null;
+    SkyFX.init({
+      canvas: document.getElementById('gameCanvas'),
+      getCamera: () => ({ x: camera.x, y: camera.y, zoom: camera.zoom }),
+      getMapAABB: () => ({ x: 0, y: 0, w: G.mapW * TILE_SIZE, h: G.mapH * TILE_SIZE }),
+      worldToScreen: (x,y) => ({
+        x: (x - camera.x) * camera.zoom + VIEW_W * 0.5,
+        y: (y - camera.y) * camera.zoom + VIEW_H * 0.5
+      }),
+      // AUDIO: siempre funciones
+      //onStartRain: () => { try{ AudioFX?.loop('rain', true); }catch(e){} },
+      //onStopRain : () => { try{ AudioFX?.stop('rain'); }catch(e){} },
+      //onThunder  : () => { try{ AudioFX?.play('thunder'); }catch(e){} }
+    });
+    SkyFX.setLevel(G.level);   // ya estaba inicializado arriba
+
+    // Spawners del nivel (solo una vez por arranque)
+    initSpawnersForLevel();
+    // === Física: vincular entidades del nivel ===
+    Physics.init({
+          restitution: 0.12,          // tope global de rebote (bajo)
+          friction: 0.045,            // rozamiento estándar (menos desliz)
+          slideFriction: 0.020,       // mojado resbala pero no “hielo”
+          crushImpulse: 110,
+          hurtImpulse: 45,
+          explodeImpulse: 170
+        }).bindGame(G);
+
+    if (G.player && typeof G.player.hp === 'number') {
+      G.healthMax = (G.player.hpMax|0) * 2;      // p.ej. Enrique: 5 corazones → 10 “halves”
+      G.health    = Math.min(G.healthMax, (G.player.hp|0) * 2);
+    }
   }
 
 
   function togglePause(){
-    if (G.state==='PLAYING'){
-      G.state='PAUSED';
-      G.levelState = 'PAUSED';
-      pausedScreen.classList.remove('hidden');
-    }
-    else if (G.state==='PAUSED'){
-      G.state='PLAYING';
-      G.levelState = 'PLAYING';
-      pausedScreen.classList.add('hidden');
-    }
+    if (G.state==='PLAYING'){ G.state='PAUSED'; pausedScreen.classList.remove('hidden'); }
+    else if (G.state==='PAUSED'){ G.state='PLAYING'; pausedScreen.classList.add('hidden'); }
   }
 
-  function attachUIHandlers(){
-    if (attachUIHandlers._done) return;
-    attachUIHandlers._done = true;
-    const startOverlay = document.getElementById('start-screen');
-    if (startOverlay && !attachUIHandlers._musicBound) {
-      attachUIHandlers._musicBound = true;
-      const kickMenuMusic = () => {
-        try { window.MusicManager?.fadeTo?.('main_menu', { fadeTime: 2.0 }); } catch (_) {}
-      };
-      startOverlay.addEventListener('pointerdown', kickMenuMusic, { once: true, passive: true });
-      window.addEventListener('keydown', kickMenuMusic, { once: true, capture: true });
-    }
-    const startBtn = document.getElementById('start-button');
-    if (startBtn){
-      startBtn.addEventListener('click', () => {
-        const heroId = ensureHeroSelected();
-        window.START_HERO_ID = heroId;
-        if (window.GameFlowAPI?.startGameFromMenu) {
-          window.GameFlowAPI.startGameFromMenu({ heroId });
-          return;
-        }
-        requestAnimationFrame(() => startGame({ heroId }));
-      });
-    }
-    document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
-    document.getElementById('restartBtn')?.addEventListener('click', () => startGame({ heroId: window.START_HERO_ID }));
+  document.getElementById('start-button')?.addEventListener('click', () => {
+    // Dejar libre el manejador de click y ejecutar el arranque en el próximo frame
+    requestAnimationFrame(() => startGame());
+  });
+  document.getElementById('resumeBtn')?.addEventListener('click', togglePause);
+  document.getElementById('restartBtn')?.addEventListener('click', startGame);
 
-    const narratorToggle = document.getElementById('opt-narrator');
-    if (narratorToggle) {
-      try {
-        const stored = window.localStorage?.getItem('optNarrator');
-        if (stored != null) narratorToggle.checked = stored !== '0';
-      } catch (_) {}
-      narratorToggle.addEventListener('change', () => {
-        const enabled = narratorToggle.checked !== false;
-        try { window.localStorage?.setItem('optNarrator', enabled ? '1' : '0'); } catch (_) {}
-        try { window.Narrator?.setEnabled?.(enabled); } catch (_) {}
-      });
-      requestAnimationFrame(() => {
-        const enabled = narratorToggle.checked !== false;
-        try { window.Narrator?.setEnabled?.(enabled); } catch (_) {}
-      });
-    } else {
-      requestAnimationFrame(() => {
-        try { window.Narrator?.setEnabled?.(true); } catch (_) {}
-      });
-    }
-  }
-
-  function runBootstrapDiagnostics(){
-    const missing = [];
-    if (!window.G) missing.push('G');
-    if (!window.PuppetAPI) missing.push('PuppetAPI');
-    if (!window.Entities) missing.push('Entities');
-    if (typeof window.toScreen !== 'function') missing.push('toScreen');
-    if (missing.length){
-      logThrough('error', '[bootstrap] dependencias ausentes', { missing });
-      window.LOG?.event('BOOT_CHECK', { ok: false, missing });
-    } else {
-      logThrough('info', '[bootstrap] dependencias OK', { debug: DEBUG_MAP_MODE, diag: DIAG_MODE });
-      window.LOG?.event('BOOT_CHECK', { ok: true, debug: DEBUG_MAP_MODE, diag: DIAG_MODE });
-    }
-  }
-
-  function bootstrapGame(){
-    attachUIHandlers();
-    resetGameWorld({ levelState: 'READY_TO_START', reason: 'bootstrap' });
-    if (window.LOG?.init){
-      window.LOG.init({ buffer: 2000, uiHotkey: 'F10', verbose: DIAG_MODE, level: DIAG_MODE ? 'debug' : 'info' });
-      if (DIAG_MODE) window.LOG.level = 'debug';
-      if (DIAG_MODE) window.LOG.debug?.('[diag] modo diagnóstico activo');
-      window.LOG.counter('mapMode', DEBUG_MAP_MODE ? 'debug' : 'normal');
-    }
-    requestAnimationFrame(loop);
-    // Autostart SOLO si viene ?autoplay=1 (útil para dev), si no, espera al botón
-    const p = new URLSearchParams(location.search);
-    if (p.get('autoplay') === '1') {
-      ensureHeroSelected();
-      window.LOG?.debug?.('[autostart] autoplay=1 → start automático');
-      requestAnimationFrame(() => startGame({ heroId: window.START_HERO_ID }));
-    } else if (DEBUG_MAP_MODE) {
-      window.LOG?.debug?.('[debug] map=debug → sin autostart; esperar botón');
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrapGame, { once: true });
-  } else {
-    bootstrapGame();
-  }
-  window.addEventListener('load', runBootstrapDiagnostics, { once: true });
+  // Arranque
+  requestAnimationFrame(loop);
 
   // Exponer algunas APIs esperadas por otros plugins/sistemas
   window.TILE_SIZE = TILE;
-  G.TILE_SIZE = TILE;
   window.ENT = ENT;                 // para plugins/sprites
   window.G = G;
   window.camera = camera;
-  G.resetGameWorld = resetGameWorld;
-  G.resetAndLoadLevel = resetAndLoadLevel;
-  window.resetGameWorld = resetGameWorld;
-  window.toScreen = bridgeToScreen;
-  window.startGame = startGame;
-  window.heroHasPillFor = heroHasPillFor;
-  window.onPickupPill = onPickupPill;
-  window.onGivePill = onGivePill;
   window.damagePlayer = damagePlayer; // ⬅️ EXponer daño del héroe para las ratas
   })();
 // ==== DEBUG MINI-MAP OVERLAY =================================================
 (function(){
-  window.__toggleMinimap = window.__toggleMinimap || function(){};
-  window.__setMinimapMode = window.__setMinimapMode || function(){ return 'small'; };
-  window.__toggleMinimapMode = window.__toggleMinimapMode || function(){ return 'small'; };
-
-  // Actívalo siempre por defecto; permite desactivarlo explícitamente con ?mini=0
-  const searchParams = location.search || '';
-  const forcedOff = /[?&]mini=0\b/.test(searchParams);
-  if (forcedOff) {
-    window.LOG?.debug?.('[minimap] mini=0 → minimapa desactivado');
-    return;
-  }
+  // Actívalo con ?mini=1 o definiendo window.DEBUG_MINIMAP = true en consola
+  const enabled = /[?&]mini=1/.test(location.search) || window.DEBUG_MINIMAP === true;
+  if (!enabled) return;
 
   const TILE = window.TILE_SIZE || window.TILE || 32;
   const VIEW_W = window.VIEW_W || 1024;
   const VIEW_H = window.VIEW_H || 768;
-  const SMALL_SIZE = 224;
-
-  let minimapMode = 'small';
-  let minimapVisible = false;
 
   let mm = document.getElementById('minimap');
   if (!mm) {
     mm = document.createElement('canvas');
     mm.id = 'minimap';
+    mm.width = 256; mm.height = 256;
     mm.style.position = 'fixed';
+    mm.style.right = '8px';
+    mm.style.bottom = '8px';                // ⬅ abajo-derecha
+    mm.style.zIndex = '48';                 // bajo HUD/overlays
+    mm.style.background = 'transparent';    // sin opacidad
+    mm.style.pointerEvents = 'none';        // no bloquea UI
     mm.style.imageRendering = 'pixelated';
-    mm.style.pointerEvents = 'auto';
-    mm.style.cursor = 'pointer';
     document.body.appendChild(mm);
+
+    // oculto por defecto si no estás jugando
+    mm.style.display = (window.G?.state === 'PLAYING') ? 'block' : 'none';
+    // helper global para mostrar/ocultar
+    window.__toggleMinimap = (on) => { mm.style.display = on ? 'block' : 'none'; };
   }
   const mctx = mm.getContext('2d');
-
-  function applyMode(){
-    if (minimapMode === 'big'){
-      const w = Math.max(256, Math.floor(window.innerWidth || VIEW_W));
-      const h = Math.max(256, Math.floor(window.innerHeight || VIEW_H));
-      mm.width = w;
-      mm.height = h;
-      mm.style.left = '0';
-      mm.style.top = '0';
-      mm.style.right = '';
-      mm.style.bottom = '';
-      mm.style.width = '100vw';
-      mm.style.height = '100vh';
-      mm.style.zIndex = '200';
-      mm.style.background = 'rgba(8,10,16,0.85)';
-      mm.style.borderRadius = '0';
-      mm.style.boxShadow = 'none';
-    } else {
-      mm.width = SMALL_SIZE;
-      mm.height = SMALL_SIZE;
-      mm.style.right = '12px';
-      mm.style.bottom = '12px';
-      mm.style.left = '';
-      mm.style.top = '';
-      mm.style.width = `${SMALL_SIZE}px`;
-      mm.style.height = `${SMALL_SIZE}px`;
-      mm.style.zIndex = '48';
-      mm.style.background = 'rgba(12,16,24,0.72)';
-      mm.style.borderRadius = '12px';
-      mm.style.boxShadow = '0 8px 24px rgba(0,0,0,0.45)';
-    }
-  }
-
-  function updateVisibility(){
-    mm.style.display = minimapVisible ? 'block' : 'none';
-  }
-
-  window.__setMinimapMode = (mode) => {
-    const next = mode === 'big' ? 'big' : 'small';
-    if (minimapMode !== next){
-      minimapMode = next;
-      applyMode();
-    }
-    return minimapMode;
-  };
-  window.__toggleMinimapMode = () => {
-    const next = minimapMode === 'big' ? 'small' : 'big';
-    window.__setMinimapMode(next);
-    return minimapMode;
-  };
-  window.__toggleMinimap = (on) => {
-    minimapVisible = !!on;
-    updateVisibility();
-  };
-
-  // Arranca siempre en modo pequeño y visible; el overlay grande se alterna con clic/espacio
-  minimapMode = window.__setMinimapMode('small');
-  minimapVisible = true;
-  updateVisibility();
-
-  mm.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    window.__toggleMinimapMode();
-  });
-  mm.addEventListener('mousedown', (ev) => ev.stopPropagation());
-  window.addEventListener('resize', () => {
-    if (minimapMode === 'big') applyMode();
-  });
 
   function colorFor(ent){
     const ENT = window.ENT || {};
@@ -4915,7 +1979,6 @@ function drawEntities(c2){
   function drawMinimap(){
     const G = window.G;
     if (!G || !G.map || !G.mapW || !G.mapH) { requestAnimationFrame(drawMinimap); return; }
-    if (!minimapVisible) { requestAnimationFrame(drawMinimap); return; }
 
     const w = G.mapW, h = G.mapH;
     const sx = mm.width  / w;
