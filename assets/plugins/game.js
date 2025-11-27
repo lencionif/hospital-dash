@@ -372,46 +372,30 @@ document.addEventListener('keydown', (e)=>{
     "##############################",
     ];
     // --- Flags globales de modo mapa ---
-    (function () {
-      const q = new URLSearchParams(location.search);
-      const m = (q.get('map') || '').toLowerCase();
-      window.__MAP_MODE = m;                 // para compatibilidad con código viejo
-      window.DEBUG_FORCE_ASCII = (m === 'debug' || m === 'mini' || m === 'ascii');
-      window.DEBUG_MINIMAP   = (m === 'mini') || /(?:\?|&)mini=(?:1|true)\b/i.test(location.search);
-      window.G = window.G || {};
-      G.flags = G.flags || {};
-      G.flags.DEBUG_FORCE_ASCII = window.DEBUG_FORCE_ASCII;
-    })();
+    const __qs = new URLSearchParams(location.search);
+    const MAP_MODE = (__qs.get('map') || '').toLowerCase();
+    window.__MAP_MODE = MAP_MODE;                 // para compatibilidad con código viejo
+
+    const DEBUG_FORCE_ASCII = (window.DEBUG_FORCE_ASCII === true)
+      || MAP_MODE === 'debug'
+      || MAP_MODE === 'mini'
+      || MAP_MODE === 'ascii';
+
+    const DEBUG_MINIMAP = (window.DEBUG_MINIMAP === true)
+      || MAP_MODE === 'mini'
+      || __qs.get('mini') === '1'
+      || __qs.get('mini') === 'true';
+
+    window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
+    window.DEBUG_MINIMAP = DEBUG_MINIMAP;
+
+    window.G = window.G || {};
+    G.flags = G.flags || {};
+    G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
+    G.flags.DEBUG_MINIMAP = DEBUG_MINIMAP;
 
     // Mapa ASCII mini (para pruebas rápidas con ?map=mini)
     const DEBUG_ASCII_MINI = DEFAULT_ASCII_MAP;
-
-  // --- selector de mapa por URL ---
-  // ?map=debug  → fuerza el mapa ASCII de arriba
-  // ?map=normal → usa el generador (MapGen)
-  // ?mini=1     → mini map de debug encendido
-
-
-  // --- selector de mapa por URL (banderas globales) ---
-  (function(){
-    const raw = (location.search || '').toLowerCase();
-    const q   = new URLSearchParams(location.search);
-
-    // Forzar ASCII si ?map=debug, ?map=mini o ?map=ascii
-    window.DEBUG_FORCE_ASCII =
-      (q.get('map') === 'debug' || q.get('map') === 'mini' || q.get('map') === 'ascii');
-
-    // Mostrar mini-mapa si ?map=mini o ?mini=1|true
-    window.DEBUG_MINIMAP =
-      (q.get('map') === 'mini' || q.get('mini') === '1' || q.get('mini') === 'true');
-
-    // Copiar banderas en G.flags (por si otros ficheros las usan)
-    window.G = window.G || {};
-    G.flags = G.flags || {};
-    G.flags.DEBUG_FORCE_ASCII = !!window.DEBUG_FORCE_ASCII;
-    G.flags.DEBUG_MINIMAP    = !!window.DEBUG_MINIMAP;
-  })();
-
 
 // Mapa activo (se puede sustituir por el de MapGen)
 let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
@@ -1611,6 +1595,90 @@ function drawEntities(c2){
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
   }
+
+  function loadDebugAsciiMap(){
+    if (Array.isArray(window.DEBUG_ASCII_MAP) && window.DEBUG_ASCII_MAP.length) {
+      return window.DEBUG_ASCII_MAP.map(String);
+    }
+    if (typeof window.DEBUG_ASCII_STRING === 'string') {
+      const txt = window.DEBUG_ASCII_STRING.trim();
+      if (txt) return txt.split('\n');
+    }
+    if (window.__MAP_MODE === 'mini') {
+      return DEBUG_ASCII_MINI.slice();
+    }
+    return null;
+  }
+
+  function buildLevelForCurrentMode(){
+    const mode = (window.__MAP_MODE || 'normal').toLowerCase();
+    const seed = G.seed || Date.now();
+    let ascii = null;
+
+    if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
+      try {
+        if (window.MapGen && typeof MapGen.generate === 'function') {
+          if (typeof MapGen.init === 'function') MapGen.init(G);
+          const usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
+          if (usadoGenerador) {
+            finalizeLevelBuildOnce();
+            console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
+            window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
+            return;
+          }
+        }
+      } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
+
+      try {
+        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
+          const res = MapGenAPI.generate(G.level || 1, {
+            seed,
+            place: false,
+            defs: null,
+            width:  window.DEBUG_MINIMAP ? 128 : undefined,
+            height: window.DEBUG_MINIMAP ? 128 : undefined
+          });
+          if (res && res.ascii) {
+            ascii = String(res.ascii).trim().split('\n');
+            G.mapgenPlacements = res.placements || [];
+            G.mapAreas = res.areas || null;
+            console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
+          }
+        }
+      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
+    }
+
+    if (!ascii && (mode === 'debug' || mode === 'ascii')) {
+      ascii = loadDebugAsciiMap();
+      if (ascii && ascii.length) {
+        console.log('%cMAP_MODE','color:#0bf', mode || 'debug', '→ ASCII');
+      }
+    }
+
+    if (!ascii || !ascii.length) {
+      ascii = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
+      console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
+    }
+
+    ASCII_MAP = ascii;
+    parseMap(ASCII_MAP);
+
+    const placements = (G.mapgenPlacements && G.mapgenPlacements.length)
+      ? G.mapgenPlacements
+      : (G.__asciiPlacements || []);
+
+    if (!G.mapgenPlacements || !G.mapgenPlacements.length) {
+      G.mapgenPlacements = placements || [];
+    }
+
+    G.__allowASCIIPlacements = true;
+    if (typeof window.applyPlacementsFromMapgen === 'function' && placements && placements.length) {
+      try { window.applyPlacementsFromMapgen(placements); } catch (e) { console.warn('[MapGen] applyPlacements', e); }
+    }
+
+    finalizeLevelBuildOnce();
+    window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
+  }
   // ------------------------------------------------------------
   // Control de estado
   // ------------------------------------------------------------
@@ -1635,157 +1703,9 @@ function drawEntities(c2){
     window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
     G.flags = G.flags || {};
     G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
+    G.flags.DEBUG_MINIMAP = DEBUG_MINIMAP;
 
-    // Si fuerzas ASCII → NO LLAMAR a NINGÚN generador/siembra
-    if (DEBUG_FORCE_ASCII) {
-      ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
-      parseMap(ASCII_MAP);
-
-      // Permite instanciación de placements derivados del ASCII, pero SIN algoritmos
-      G.__allowASCIIPlacements = true;
-      if (typeof window.applyPlacementsFromMapgen === 'function') {
-        window.applyPlacementsFromMapgen(G.__asciiPlacements || G.mapgenPlacements || []);
-      }
-      finalizeLevelBuildOnce();
-      console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE, '→ ASCII forzado (sin generadores/siembra)');
-    } else {
-      // ---------- Flujo procedural normal ----------
-      let usadoGenerador = false;
-      try {
-        if (window.MapGen && typeof MapGen.generate === 'function') {
-          if (typeof MapGen.init === 'function') MapGen.init(G);
-          usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
-        }
-      } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
-
-      if (!usadoGenerador) {
-        try {
-          if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-            const res = MapGenAPI.generate(G.level || 1, {
-              seed: G.seed || Date.now(),
-              place: false,
-              defs: null,
-              width:  window.DEBUG_MINIMAP ? 128 : undefined,
-              height: window.DEBUG_MINIMAP ? 128 : undefined
-            });
-            ASCII_MAP = (res.ascii || '').trim().split('\n');
-            G.mapgenPlacements = res.placements || [];
-            G.mapAreas = res.areas || null;
-            parseMap(ASCII_MAP);
-            finalizeLevelBuildOnce();
-            usadoGenerador = true;
-            console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
-          }
-        } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
-      }
-
-      if (!usadoGenerador) {
-        parseMap(ASCII_MAP);
-        finalizeLevelBuildOnce();
-        console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
-      }
-    }
-
-    // 1) Generador "nuevo" (MapGen con callbacks y colocación directa)
-    if (!window.DEBUG_FORCE_ASCII) { let usadoGenerador = false;
-    try {
-      if (window.MapGen && typeof MapGen.generate === 'function') {
-        // Vincula el estado del juego al plugin (si lo necesita)
-        if (typeof MapGen.init === 'function') MapGen.init(G);
-
-        // Crea el nivel entero (coloca entidades vía callbacks)
-        usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
-      }
-    } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
-
-    // 2) Generador "API simple" (MapGenAPI → devuelve ASCII)
-    if (!usadoGenerador) {
-      try {
-        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-          const mini = /[?&]mini=1/.test(location.search) || window.DEBUG_SMALLMAP === true;
-          const res = MapGenAPI.generate(G.level || 1, {
-            seed: G.seed || Date.now(),
-            place: false,       // dejamos que lo coloque parseMap
-            defs: null,         // auto
-            // ↓↓↓ Forzamos mapa pequeño cuando mini=1 en la URL o flag global
-            width:  mini ? 128 : undefined,
-            height: mini ? 128 : undefined
-          });
-          ASCII_MAP = (res.ascii || '').trim().split('\n');   // ⚠️ requiere que sea 'let'
-          G.mapgenPlacements = res.placements || [];
-          G.mapAreas = res.areas || null;
-
-          parseMap(ASCII_MAP);
-          finalizeLevelBuildOnce();
-          usadoGenerador = true;
-        }
-      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
-    }
-
-    // 3) Fallback: usa el ASCII por defecto si no hubo generador
-    if (!usadoGenerador) {
-      parseMap(ASCII_MAP);
-      finalizeLevelBuildOnce();
-    }
-  } // ← cierra el if (!window.DEBUG_FORCE_ASCII) que encapsula el bloque duplicado
-    // --- Selección de mapa por URL ---
-    // ?map=debug  -> fuerza ASCII grande (DEFAULT_ASCII_MAP)
-    // ?map=mini   -> fuerza ASCII pequeño (DEBUG_ASCII_MINI)
-    // ?mini=1     -> sigue usando MapGen/MapGenAPI pero en tamaño reducido
-  const __qs      = new URLSearchParams(location.search);
-  window.__MAP_MODE = (__qs.get('map') || '').toLowerCase();
-
-  if (window.DEBUG_FORCE_ASCII) {
-    // 1) Forzar ASCII sin llamar a generadores ni auto-siembra
-    ASCII_MAP = (window.__MAP_MODE === 'mini' ? DEBUG_ASCII_MINI : DEFAULT_ASCII_MAP).slice();
-    parseMap(ASCII_MAP);
-
-    // Autoriza instanciación de placements derivados del ASCII sin algoritmo
-    G.__allowASCIIPlacements = true;
-    if (typeof window.applyPlacementsFromMapgen === 'function') {
-      window.applyPlacementsFromMapgen(G.__asciiPlacements || []);
-    }
-    finalizeLevelBuildOnce();
-    console.log('%cMAP_MODE','color:#0bf', window.__MAP_MODE || 'debug', '→ ASCII forzado (sin generadores/siembra)');
-    // Mostrar u ocultar minimapa
-    window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
-  } else {
-    // 2) Procedural normal (MapGen/MapGenAPI)
-    let usadoGenerador = false;
-    try {
-      if (window.MapGen && typeof MapGen.generate === 'function') {
-        if (typeof MapGen.init === 'function') MapGen.init(G);
-        usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
-      }
-    } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
-    if (!usadoGenerador) {
-      try {
-        if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-          const res = MapGenAPI.generate(G.level || 1, {
-            seed: G.seed || Date.now(),
-            place: false,
-            defs: null,
-            width:  window.DEBUG_MINIMAP ? 128 : undefined,
-            height: window.DEBUG_MINIMAP ? 128 : undefined
-          });
-          ASCII_MAP = (res.ascii || '').trim().split('\n');
-          G.mapgenPlacements = res.placements || [];
-          G.mapAreas = res.areas || null;
-          parseMap(ASCII_MAP);
-          finalizeLevelBuildOnce();
-          usadoGenerador = true;
-          console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
-        }
-      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
-    }
-    if (!usadoGenerador) {
-      parseMap(ASCII_MAP);
-      finalizeLevelBuildOnce();
-      console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
-    }
-  }
-
-
+    buildLevelForCurrentMode();
 
       // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
       if (window.PuppetAPI && G.player){
