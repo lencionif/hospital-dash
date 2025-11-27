@@ -1862,9 +1862,7 @@ function drawEntities(c2){
 
     const normalized = normalizeAsciiGrid(asciiText);
     ASCII_MAP = normalized.lines;
-    const placements = (mode === 'debug')
-      ? buildPlacementsFromAscii(normalized.lines)
-      : (resolved?.placements || []);
+    const placements = resolved?.placements || [];
 
     await buildWorldFromAscii(normalized.lines.join('\n'), {
       placements,
