@@ -272,6 +272,11 @@
         for (const [gx,gy] of path){
           this._path.push({ x: gx*t + t*0.5, y: gy*t + t*0.5 });
         }
+        const p = this._player();
+        if (p) {
+          p.targetX = this._path[0]?.x ?? null;
+          p.targetY = this._path[0]?.y ?? null;
+        }
       }
     },
 
@@ -284,6 +289,17 @@
         let dx = tgt.x - (p.x+p.w/2);
         let dy = tgt.y - (p.y+p.h/2);
         let len = Math.hypot(dx,dy);
+        p.targetX = tgt.x; p.targetY = tgt.y;
+
+        const snap2 = 36; // 6px de radio
+        if (dx*dx + dy*dy <= snap2){
+          p.x = tgt.x - p.w * 0.5;
+          p.y = tgt.y - p.h * 0.5;
+          p.vx = 0; p.vy = 0; p.speed = 0;
+          if (typeof p.setAnimation === 'function') p.setAnimation('idle');
+          this._path.shift();
+          len = 0;
+        }
 
         // Steering: ajusta hacia una velocidad objetivo, sin “pasarse”
         const accel = (p.accel != null) ? p.accel
@@ -359,6 +375,9 @@
           if (this._performUse) this._performUse(p, tgt);
           this._pendingInteract = null;
         }
+        if (!this._path.length) {
+          p.targetX = null; p.targetY = null;
+        }
       } else {
           // No anulamos la inercia: así puede seguir empujando/recibiendo empujón
                     if (p.usingMouse){
@@ -367,6 +386,7 @@
             if (Math.abs(p.vy) < 0.25) p.vy = 0;
             p.usingMouse = false;
           }
+          p.targetX = null; p.targetY = null;
       }
 
       // Animación del marcador

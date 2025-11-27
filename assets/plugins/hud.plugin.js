@@ -153,7 +153,7 @@
     root.appendChild(bellsPanel);
     container.appendChild(root);
 
-    setHeroFace(window.START_HERO_ID || window.selectedHeroKey || 'enrique');
+    setHeroFace(window.SELECTED_HERO_ID || window.START_HERO_ID || window.selectedHeroKey || 'enrique');
 
     HUD_DOM.root = root;
     HUD_DOM.left = left;
@@ -356,7 +356,7 @@
     if (!G) return;
     ensureHudDom();
     if (!HUD_DOM.root) return;
-    const heroId = (G?.player?.heroId || G?.player?.hero || G?.selectedHero || window.START_HERO_ID || 'enrique');
+    const heroId = (G?.player?.heroId || G?.player?.hero || G?.selectedHero || window.SELECTED_HERO_ID || window.START_HERO_ID || 'enrique');
     setHeroFace(heroId);
     const counters = getPatientCounters(G);
     if (HUD_DOM.patientsValue) HUD_DOM.patientsValue.textContent = `${counters.cured}/${counters.total}`;

@@ -17,6 +17,7 @@
   const TILE = (typeof W.TILE_SIZE !== 'undefined') ? W.TILE_SIZE : (W.TILE || 32);
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const HERO_SCALE = { enrique: 1.05, francesco: 1.0, roberto: 0.94 };
 
   const MAX_HEARTS_LIMIT = 7;
   const HERO_CONFIG = {
@@ -93,17 +94,12 @@
   }
 
   function bindRig(e) {
-    const rigName = `hero_${e.heroId}`;
-    let puppet = null;
-    try {
-      if (W.PuppetAPI?.attach) puppet = W.PuppetAPI.attach({ rig: rigName, entity: e, z: 0, scale: 1, data: { hero: e.heroId } });
-    } catch (_) {}
-    if (!puppet && W.Puppet?.bind) {
-      try { puppet = W.Puppet.bind(e, rigName, { z: 0, scale: 1, data: { hero: e.heroId } }); } catch (_) {}
+    const rig = W.PuppetAPI?.attach?.(e, { rig: 'human', z: 5, scale: HERO_SCALE[e.heroId] || 1 });
+    e.rig = rig || null;
+    e.rigOk = !!rig;
+    if (rig) {
+      W.PuppetAPI?.setHeroHead?.(rig, e.heroId);
     }
-    e.rig = puppet || null;
-    e.rigName = puppet?.rigName || rigName;
-    e.rigOk = !!(puppet && puppet.rigName === rigName);
   }
 
   function bindUpdate(e){
@@ -117,7 +113,8 @@
   }
 
   function createHero(opts = {}) {
-    const heroId = (opts.heroId || opts.hero || 'enrique').toLowerCase();
+    const selected = (W.SELECTED_HERO_ID || W.START_HERO_ID || '').toLowerCase();
+    const heroId = (opts.heroId || opts.hero || selected || 'enrique').toLowerCase();
     const stats = HERO_CONFIG.stats[heroId] || HERO_CONFIG.stats.enrique;
     const hearts = clamp(HERO_CONFIG.hearts[heroId] || HERO_CONFIG.hearts.enrique || 3, 1, MAX_HEARTS_LIMIT);
     const w = Math.round(TILE * 0.82), h = Math.round(TILE * 0.82);
@@ -145,11 +142,14 @@
       pushing: false,
       sprint: 1.0,
       spriteKey: heroId,
+      targetX: null,
+      targetY: null,
       facing: 'S',
       lookAngle: Math.PI / 2,
       turnSpeed: 6.0,
       _flashlightId: null,
       _destroyCbs: [],
+      puppet: { rig: 'human', z: 5, scale: HERO_SCALE[heroId] || 1 },
       takeDamage(amount = 1, meta = {}) {
         const invuln = Number.isFinite(meta?.invuln) ? meta.invuln : 0.6;
         this.invuln = Math.max(this.invuln || 0, invuln);
@@ -182,8 +182,9 @@
     resolveKey(p){
       const q = (typeof URLSearchParams !== 'undefined') ? new URLSearchParams(location.search) : null;
       const qs = (q && q.get('hero')) ? q.get('hero').toLowerCase() : '';
-      const k = (p?.heroId || p?.hero || p?.skin || p?.sub || W.START_HERO_ID || qs || G.selectedHero || 'enrique').toLowerCase();
+      const k = (p?.heroId || p?.hero || p?.skin || p?.sub || W.SELECTED_HERO_ID || W.START_HERO_ID || qs || G.selectedHero || 'enrique').toLowerCase();
       G.selectedHero = k;
+      W.SELECTED_HERO_ID = W.SELECTED_HERO_ID || k;
       W.START_HERO_ID = W.START_HERO_ID || k;
       return k;
     },

@@ -183,6 +183,7 @@
     const selInit = document.querySelector('#start-screen .char-card.selected');
     window.G = window.G || {};
     window.selectedHeroKey = (selInit?.dataset?.hero || 'enrique').toLowerCase();
+    window.SELECTED_HERO_ID = window.selectedHeroKey;
     G.selectedHero = window.selectedHeroKey;
 
     // Al hacer clic en una tarjeta: marcar visualmente y guardar clave
@@ -193,6 +194,7 @@
         btn.setAttribute('aria-selected','true');
         const hero = (btn.dataset.hero || 'enrique').toLowerCase();
         window.selectedHeroKey = hero;
+        window.SELECTED_HERO_ID = hero;
         window.G.selectedHero = hero;
       });
     });
@@ -202,8 +204,9 @@
       if (!window.selectedHeroKey) {
         const first = document.querySelector('#start-screen .char-card[data-hero]');
         window.selectedHeroKey = (first?.dataset?.hero || 'enrique').toLowerCase();
-        window.G.selectedHero = window.selectedHeroKey;
       }
+      window.SELECTED_HERO_ID = window.selectedHeroKey;
+      window.G.selectedHero = window.selectedHeroKey;
     });
   })();
   const metrics = document.getElementById('metricsOverlay') || document.createElement('pre'); // por si no existe
@@ -1786,15 +1789,16 @@ function drawEntities(c2){
 
       // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
       if (window.PuppetAPI && G.player){
-        const k = (window.selectedHeroKey || window.G?.selectedHero || 'enrique').toLowerCase();
-
-        G.player.rig = PuppetAPI.create({
-          host: G.player,
-          scale: (window.TILE_SIZE||32) / 32
-        });
+        const k = (G.player.heroId || window.SELECTED_HERO_ID || window.selectedHeroKey || window.G?.selectedHero || 'enrique').toLowerCase();
+        if (!G.player.rig) {
+          const scale = G.player.puppet?.scale || ((window.TILE_SIZE||32) / 32);
+          G.player.rig = PuppetAPI.attach(G.player, { rig: 'human', scale, z: G.player.puppet?.z || 5 });
+        }
 
         // Cara frontal + cara de ESPALDA (si existe <hero>_back.png)
-        PuppetAPI.setHeroHead(G.player.rig, k);
+        if (G.player.rig) {
+          PuppetAPI.setHeroHead(G.player.rig, k);
+        }
 
         // Reforzar rango de visión del héroe si FogAPI lo expone
         try {
