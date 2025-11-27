@@ -1619,13 +1619,6 @@ function drawEntities(c2){
       try {
         if (window.MapGen && typeof MapGen.generate === 'function') {
           if (typeof MapGen.init === 'function') MapGen.init(G);
-          const usadoGenerador = !!loadLevelWithMapGen(G.level || 1);
-          if (usadoGenerador) {
-            finalizeLevelBuildOnce();
-            console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
-            window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
-            return;
-          }
         }
       } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
 
