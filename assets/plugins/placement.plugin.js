@@ -10,38 +10,6 @@
 
   const TILE_SIZE = () => root.TILE_SIZE || root.TILE || 32;
 
-  const ASCII_LEGEND = {
-    'S': { type: 'hero', label: 'HERO' },
-    'P': { type: 'patient', label: 'PAT', sprite: 'paciente_en_cama' },
-    'p': { type: 'patient', label: 'PAT', sprite: 'paciente_en_cama' },
-    'I': { type: 'pill', label: 'PILL', sprite: 'pastilla_azul' },
-    'i': { type: 'pill', label: 'PILL', sprite: 'pastilla_azul' },
-    'b': { type: 'bell', label: 'BELL' },
-    'B': { type: 'bell', label: 'BELL' },
-    'D': { type: 'boss_door', label: 'DOOR' },
-    'd': { type: 'door', label: 'DOOR' },
-    'u': { type: 'boss_door', label: 'DOOR' },
-    'C': { type: 'cart', label: 'CART', sub: 'med' },
-    'c': { type: 'cart', label: 'CART', sub: 'med' },
-    'M': { type: 'spawner', sub: 'mosquito', label: 'SPW-M' },
-    'R': { type: 'spawner', sub: 'rat', label: 'SPW-R' },
-    'm': { type: 'enemy', sub: 'mosquito', label: 'MOSQ', sprite: 'mosquito' },
-    'r': { type: 'enemy', sub: 'rat', label: 'RAT', sprite: 'raton' },
-    'X': { type: 'boss', label: 'BOSS' },
-    'L': { type: 'light', label: 'LIGHT', sprite: 'light_1' },
-    'l': { type: 'light', label: 'LIGHT', sprite: 'light_1' },
-    '+': { type: 'bed', label: 'BED' },
-    'E': { type: 'elevator', label: 'LIFT', sprite: 'elevator' },
-    'e': { type: 'elevator', label: 'LIFT', sprite: 'elevator' },
-    'H': { type: 'npc', sub: 'medico', label: 'MED', sprite: 'medico', rig: 'npc_medico' },
-    'U': { type: 'npc_unique', sub: 'supervisora', label: 'SUP', sprite: 'supervisora', rig: 'npc_supervisora' },
-    'T': { type: 'npc', sub: 'tcae', label: 'TCAE', sprite: 'tcae', rig: 'npc_tcae' },
-    'G': { type: 'npc', sub: 'guardia', label: 'SEC', sprite: 'guardia', rig: 'npc_guardia' },
-    'F': { type: 'npc', sub: 'familiar', label: 'FAM', sprite: 'familiar_molesto', rig: 'npc_familiar_molesto' },
-    'N': { type: 'npc', sub: 'enfermera_sexy', label: 'NRS', sprite: 'enfermera_sexy', rig: 'npc_enfermera_sexy' },
-    'A': { type: 'npc', sub: 'celador', label: 'CEL', sprite: 'celador', rig: 'npc_celador' }
-  };
-
   Placement.shouldRun = function shouldRun(cfg){
     const G = cfg?.G || root.G;
     if (!G || !cfg?.map || !cfg?.width || !cfg?.height) return false;
@@ -67,7 +35,6 @@
     G.__placementsApplied = true;
     G._lastLevelCfg = cfg;
     Placement._counts = {};
-    const debugMode = isDebugMode(cfg);
 
     const add = (entity) => {
       if (!entity) return;
@@ -96,11 +63,12 @@
     hero.rigOk = true;
     add(hero);
     G.player = hero;
-    if (hero && debugMode) {
-      logDebugSpawn(cfg, { type: 'hero', char: 'S' }, heroPos.tx, heroPos.ty, hero);
-    }
 
     const patientSpots = listPatientSpots(cfg, G);
+    if (cfg?.mode === 'debug' && patientSpots.length === 0) {
+      patientSpots.push({ tx: heroPos.tx + 4, ty: heroPos.ty });
+    }
+
     for (const spot of patientSpots) {
       const patient = spawnPatient(spot.tx, spot.ty, { name: genFunnyName() }, cfg, G);
       if (!patient) continue;
@@ -114,12 +82,9 @@
         add(pill);
         if (!G.pills.includes(pill)) G.pills.push(pill);
       }
-      if (patient && debugMode) logDebugSpawn(cfg, { type: 'patient', char: spot.char || 'P' }, spot.tx, spot.ty, patient);
-      if (pill && debugMode) logDebugSpawn(cfg, { type: 'pill', char: 'I' }, spot.tx + 1, spot.ty, pill);
       const bell = spawnBellForPatient(patient, null, null, cfg, G);
       if (bell) {
         add(bell);
-        if (debugMode) logDebugSpawn(cfg, { type: 'bell', char: 'b' }, bell.tx ?? spot.tx, bell.ty ?? spot.ty, bell);
       }
       const counters = (typeof root.patientsSnapshot === 'function') ? root.patientsSnapshot() : null;
       if (counters) {
@@ -898,64 +863,6 @@
     return 'UNKNOWN';
   }
 
-  function isDebugMode(cfg){
-    const mode = String(cfg?.mode || root.MapGen?.MAP_MODE || root.__MAP_MODE || '').toLowerCase();
-    return mode === 'debug';
-  }
-
-  function logDebugSpawn(cfg, entry, tx, ty, entity){
-    if (!isDebugMode(cfg)) return;
-    const tag = resolveKind(entity || entry || {}) || (entry?.type || 'entity');
-    const char = entry?.char || entry?.legacy || entry?.type || '?';
-    try {
-      console.log(`[DEBUG MAP] spawn ${String(tag).toLowerCase()} '${char}' en (${tx},${ty})`);
-    } catch (_) {}
-  }
-
-  function resolveVisualSpec(entry, entity){
-    const legend = legendForChar(entry?.char) || legendForType(entry) || {};
-    const spriteKey = entry?.spriteKey || entry?.sprite || legend.sprite || null;
-    const rig = entry?.rig || legend.rig || null;
-    const label = legend.label || deriveFallbackLabel(entry, entity);
-    return { spriteKey, rig, label };
-  }
-
-  function applyVisualResolution(entity, entry, opts = {}){
-    if (!entity) return 'fallback';
-    const spec = resolveVisualSpec(entry || {}, entity);
-    let mode = entity.rigOk ? 'rig' : null;
-
-    if (!mode && opts.allowRig !== false && spec.rig){
-      try {
-        const puppet = root.Puppet?.bind?.(entity, spec.rig, { z: entity.puppet?.z ?? 0, scale: entity.puppet?.scale ?? 1 })
-          || root.PuppetAPI?.attach?.(entity, { rig: spec.rig, z: entity.puppet?.z ?? 0, scale: entity.puppet?.scale ?? 1 });
-        if (puppet){
-          entity.rigOk = true;
-          entity.rigName = spec.rig;
-          mode = 'rig';
-        }
-      } catch (_) {}
-    }
-
-    if (!mode && spec.spriteKey){
-      entity.spriteKey = entity.spriteKey || spec.spriteKey;
-      entity.skin = entity.skin || spec.spriteKey;
-      mode = 'sprite';
-    }
-
-    if (!mode){
-      entity.fallbackLabel = entity.fallbackLabel || spec.label || deriveFallbackLabel(entry, entity);
-      mode = 'fallback';
-    }
-
-    if (isDebugMode(opts.cfg || entry?.cfg)){
-      const char = entry?.char || entry?.type || '?';
-      const type = entry?.type || resolveKind(entity);
-      try { console.log(`[DEBUG MAP] visual ${char}/${type}: ${mode}`); } catch (_) {}
-    }
-    return mode;
-  }
-
   function getPlacements(cfg){
     if (Array.isArray(cfg?.placements) && cfg.placements.length) return cfg.placements;
     if (Array.isArray(cfg?.G?.mapgenPlacements) && cfg.G.mapgenPlacements.length) {
@@ -963,11 +870,6 @@
     }
     if (Array.isArray(root.G?.mapgenPlacements) && root.G.mapgenPlacements.length) {
       return root.G.mapgenPlacements;
-    }
-    const parsed = parsePlacementsFromAscii(cfg);
-    if (parsed.length){
-      if (cfg?.G) cfg.G.__asciiPlacements = parsed;
-      return parsed;
     }
     return [];
   }
@@ -1018,53 +920,6 @@
       .map((row) => row.trimEnd());
   }
 
-  function legendForChar(ch){
-    if (!ch) return null;
-    const key = String(ch);
-    return ASCII_LEGEND[key] || ASCII_LEGEND[key.toUpperCase()] || null;
-  }
-
-  function legendForType(entry){
-    const type = String(entry?.type || '').toLowerCase();
-    const sub = String(entry?.sub || entry?.role || '').toLowerCase();
-    for (const [ch, spec] of Object.entries(ASCII_LEGEND)){
-      if (!spec?.type) continue;
-      const typeMatch = String(spec.type || '').toLowerCase() === type;
-      const subMatch = sub && spec.sub ? String(spec.sub).toLowerCase() === sub : true;
-      if (typeMatch && subMatch) return spec;
-    }
-    return null;
-  }
-
-  function deriveFallbackLabel(entry, entity){
-    const label = entry?.label || entry?.fallbackLabel || entity?.label || entity?.role || entity?.sub || entity?.kindName;
-    if (label) return String(label).toUpperCase().slice(0, 4);
-    if (entry?.type) return String(entry.type).toUpperCase().slice(0, 4);
-    return 'ENT';
-  }
-
-  function parsePlacementsFromAscii(cfg){
-    const rows = parseAsciiRows(cfg);
-    const placements = [];
-    if (!rows) return placements;
-    let cartCount = 0;
-    for (let ty = 0; ty < rows.length; ty++){
-      const row = rows[ty] || '';
-      for (let tx = 0; tx < row.length; tx++){
-        const ch = row[tx];
-        const legend = legendForChar(ch);
-        if (!legend) continue;
-        const base = { ...legend, char: ch, tx, ty };
-        if ((ch === 'C' || ch === 'c') && !legend.sub){
-          cartCount += 1;
-          base.sub = cartCount === 1 ? 'er' : (cartCount === 2 ? 'med' : 'food');
-        }
-        placements.push(base);
-      }
-    }
-    return placements;
-  }
-
   function findHeroPosFromAsciiOrCenter(cfg, G){
     const placements = getPlacements(cfg);
     const byType = placements.find((p) => {
@@ -1108,7 +963,7 @@
     for (const entry of placements) {
       const type = String(entry?.type || '').toLowerCase();
       if (type === 'patient') {
-        spots.push({ ...normalizePlacementToTile(entry, cfg), char: entry?.char || entry?.legacy || 'P' });
+        spots.push(normalizePlacementToTile(entry, cfg));
       }
     }
     if (spots.length) return spots;
@@ -1119,7 +974,7 @@
         for (let tx = 0; tx < row.length; tx++) {
           const c = row[tx];
           if (c === 'p' || c === 'P') {
-            spots.push({ tx, ty, char: c });
+            spots.push({ tx, ty });
           }
         }
       }
@@ -1561,7 +1416,6 @@
         rigOk: false
       };
     if (hero && !hero.rigOk) hero.rigOk = true;
-    hero.isMain = true;
     placeEntitySafely(hero, G, tx, ty, { char: 'S', maxRadius: 12 });
     G.player = hero;
     return hero;
@@ -1589,7 +1443,6 @@
     patient.rigOk = patient.rigOk === true || true;
     ensurePatientCounters(G);
     if (!G.patients.includes(patient)) G.patients.push(patient);
-    applyVisualResolution(patient, opts, { cfg, allowRig: false });
     placeEntitySafely(patient, G, tx, ty, { char: (opts && opts.char) || 'p', maxRadius: 10 });
     return patient;
   }
@@ -1611,7 +1464,6 @@
       };
     pill.kind = pill.kind || 'PILL';
     pill.rigOk = pill.rigOk === true || true;
-    applyVisualResolution(pill, opts, { cfg, allowRig: false });
     return pill;
   }
 
@@ -1636,7 +1488,6 @@
       bell.rigOk = bell.rigOk === true || true;
       bell.on = bell.on || false;
     }
-    applyVisualResolution(bell, opts, { cfg, allowRig: false });
     return bell;
   }
 
@@ -1716,13 +1567,11 @@
       }
       npc.rigOk = npc.rigOk === true;
       if (!npc.group) npc.group = 'human';
-      ensureNPCVisuals(npc, entry);
-      applyVisualResolution(npc, entry, { cfg, allowRig: true });
+      ensureNPCVisuals(npc);
       placeEntitySafely(npc, G, tx, ty, { char: entry?.char || entry?.legacy || type, maxRadius: 10 });
       out.push(npc);
       try { root.EntityGroups?.assign?.(npc); } catch (_) {}
       try { root.EntityGroups?.register?.(npc, G); } catch (_) {}
-      logDebugSpawn(cfg, entry, tx, ty, npc);
     }
     return out;
   }
@@ -1772,23 +1621,29 @@
     return null;
   }
 
-  function ensureNPCPuppet(npc, entry){
+  function ensureNPCPuppet(npc){
     if (!npc) return;
     if (npc.puppet && npc.puppet.rigName && npc.rigOk === true) return;
     if (!root.Puppet?.bind && !root.PuppetAPI?.attach) return;
-    const preferred = entry?.rig || resolveRigForNPC(npc);
+    let rig = resolveRigForNPC(npc);
+    const fallback = 'npc_generic_human';
+    if (!rig) rig = fallback;
+    if (npc.puppet && npc.puppet.rigName === rig && npc.rigOk === true) return;
     const data = { skin: npc.skin };
-    if (!preferred) return;
     try {
-      const puppet = root.Puppet?.bind?.(npc, preferred, { z: npc.puppet?.z ?? 0, scale: npc.puppet?.scale ?? 1, data })
-        || root.PuppetAPI?.attach?.(npc, { rig: preferred, z: npc.puppet?.z ?? 0, scale: npc.puppet?.scale ?? 1, data });
+      const puppet = root.Puppet?.bind?.(npc, rig, { z: npc.puppet?.z ?? 0, scale: npc.puppet?.scale ?? 1, data })
+        || root.PuppetAPI?.attach?.(npc, { rig, z: npc.puppet?.z ?? 0, scale: npc.puppet?.scale ?? 1, data });
       if (puppet){
         npc.rigOk = true;
-        npc.rigName = preferred;
-        try { console.log(`[Placement] NPC ${entityLabel(npc)} vinculado al rig '${preferred}'.`); } catch (_) {}
+        npc.rigName = rig;
+        if (rig === fallback){
+          try { console.warn(`[Placement] NPC ${entityLabel(npc)} sin rig específico, usando '${rig}'.`); } catch (_) {}
+        } else {
+          try { console.log(`[Placement] NPC ${entityLabel(npc)} vinculado al rig '${rig}'.`); } catch (_) {}
+        }
       }
     } catch (err){
-      try { console.warn(`[Placement] No se pudo asignar rig '${preferred}' a ${entityLabel(npc)}.`, err); } catch (_) {}
+      try { console.warn(`[Placement] No se pudo asignar rig '${rig}' a ${entityLabel(npc)}.`, err); } catch (_) {}
     }
   }
 
@@ -1814,8 +1669,8 @@
     }
   }
 
-  function ensureNPCVisuals(npc, entry){
-    ensureNPCPuppet(npc, entry);
+  function ensureNPCVisuals(npc){
+    ensureNPCPuppet(npc);
     ensureNPCFlashlight(npc);
   }
 
@@ -1919,8 +1774,7 @@
           }
         }
         if (entity.hostile !== true) entity.hostile = true;
-        ensureNPCVisuals(entity, entry);
-        applyVisualResolution(entity, entry, { cfg, allowRig: false });
+        ensureNPCVisuals(entity);
         placeEntitySafely(entity, G, tx, ty, { char: entry?.char || subtype || type, maxRadius: 10 });
         out.push(entity);
         try { root.EntityGroups?.assign?.(entity); } catch (_) {}
@@ -1928,7 +1782,6 @@
         if (Array.isArray(G.hostiles) && !G.hostiles.includes(entity)) {
           G.hostiles.push(entity);
         }
-        logDebugSpawn(cfg, entry, tx, ty, entity);
       }
     }
     return out;
@@ -2011,12 +1864,10 @@
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true || true;
-        applyVisualResolution(entity, entry, { cfg, allowRig: false });
         if (!entity.group) entity.group = 'object';
         out.push(entity);
         try { root.EntityGroups?.assign?.(entity); } catch (_) {}
         try { root.EntityGroups?.register?.(entity, G); } catch (_) {}
-        logDebugSpawn(cfg, entry, tx, ty, entity);
       }
     }
     return out;
@@ -2046,11 +1897,6 @@
       return (Math.random() * 1e9) | 0;
     }
   }
-
-  // Manual verification notes:
-  // - index.html?map=debug → un solo héroe principal, NPC/enemigos con sprite o fallback cuadrado etiquetado.
-  // - index.html (modo normal) → mismas reglas de spawn/visual para entidades sin rig y cámara estable.
-  // - Sin deformaciones de muñecos y logs de spawn solo al crear entidades (DEBUG).
 
   Placement.applyPlacementsFromMapGen = Placement.applyFromAsciiMap;
 })();
