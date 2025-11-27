@@ -425,11 +425,19 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     return [];
   }
 
+  const ASCII_CHARSET_FALLBACK = { wall: '#', floor: '.', start: 'S' };
+
+  function ensureAsciiCharset(charset){
+    if (!charset || typeof charset !== 'object') return { ...ASCII_CHARSET_FALLBACK };
+    return { ...ASCII_CHARSET_FALLBACK, ...charset };
+  }
+
   function buildCollisionMapFromAscii(lines, charset = {}){
     if (!Array.isArray(lines) || !lines.length) {
       return { map: [[0]], width: 1, height: 1 };
     }
-    const wallChar = charset.wall || '#';
+    const cs = ensureAsciiCharset(charset);
+    const wallChar = cs.wall || '#';
     const width = lines.reduce((max, row) => Math.max(max, row.length), 0);
     const padded = lines.map((row) => row.padEnd(width, wallChar));
     const map = padded.map((row) => {
@@ -482,9 +490,10 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
   async function buildWorldFromAscii(asciiText, options = {}){
     const lines = normalizeAsciiLines(asciiText);
+    const charset = ensureAsciiCharset(options.charset);
     const gridInfo = options.map
       ? { map: options.map, width: options.width || options.map[0]?.length || 0, height: options.height || options.map.length || 0 }
-      : buildCollisionMapFromAscii(lines, options.charset);
+      : buildCollisionMapFromAscii(lines, charset);
 
     // Reset estado base
     G.entities = []; G.movers = []; G.enemies = []; G.npcs = [];
@@ -508,7 +517,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       asciiMap: Array.isArray(lines) ? lines.join('\n') : '',
       placements: options.placements || [],
       areas: options.areas || null,
-      charset: options.charset || null,
+      charset,
       mode: options.mode || 'normal',
       forceAscii: true
     };
