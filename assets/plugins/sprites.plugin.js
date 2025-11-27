@@ -219,27 +219,26 @@
     },
 
     _drawVectorFallback(ctx, e) {
-      const w = (e.w || this._opts.tile || 32);
-      const h = (e.h || Math.max(36, w * 1.4));
+      const tile = (this._opts.tile|0) || 32;
+      const w = (e.w || tile);
+      const h = (e.h || tile);
       const cx = (e.x || 0) + w * 0.5;
       const cy = (e.y || 0) + h * 0.5;
+      const label = (e.fallbackLabel || e.label || e.kindName || e.kind || 'ENT').toString().toUpperCase().slice(0, 4);
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.fillStyle = e.color || '#566074';
+      ctx.fillStyle = e.color || '#3c4a5a';
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(0, -h * 0.25, w * 0.28, h * 0.32, 0, 0, TAU);
+      ctx.rect(-w * 0.5, -h * 0.5, w, h);
       ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-w * 0.26, -h * 0.08);
-      ctx.quadraticCurveTo(0, h * 0.12, w * 0.26, -h * 0.08);
-      ctx.quadraticCurveTo(w * 0.3, h * 0.32, 0, h * 0.4);
-      ctx.quadraticCurveTo(-w * 0.3, h * 0.32, -w * 0.26, -h * 0.08);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = 'rgba(0,0,0,0.22)';
-      ctx.beginPath();
-      ctx.ellipse(0, h * 0.45, w * 0.34, h * 0.18, 0, 0, TAU);
-      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#f0f4ff';
+      ctx.font = `${Math.max(10, Math.floor(h * 0.35))}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, 0, 0);
       ctx.restore();
     },
 
