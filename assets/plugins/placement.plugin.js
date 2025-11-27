@@ -2,6 +2,9 @@
   'use strict';
 
   const root = typeof window !== 'undefined' ? window : globalThis;
+  if (typeof root.ENABLE_COOP === 'undefined') {
+    root.ENABLE_COOP = false;
+  }
   const Placement = root.Placement = root.Placement || {};
   Placement._counts = null;
 

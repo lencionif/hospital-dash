@@ -6,6 +6,9 @@
   'use strict';
 
   const W = window;
+  if (typeof W.ENABLE_COOP === 'undefined') {
+    W.ENABLE_COOP = false;
+  }
   const G = W.G || (W.G = {});
   const ENT = (function () {
     const e = W.ENT || {};
@@ -195,7 +198,7 @@
 
     spawnPlayer(x, y, p = {}) {
       const key = this.resolveKey(p);
-      if (!ENABLE_COOP && G.player) return G.player;
+      if (!W.ENABLE_COOP && G.player) return G.player;
       return createHero({ x, y, heroId: key });
     },
 
