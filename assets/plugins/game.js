@@ -69,22 +69,6 @@
     hearts: { max: 6, halfHearts: true },
   };
 
-  function spawnBossForLevel(level, x, y) {
-    const tier = Number(level) || 1;
-    const bossKind = (tier === 2) ? 'jefa_limpieza'
-      : (tier === 3 ? 'psiquiatrica_pyro' : 'hematologico');
-    const spawnFn = window.Entities?.Boss?.spawnBoss || window.Entities?.Boss?.spawn;
-    if (typeof spawnFn === 'function') {
-      const boss = spawnFn(x, y, { kind: bossKind, tier });
-      if (boss) return boss;
-    }
-    const size = TILE * 1.4;
-    const fallback = makeRect((x||0)-size*0.5, (y||0)-size*0.5, size, size, ENT.BOSS, COLORS.boss, false, true, { mass: 8, rest: 0.1, mu: 0.1 });
-    fallback.label = bossKind;
-    fallback.fallbackVisual = true;
-    return fallback;
-  }
-
   // Estado global visible
   const G = {
     state: 'START', // START | PLAYING | PAUSED | COMPLETE | GAMEOVER
@@ -387,16 +371,10 @@ document.addEventListener('keydown', (e)=>{
     "#............####............#",
     "##############################",
     ];
-  // --- Flags globales de modo mapa ---
-  const rawQuery = String(location.search || '').replace(/^[?]/, '');
-  const normalizedQuery = rawQuery.replace(/;/g, '&');
-  const __qs = new URLSearchParams(normalizedQuery);
-  const MAP_MODE = (__qs.get('map') || '').toLowerCase();
-  const LEVEL_PARAM = (() => {
-    const lvl = parseInt(__qs.get('nivel') || __qs.get('level') || __qs.get('lvl') || '1', 10);
-    return Number.isFinite(lvl) && lvl > 0 ? lvl : 1;
-  })();
-  window.__MAP_MODE = MAP_MODE;                 // para compatibilidad con código viejo
+    // --- Flags globales de modo mapa ---
+    const __qs = new URLSearchParams(location.search);
+    const MAP_MODE = (__qs.get('map') || '').toLowerCase();
+    window.__MAP_MODE = MAP_MODE;                 // para compatibilidad con código viejo
 
     const DEBUG_FORCE_ASCII = (window.DEBUG_FORCE_ASCII === true)
       || MAP_MODE === 'debug'
@@ -410,8 +388,6 @@ document.addEventListener('keydown', (e)=>{
 
     window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
     window.DEBUG_MINIMAP = DEBUG_MINIMAP;
-    window.G = window.G || {};
-    window.G.level = LEVEL_PARAM;
 
     window.G = window.G || {};
     G.flags = G.flags || {};
@@ -667,65 +643,65 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         }
         else if (ch === 'P') {
           // Paciente: placement (NO instanciamos aquí)
-          asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px', char: ch });
+          asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
           // luz clara de sala (igual que antigua)
           G.roomLights.push({ x: wx+TILE/2, y: wy+TILE/2, r: 5.0*TILE, baseA: 0.25 });
         }
         else if (ch === 'I') {
-          asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px', char: ch });
+          asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
         }
         else if (ch === 'C') {
           // Orden debug: 1º ER, 2º MED, 3º+ FOOD
           window.G = window.G || {};
           const n = (G._debugCartCount = (G._debugCartCount|0) + 1);
           const sub = (n === 1) ? 'er' : (n === 2 ? 'med' : 'food');
-          asciiPlacements.push({ type:'cart', sub, x: wx+6, y: wy+8, _units:'px', char: ch });
+          asciiPlacements.push({ type:'cart', sub, x: wx+6, y: wy+8, _units:'px' });
         }
         else if (ch === 'M') {
           // Spawner mosquito: SOLO lo apuntamos (si lo apagas en debug/HTML no romperá)
-          asciiPlacements.push({ type:'spawn_mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'spawn_mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'R') {
-          asciiPlacements.push({ type:'spawn_rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'spawn_rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'D') {
-          asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px', char: ch });
+          asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
         }
         else if (ch === 'X') {
-          asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:(G.level||1), char: ch });
+          asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
         }
         else if (ch === 'L') {
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'm') { // enemigo directo: mosquito
-          asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'r') { // enemigo directo: rata
-          asciiPlacements.push({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'E') { // ascensor activo
-          asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px', char: ch });
+          asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
         }
         else if (ch === 'H') { // NPC: médico
-          asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'U') { // NPC: supervisora
-          asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'T') { // NPC: tcae
-          asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'G') { // NPC: guardia
-          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'F') { // NPC: familiar molesto
-          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'N') { // NPC: enfermera sexy
-          asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         else if (ch === 'L') { // luz de sala
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px', char: ch });
+          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
         }
         // Si añades más letras ASCII, convierte aquí a placements (en píxeles).
       }
@@ -1591,9 +1567,6 @@ function drawEntities(c2){
       const T = (window.TILE_SIZE || 32);
       for (const p of G.mapgenPlacements) {
         if (!p || !p.type) continue;
-        try {
-          console.info('[SPAWN]', p.type, 'from', p.char || '?', 'tile', Math.round((p.x||0)/T), Math.round((p.y||0)/T));
-        } catch(_){}
 
         if (p.type === 'patient') {
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.PATIENT, '#ffd166', false, true);
@@ -1612,7 +1585,7 @@ function drawEntities(c2){
           G.entities.push(e); G.door = e;
         }
         else if (p.type === 'boss') {
-          const e = spawnBossForLevel(p.tier || G.level || 1, p.x|0, p.y|0) || makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
+          const e = makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
           G.entities.push(e); G.boss = e;
         }
         else if (p.type === 'cart') {
@@ -1623,7 +1596,7 @@ function drawEntities(c2){
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
   }
 
-  async function loadDebugAsciiMap(){
+  function loadDebugAsciiMap(){
     if (Array.isArray(window.DEBUG_ASCII_MAP) && window.DEBUG_ASCII_MAP.length) {
       return window.DEBUG_ASCII_MAP.map(String);
     }
@@ -1634,31 +1607,13 @@ function drawEntities(c2){
     if (window.__MAP_MODE === 'mini') {
       return DEBUG_ASCII_MINI.slice();
     }
-    try {
-      const resp = await fetch('assets/config/debug-map.txt');
-      if (resp.ok) {
-        const txt = await resp.text();
-        const rows = txt.replace(/\r/g,'').trim().split('\n');
-        return rows;
-      }
-    } catch (e) { console.warn('loadDebugAsciiMap failed', e); }
     return null;
   }
 
-  async function buildLevelForCurrentMode(){
+  function buildLevelForCurrentMode(){
     const mode = (window.__MAP_MODE || 'normal').toLowerCase();
     const seed = G.seed || Date.now();
     let ascii = null;
-    let xmlRules = null;
-    if (mode === 'normal' && typeof window.XMLRules?.load === 'function') {
-      try {
-        xmlRules = await XMLRules.load(G.level || 1);
-        const globals = xmlRules.globals || {};
-        const levelCfg = xmlRules.level || {};
-        G.visibleTilesRadius = Number(levelCfg.visibleTilesRadius || globals.visibleTilesRadius || globals.culling || 0) || G.visibleTilesRadius;
-        G.cullingRadius = Number(globals.culling || levelCfg.culling || G.visibleTilesRadius || 0) || 0;
-      } catch (e) { console.warn('XMLRules.load failed', e); }
-    }
 
     if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
       try {
@@ -1680,10 +1635,8 @@ function drawEntities(c2){
             seed,
             place: false,
             defs: null,
-            width:  xmlRules?.level?.width || (window.DEBUG_MINIMAP ? 128 : undefined),
-            height: xmlRules?.level?.height || (window.DEBUG_MINIMAP ? 128 : undefined),
-            rules: xmlRules,
-            density: xmlRules?.level?.rooms ? { rooms: xmlRules.level.rooms } : undefined
+            width:  window.DEBUG_MINIMAP ? 128 : undefined,
+            height: window.DEBUG_MINIMAP ? 128 : undefined
           });
           if (res && res.ascii) {
             ascii = String(res.ascii).trim().split('\n');
@@ -1696,7 +1649,7 @@ function drawEntities(c2){
     }
 
     if (!ascii && (mode === 'debug' || mode === 'ascii')) {
-      ascii = await loadDebugAsciiMap();
+      ascii = loadDebugAsciiMap();
       if (ascii && ascii.length) {
         console.log('%cMAP_MODE','color:#0bf', mode || 'debug', '→ ASCII');
       }
@@ -1729,7 +1682,7 @@ function drawEntities(c2){
   // ------------------------------------------------------------
   // Control de estado
   // ------------------------------------------------------------
-  async function startGame(){
+  function startGame(){
     G.state = 'PLAYING';
     // si hay minimapa de debug, muéstralo ahora (no en el menú)
     window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
@@ -1752,7 +1705,7 @@ function drawEntities(c2){
     G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
     G.flags.DEBUG_MINIMAP = DEBUG_MINIMAP;
 
-    await buildLevelForCurrentMode();
+    buildLevelForCurrentMode();
 
       // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
       if (window.PuppetAPI && G.player){

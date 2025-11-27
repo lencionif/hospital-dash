@@ -50,9 +50,3 @@ El parámetro `map=debug` activa el flujo de victoria completo: entrega la pasti
 
 - `d`: puerta normal.
 - `u`: puerta de urgencias / boss (se abre al atender a todos los pacientes).
-
-### Pruebas rápidas (internas)
-
-- `index.html?map=debug` carga `assets/config/debug-map.txt`, genera héroe/boss/NPCs desde ASCII y muestra logs de spawn únicos.
-- `index.html?map=debug;nivel=1/2/3` reutiliza el mapa de debug pero cambia el boss según el nivel.
-- `index.html` sin parámetros usa `level_rules.xml` + `mapgen.plugin.js` para generar el hospital procedural y pasar por el mismo pipeline de colocación.

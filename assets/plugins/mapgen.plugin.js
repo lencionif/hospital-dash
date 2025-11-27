@@ -1111,9 +1111,8 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     const rng  = RNG(seed);
 
     // Tamaño
-    const ruleLevel = options.rules?.level || {};
-    const Wd = clamp((options.w|0) || (ruleLevel.width|0) || BASE*lvl, 40, BASE*3);
-    const Hd = clamp((options.h|0) || (ruleLevel.height|0) || BASE*lvl, 40, BASE*3);
+    const Wd = clamp(options.w|0 || BASE*lvl, 40, BASE*3);
+    const Hd = clamp(options.h|0 || BASE*lvl, 40, BASE*3);
 
     // Grid: 1 muro, 0 suelo
     const map = Array.from({length:Hd},()=>Array(Wd).fill(1));
@@ -1121,11 +1120,12 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
 
     // Densidades por nivel
     const dens = {
-      rooms: options.density?.rooms ?? ruleLevel.rooms ?? LAYERS[lvl].rooms,
+      rooms: options.density?.rooms ?? LAYERS[lvl].rooms,
       lights: options.density?.lights ?? LAYERS[lvl].lights,
       worms: options.density?.worms ?? LAYERS[lvl].worms,
       extraLoops: options.density?.extraLoops ?? LAYERS[lvl].extraLoops,
     };
+    dens.rooms = 35; // fuerza 35 habitaciones
     // 1) Sala de Control (cerca del centro, con jitter) + tallado
     const ctrl = carveRoomAtCenterish(rng, map, Wd, Hd, { tag:'control' });
     rooms.push(ctrl);
