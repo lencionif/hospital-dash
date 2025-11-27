@@ -409,10 +409,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     const requested = (qs.get('map') || '').toLowerCase();
     const mode = requested || 'normal';
     window.__MAP_MODE = mode;
-    window.DEBUG_FORCE_ASCII = true; // siempre trabajamos vía ASCII
+    const asciiMode = (mode === 'debug' || mode === 'mini' || mode === 'ascii');
+    window.DEBUG_FORCE_ASCII = asciiMode; // en debug/mini forzamos pipeline ASCII
     window.DEBUG_MINIMAP = window.DEBUG_MINIMAP || (qs.get('mini') === '1' || qs.get('mini') === 'true');
     G.flags = G.flags || {};
-    G.flags.DEBUG_FORCE_ASCII = true;
+    G.flags.DEBUG_FORCE_ASCII = asciiMode;
     G.flags.DEBUG_MINIMAP = window.DEBUG_MINIMAP;
     return mode;
   }
@@ -425,11 +426,127 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     return [];
   }
 
+  function normalizeAsciiGrid(asciiText){
+    const rows = normalizeAsciiLines(asciiText);
+    if (!rows.length) return { lines: [], width: 0, height: 0 };
+
+    // elimina líneas vacías al inicio/fin sin tocar el layout interior
+    while (rows.length && rows[0].trim() === '') rows.shift();
+    while (rows.length && rows[rows.length - 1].trim() === '') rows.pop();
+
+    const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    const padded = rows.map((row) => row.padEnd(width, ' '));
+    return { lines: padded, width, height: padded.length };
+  }
+
   const ASCII_CHARSET_FALLBACK = { wall: '#', floor: '.', start: 'S' };
 
   function ensureAsciiCharset(charset){
     if (!charset || typeof charset !== 'object') return { ...ASCII_CHARSET_FALLBACK };
     return { ...ASCII_CHARSET_FALLBACK, ...charset };
+  }
+
+  function buildPlacementsFromAscii(lines){
+    const placements = [];
+    if (!Array.isArray(lines)) return placements;
+
+    let cartCount = 0;
+
+    for (let ty = 0; ty < lines.length; ty++) {
+      const row = lines[ty] || '';
+      for (let tx = 0; tx < row.length; tx++) {
+        const ch = row[tx];
+        if (!ch || ch === ' ' || ch === '#' || ch === '.') continue;
+        switch (ch) {
+          case 'S':
+            placements.push({ type: 'hero', tx, ty, char: ch });
+            break;
+          case 'X':
+            placements.push({ type: 'boss', tx, ty, char: ch });
+            break;
+          case 'P':
+          case 'p':
+            placements.push({ type: 'patient', tx, ty, char: ch });
+            break;
+          case 'I':
+          case 'i':
+            placements.push({ type: 'pill', tx, ty, char: ch });
+            break;
+          case 'b':
+          case 'B':
+            placements.push({ type: 'bell', tx, ty, char: ch });
+            break;
+          case 'D':
+            placements.push({ type: 'boss_door', tx, ty, char: ch, locked: true });
+            break;
+          case 'd':
+            placements.push({ type: 'door', tx, ty, char: ch, locked: false });
+            break;
+          case 'u':
+            placements.push({ type: 'boss_door', tx, ty, char: ch, locked: true });
+            break;
+          case 'C':
+          case 'c': {
+            cartCount += 1;
+            const sub = cartCount === 1 ? 'er' : (cartCount === 2 ? 'med' : 'food');
+            placements.push({ type: 'cart', tx, ty, sub, char: ch });
+            break;
+          }
+          case 'M':
+            placements.push({ type: 'spawner', sub: 'mosquito', tx, ty, char: ch });
+            break;
+          case 'R':
+            placements.push({ type: 'spawner', sub: 'rat', tx, ty, char: ch });
+            break;
+          case 'm':
+            placements.push({ type: 'enemy', sub: 'mosquito', tx, ty, char: ch });
+            break;
+          case 'r':
+            placements.push({ type: 'enemy', sub: 'rat', tx, ty, char: ch });
+            break;
+          case 'E':
+            placements.push({ type: 'elevator', tx, ty, char: ch, active: true });
+            break;
+          case 'e':
+            placements.push({ type: 'elevator', tx, ty, char: ch, active: false });
+            break;
+          case 'L':
+            placements.push({ type: 'light', tx, ty, char: ch, broken: false });
+            break;
+          case 'l':
+            placements.push({ type: 'light', tx, ty, char: ch, broken: true });
+            break;
+          case 'H':
+            placements.push({ type: 'npc', sub: 'medico', tx, ty, char: ch });
+            break;
+          case 'U':
+            placements.push({ type: 'npc_unique', sub: 'supervisora', tx, ty, char: ch });
+            break;
+          case 'T':
+            placements.push({ type: 'npc', sub: 'tcae', tx, ty, char: ch });
+            break;
+          case 'G':
+            placements.push({ type: 'npc', sub: 'guardia', tx, ty, char: ch });
+            break;
+          case 'F':
+            placements.push({ type: 'npc', sub: 'familiar', tx, ty, char: ch });
+            break;
+          case 'N':
+            placements.push({ type: 'npc', sub: 'enfermera_sexy', tx, ty, char: ch });
+            break;
+          case 'A':
+            placements.push({ type: 'npc', sub: 'celador', tx, ty, char: ch });
+            break;
+          case '+':
+            placements.push({ type: 'bed', tx, ty, char: ch });
+            break;
+          default:
+            break;
+        }
+      }
+    }
+
+    return placements;
   }
 
   function buildCollisionMapFromAscii(lines, charset = {}){
@@ -439,11 +556,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     const cs = ensureAsciiCharset(charset);
     const wallChar = cs.wall || '#';
     const width = lines.reduce((max, row) => Math.max(max, row.length), 0);
-    const padded = lines.map((row) => row.padEnd(width, wallChar));
+    const padded = lines.map((row) => row.padEnd(width, ' '));
     const map = padded.map((row) => {
       const cells = [];
       for (let i = 0; i < row.length; i++) {
-        cells.push(row[i] === wallChar ? 1 : 0);
+        const ch = row[i];
+        if (ch === wallChar || ch === ' ') cells.push(1); else cells.push(0);
       }
       return cells;
     });
@@ -489,7 +607,8 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   }
 
   async function buildWorldFromAscii(asciiText, options = {}){
-    const lines = normalizeAsciiLines(asciiText);
+    const normalized = normalizeAsciiGrid(asciiText);
+    const lines = normalized.lines;
     const charset = ensureAsciiCharset(options.charset);
     const gridInfo = options.map
       ? { map: options.map, width: options.width || options.map[0]?.length || 0, height: options.height || options.map.length || 0 }
@@ -1741,9 +1860,14 @@ function drawEntities(c2){
     const resolved = await resolveAsciiForMode(mode);
     const asciiText = resolved?.asciiText || DEFAULT_ASCII_MAP.join('\n');
 
-    ASCII_MAP = normalizeAsciiLines(asciiText);
-    await buildWorldFromAscii(asciiText, {
-      placements: resolved?.placements || [],
+    const normalized = normalizeAsciiGrid(asciiText);
+    ASCII_MAP = normalized.lines;
+    const placements = (mode === 'debug')
+      ? buildPlacementsFromAscii(normalized.lines)
+      : (resolved?.placements || []);
+
+    await buildWorldFromAscii(normalized.lines.join('\n'), {
+      placements,
       areas: resolved?.areas || null,
       map: resolved?.map || null,
       width: resolved?.width || null,
@@ -1932,6 +2056,12 @@ function drawEntities(c2){
   window.camera = camera;
   window.damagePlayer = damagePlayer; // ⬅️ EXponer daño del héroe para las ratas
   })();
+// --- Notas rápidas de verificación modo DEBUG ---
+// - index.html?map=debug carga assets/config/debug-map.txt normalizado y sin usar mapgen.
+// - Sólo se spawnea un héroe en la casilla 'S' y el resto de entidades vienen del ASCII.
+// - Sin héroe fantasma: ENABLE_COOP permanece en false y no hay spawns automáticos extra.
+// - Consola: una línea [DEBUG MAP] por entidad inicial, sin spam por frame.
+// - Cámara/minimapa/culling operan igual que en modo normal (mismo radio de tiles).
 // ==== DEBUG MINI-MAP OVERLAY =================================================
 (function(){
   // Actívalo con ?mini=1 o definiendo window.DEBUG_MINIMAP = true en consola
