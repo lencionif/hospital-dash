@@ -52,10 +52,12 @@
     : (fn) => setTimeout(fn, 16);
 
   function readSelectedHeroId(){
-    if (typeof document === 'undefined') return window.START_HERO_ID || 'enrique';
+    if (typeof document === 'undefined') return window.SELECTED_HERO_ID || window.START_HERO_ID || 'enrique';
     const selectedCard = document.querySelector('.char-card.selected');
     const heroId = selectedCard ? selectedCard.getAttribute('data-hero') : null;
-    return (heroId || window.START_HERO_ID || 'enrique').toLowerCase();
+    const key = (heroId || window.SELECTED_HERO_ID || window.START_HERO_ID || 'enrique').toLowerCase();
+    window.SELECTED_HERO_ID = key;
+    return key;
   }
 
   function ensureReadyOverlay(){
