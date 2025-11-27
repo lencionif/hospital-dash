@@ -35,6 +35,7 @@
     G.__placementsApplied = true;
     G._lastLevelCfg = cfg;
     Placement._counts = {};
+    const debugMode = isDebugMode(cfg);
 
     const add = (entity) => {
       if (!entity) return;
@@ -63,12 +64,11 @@
     hero.rigOk = true;
     add(hero);
     G.player = hero;
-
-    const patientSpots = listPatientSpots(cfg, G);
-    if (cfg?.mode === 'debug' && patientSpots.length === 0) {
-      patientSpots.push({ tx: heroPos.tx + 4, ty: heroPos.ty });
+    if (hero && debugMode) {
+      logDebugSpawn(cfg, { type: 'hero', char: 'S' }, heroPos.tx, heroPos.ty, hero);
     }
 
+    const patientSpots = listPatientSpots(cfg, G);
     for (const spot of patientSpots) {
       const patient = spawnPatient(spot.tx, spot.ty, { name: genFunnyName() }, cfg, G);
       if (!patient) continue;
@@ -82,9 +82,12 @@
         add(pill);
         if (!G.pills.includes(pill)) G.pills.push(pill);
       }
+      if (patient && debugMode) logDebugSpawn(cfg, { type: 'patient', char: spot.char || 'P' }, spot.tx, spot.ty, patient);
+      if (pill && debugMode) logDebugSpawn(cfg, { type: 'pill', char: 'I' }, spot.tx + 1, spot.ty, pill);
       const bell = spawnBellForPatient(patient, null, null, cfg, G);
       if (bell) {
         add(bell);
+        if (debugMode) logDebugSpawn(cfg, { type: 'bell', char: 'b' }, bell.tx ?? spot.tx, bell.ty ?? spot.ty, bell);
       }
       const counters = (typeof root.patientsSnapshot === 'function') ? root.patientsSnapshot() : null;
       if (counters) {
@@ -863,6 +866,20 @@
     return 'UNKNOWN';
   }
 
+  function isDebugMode(cfg){
+    const mode = String(cfg?.mode || root.MapGen?.MAP_MODE || root.__MAP_MODE || '').toLowerCase();
+    return mode === 'debug';
+  }
+
+  function logDebugSpawn(cfg, entry, tx, ty, entity){
+    if (!isDebugMode(cfg)) return;
+    const tag = resolveKind(entity || entry || {}) || (entry?.type || 'entity');
+    const char = entry?.char || entry?.legacy || entry?.type || '?';
+    try {
+      console.log(`[DEBUG MAP] spawn ${String(tag).toLowerCase()} '${char}' en (${tx},${ty})`);
+    } catch (_) {}
+  }
+
   function getPlacements(cfg){
     if (Array.isArray(cfg?.placements) && cfg.placements.length) return cfg.placements;
     if (Array.isArray(cfg?.G?.mapgenPlacements) && cfg.G.mapgenPlacements.length) {
@@ -963,7 +980,7 @@
     for (const entry of placements) {
       const type = String(entry?.type || '').toLowerCase();
       if (type === 'patient') {
-        spots.push(normalizePlacementToTile(entry, cfg));
+        spots.push({ ...normalizePlacementToTile(entry, cfg), char: entry?.char || entry?.legacy || 'P' });
       }
     }
     if (spots.length) return spots;
@@ -974,7 +991,7 @@
         for (let tx = 0; tx < row.length; tx++) {
           const c = row[tx];
           if (c === 'p' || c === 'P') {
-            spots.push({ tx, ty });
+            spots.push({ tx, ty, char: c });
           }
         }
       }
@@ -1572,6 +1589,7 @@
       out.push(npc);
       try { root.EntityGroups?.assign?.(npc); } catch (_) {}
       try { root.EntityGroups?.register?.(npc, G); } catch (_) {}
+      logDebugSpawn(cfg, entry, tx, ty, npc);
     }
     return out;
   }
@@ -1782,6 +1800,7 @@
         if (Array.isArray(G.hostiles) && !G.hostiles.includes(entity)) {
           G.hostiles.push(entity);
         }
+        logDebugSpawn(cfg, entry, tx, ty, entity);
       }
     }
     return out;
@@ -1868,6 +1887,7 @@
         out.push(entity);
         try { root.EntityGroups?.assign?.(entity); } catch (_) {}
         try { root.EntityGroups?.register?.(entity, G); } catch (_) {}
+        logDebugSpawn(cfg, entry, tx, ty, entity);
       }
     }
     return out;
