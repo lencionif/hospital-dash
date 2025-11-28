@@ -15,11 +15,13 @@
 //
 // API:
 //   MapGenAPI.init(G?)                          // opcional, referenciar G (si quieres)
-//   MapGenAPI.generate(level, options?) -> {…}  // ver options más abajo
+//   MapGenAPI.generate(options) -> {…}          // ver options más abajo
 //
 // options (todas opcionales):
-//   seed: number|string                 // RNG determinista
-//   w,h: number                         // forzar tamaño (sino usa nivel)
+//   levelId: number|string              // id de nivel (por defecto 1)
+//   levelConfig: object                 // configuración completa desde level_rules.xml
+//   rngSeed/seed: number|string         // RNG determinista
+//   w,h,width,height: number            // forzar tamaño (sino usa nivel)
 //   defs: object                        // override de detección de entidades
 //   charset: object                     // override de caracteres ASCII
 //   density: { rooms, lights, worms }   // tuning fino por tamaño
@@ -64,12 +66,20 @@
 
   const _levelRulesCache = new Map();
 
-  async function getLevelRules(levelId) {
+  async function getLevelRules(levelId, mode = 'normal') {
     const id = String(levelId || '1');
     if (_levelRulesCache.has(id)) return _levelRulesCache.get(id);
 
     let parsed = null;
-    if (typeof W.XMLRules?.load === 'function') {
+    if (typeof W.LevelRulesAPI?.getLevelConfig === 'function') {
+      try {
+        parsed = await W.LevelRulesAPI.getLevelConfig(id, mode);
+      } catch (err) {
+        try { console.warn('[MapGen] getLevelRules LevelRulesAPI fallback', err); } catch (_) {}
+      }
+    }
+
+    if (!parsed && typeof W.XMLRules?.load === 'function') {
       try {
         const data = await W.XMLRules.load(id);
         const { globals = {}, level = {}, rules = [], config = null } = data || {};
@@ -81,6 +91,7 @@
             : 20;
         parsed = {
           ...base,
+          mode,
           rules: base.rules || rules,
           cooling,
           culling: Number.isFinite(base.culling) ? base.culling : Number(globals.culling) || 20
@@ -93,6 +104,8 @@
     if (!parsed) {
       const lvlNum = parseInt(id, 10) || 1;
       parsed = {
+        id,
+        mode,
         width: BASE * lvlNum,
         height: BASE * lvlNum,
         rooms: (LAYERS[lvlNum]?.rooms / 4) | 0 || 8,
@@ -1202,20 +1215,30 @@ function asciiToNumeric(A){
   // GENERATE (núcleo principal)
   // ─────────────────────────────────────────
 
-  async function generate(level=1, options={}){
+  async function generate(levelOrOptions = 1, legacyOptions = {}){
     if (MAP_MODE === 'legend') {
-      return generateLegendPreset(options);
+      return generateLegendPreset(typeof levelOrOptions === 'object' ? levelOrOptions : legacyOptions);
     }
 
-    const lvl = clamp(level|0 || 1, 1, 3);
-    const levelRules = await getLevelRules(lvl);
+    const isLegacyCall = Number.isFinite(levelOrOptions) && typeof legacyOptions === 'object';
+    const options = isLegacyCall ? { ...legacyOptions, levelId: levelOrOptions } : (levelOrOptions || {});
+
+    const levelId = clamp(options.levelId ?? options.level ?? (isLegacyCall ? levelOrOptions : 1), 1, 3);
+    const mode = (options.mode || MAP_MODE || 'normal').toLowerCase();
+    let levelConfig = options.levelConfig || null;
+    if (!levelConfig) {
+      levelConfig = await getLevelRules(levelId, mode);
+    }
+    if (!levelConfig) {
+      throw new Error('[MapGenAPI] missing levelConfig');
+    }
+
     const cs   = { ...CHARSET_DEFAULT, ...(options.charset||{}) };
-    const seed = options.seed ?? (W.G?.seed ?? (Date.now()>>>0));
+    const seed = options.rngSeed ?? options.seed ?? (W.G?.seed ?? (Date.now()>>>0));
     const rng  = RNG(seed);
 
-    const config = levelRules || {};
-    const width  = clamp(options.w|0 || config.width || BASE*lvl, 20, BASE*3);
-    const height = clamp(options.h|0 || config.height || BASE*lvl, 20, BASE*3);
+    const width  = clamp(options.width ?? options.w ?? levelConfig.width || BASE*levelId, 20, BASE*3);
+    const height = clamp(options.height ?? options.h ?? levelConfig.height || BASE*levelId, 20, BASE*3);
 
     if (MAP_MODE === 'debug' || MAP_MODE === 'ascii') {
       return generateLegendPreset({ ...options, seed });
@@ -1224,7 +1247,7 @@ function asciiToNumeric(A){
     const asciiRows = generateNormalLayout({
       width,
       height,
-      levelConfig: config,
+      levelConfig,
       rng,
       charset: cs
     });
@@ -1242,7 +1265,7 @@ function asciiToNumeric(A){
       }
     }
     const floorPercent = totalTiles > 0 ? (walkableTiles / totalTiles) * 100 : 0;
-    const roomsRequested = Number.isFinite(config.rooms) ? config.rooms : (asciiRows._roomsRequested ?? allRooms.length);
+    const roomsRequested = Number.isFinite(levelConfig.rooms) ? levelConfig.rooms : (asciiRows._roomsRequested ?? allRooms.length);
     const roomsGenerated = Array.isArray(allRooms) ? allRooms.length : 0;
     const corridorsBuilt = Number(asciiRows._corridors || 0);
 
@@ -1260,20 +1283,21 @@ function asciiToNumeric(A){
       reachable: reachGrid,
       charset: cs,
       seed,
-      level: lvl,
+      level: levelId,
       width,
       height,
-      levelRules: config,
+      levelRules: levelConfig,
       meta: {
         seed,
         width,
         height,
         roomsCount: roomsGenerated,
         corridorWidth: asciiRows._corridorWidth,
+        corridorWidthUsed: asciiRows._corridorWidth,
         corridorWidthMin: levelConfig.corridorWidthMin,
         corridorWidthMax: levelConfig.corridorWidthMax,
-        cooling: config.cooling ?? 20,
-        culling: config.culling,
+        cooling: levelConfig.cooling ?? 20,
+        culling: levelConfig.culling,
         allRoomsReachable: allReachable,
         bossReachable,
         roomsRequested,
@@ -1281,7 +1305,8 @@ function asciiToNumeric(A){
         corridorsBuilt,
         totalTiles,
         walkableTiles,
-        floorPercent
+        floorPercent,
+        mode
       }
     };
 
@@ -1292,8 +1317,11 @@ function asciiToNumeric(A){
       G.mapAscii = asciiRows;
       G.mapRooms = allRooms;
       G.mapAreas = result.areas;
-      G.levelRules = config;
+      G.levelRules = levelConfig;
       G.levelMeta = result.meta;
+      if (typeof W.LevelRulesAPI === 'object') {
+        W.LevelRulesAPI.current = levelConfig;
+      }
     } catch (_) {}
 
     return result;
@@ -1646,10 +1674,7 @@ function asciiToNumeric(A){
       return ascii;
     }
 
-    const fallback = create2DArray(height, width, cs.wall);
-    fallback._rooms = [];
-    fallback._corridorWidth = corridorWidth;
-    return fallback;
+    throw new Error('[MapGenAPI] failed to generate map for level ' + (levelConfig?.id || '?'));
   }
 
   function carveRoomAtCenterish(rng, map, Wd, Hd, meta={}){

@@ -143,7 +143,8 @@
       generation,
       roomsRequested,
       roomsGenerated,
-      floorPercent
+      floorPercent,
+      meta_extra: meta.meta_extra || meta.metaExtra || null
     };
 
     const lines = [];
@@ -161,6 +162,10 @@
     lines.push(JSON.stringify(meta.rules || [], null, 2));
     lines.push('[generation]');
     lines.push(JSON.stringify(generation, null, 2));
+    if (meta.meta_extra || meta.metaExtra) {
+      lines.push('[meta_extra]');
+      lines.push(JSON.stringify(meta.meta_extra || meta.metaExtra, null, 2));
+    }
     lines.push('');
 
     for (let i = 0; i < asciiRows.length; i++) {
@@ -1703,9 +1708,12 @@ function drawEntities(c2){
   async function buildLevelForCurrentMode(){
     const mode = (window.__MAP_MODE || 'normal').toLowerCase();
     const seed = G.seed || Date.now();
+    const levelId = G.level || 1;
     let ascii = null;
     let levelRules = null;
     let generationMeta = null;
+    let levelConfig = null;
+    let mapgenResult = null;
 
     if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
       try {
@@ -1715,21 +1723,33 @@ function drawEntities(c2){
       } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
 
       try {
+        if (typeof window.LevelRulesAPI?.getLevelConfig === 'function') {
+          levelConfig = await window.LevelRulesAPI.getLevelConfig(levelId, 'normal');
+        }
+      } catch (e) { console.warn('[LevelRulesAPI] load falló:', e); }
+
+      try {
         if (window.MapGenAPI && typeof MapGenAPI.generate === 'function') {
-          const res = MapGenAPI.generate(G.level || 1, {
-            seed,
+          const res = MapGenAPI.generate({
+            levelId,
+            levelConfig,
+            rngSeed: seed,
             place: false,
             defs: null,
             width:  window.DEBUG_MINIMAP ? 128 : undefined,
-            height: window.DEBUG_MINIMAP ? 128 : undefined
+            height: window.DEBUG_MINIMAP ? 128 : undefined,
+            mode: 'normal'
           });
           const resolved = await res;
           if (resolved && resolved.ascii) {
             ascii = String(resolved.ascii).trim().split('\n');
             G.mapgenPlacements = resolved.placements || [];
             G.mapAreas = resolved.areas || null;
-            levelRules = resolved.levelRules || null;
+            levelRules = resolved.levelRules || levelConfig || null;
             generationMeta = resolved.meta || null;
+            mapgenResult = resolved;
+            window.HD_LEVEL_CONFIG = levelRules;
+            G.levelConfig = levelRules;
             console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
           }
         }
@@ -1757,16 +1777,28 @@ function drawEntities(c2){
         const levelMeta = levelRules ? { ...levelRules } : null;
         if (levelMeta && levelMeta.globals) delete levelMeta.globals;
         const generation = {
-          ...(generationMeta || {}),
           roomsRequested: generationMeta?.roomsRequested ?? levelRules?.rooms,
-          roomsGenerated: generationMeta?.roomsGenerated ?? generationMeta?.roomsCount,
+          roomsGenerated: generationMeta?.roomsGenerated ?? generationMeta?.roomsCount ?? mapgenResult?.rooms?.length,
+          corridorWidthUsed: generationMeta?.corridorWidthUsed ?? generationMeta?.corridorWidth ?? generationMeta?._corridorWidth,
           corridorWidthMin: generationMeta?.corridorWidthMin ?? levelRules?.corridorWidthMin,
           corridorWidthMax: generationMeta?.corridorWidthMax ?? levelRules?.corridorWidthMax,
-          corridorWidth: generationMeta?.corridorWidth ?? generationMeta?.corridorWidthUsed,
           culling: generationMeta?.culling ?? levelRules?.culling ?? globalsMeta?.culling,
           cooling: generationMeta?.cooling ?? levelRules?.cooling ?? globalsMeta?.cooling,
           bossReachable: generationMeta?.bossReachable,
-          allRoomsReachable: generationMeta?.allRoomsReachable
+          allRoomsReachable: generationMeta?.allRoomsReachable,
+          floorPercent: generationMeta?.floorPercent,
+          walkableTiles: generationMeta?.walkableTiles,
+          totalTiles: generationMeta?.totalTiles,
+          numCorridors: generationMeta?.corridorsBuilt ?? generationMeta?.numCorridors
+        };
+        const metaExtra = {
+          levelId: levelRules?.id ?? levelRules?.level ?? levelId ?? 1,
+          mode: 'normal',
+          width,
+          height,
+          seed: levelRules?.seed ?? seed ?? G.seed,
+          floorPercent: generationMeta?.floorPercent,
+          corridorWidthUsed: generation.corridorWidthUsed
         };
         const meta = {
           levelId: levelRules?.id ?? levelRules?.level ?? G.level ?? 1,
@@ -1782,7 +1814,8 @@ function drawEntities(c2){
           globals: globalsMeta,
           level: levelMeta,
           rules: levelRules?.rules || [],
-          generation
+          generation,
+          meta_extra: metaExtra
         };
 
         const dump = DebugMapExport.buildAsciiDump({
