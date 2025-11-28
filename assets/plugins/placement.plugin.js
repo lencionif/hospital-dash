@@ -920,6 +920,10 @@
       .map((row) => row.trimEnd());
   }
 
+  function legendDef(ch){
+    return (root.AsciiLegend && root.AsciiLegend[ch]) || null;
+  }
+
   function findHeroPosFromAsciiOrCenter(cfg, G){
     const placements = getPlacements(cfg);
     const byType = placements.find((p) => {
@@ -934,10 +938,10 @@
     if (rows) {
       for (let ty = 0; ty < rows.length; ty++) {
         const row = rows[ty];
-        let idx = row.indexOf('S');
-        if (idx >= 0) return { tx: idx, ty };
-        idx = row.indexOf('s');
-        if (idx >= 0) return { tx: idx, ty };
+        for (let tx = 0; tx < row.length; tx++) {
+          const def = legendDef(row[tx]);
+          if (def && def.key === 'hero_spawn') return { tx, ty };
+        }
       }
     }
 
@@ -972,8 +976,8 @@
       for (let ty = 0; ty < rows.length; ty++) {
         const row = rows[ty];
         for (let tx = 0; tx < row.length; tx++) {
-          const c = row[tx];
-          if (c === 'p' || c === 'P') {
+          const def = legendDef(row[tx]);
+          if (def?.isPatient) {
             spots.push({ tx, ty });
           }
         }
@@ -1416,7 +1420,7 @@
         rigOk: false
       };
     if (hero && !hero.rigOk) hero.rigOk = true;
-    placeEntitySafely(hero, G, tx, ty, { char: 'S', maxRadius: 12 });
+    placeEntitySafely(hero, G, tx, ty, { char: root.PlacementAPI?.getCharForKey?.('hero_spawn', 'S'), maxRadius: 12 });
     G.player = hero;
     return hero;
   }
