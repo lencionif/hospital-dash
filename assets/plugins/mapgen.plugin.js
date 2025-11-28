@@ -1157,240 +1157,291 @@ function asciiToNumeric(A){
   // ─────────────────────────────────────────
   // GENERATE (núcleo principal)
   // ─────────────────────────────────────────
+
   async function generate(level=1, options={}){
     if (MAP_MODE === 'legend') {
       return generateLegendPreset(options);
     }
-    // salidas básicas para el motor (ASCII + placements)
-    const placements = [];
+
     const lvl = clamp(level|0 || 1, 1, 3);
     const levelRules = await getLevelRules(lvl);
-    const defs = options.defs || detectDefs();
     const cs   = { ...CHARSET_DEFAULT, ...(options.charset||{}) };
     const seed = options.seed ?? (W.G?.seed ?? (Date.now()>>>0));
     const rng  = RNG(seed);
 
-    // Tamaño
-    const Wd = clamp(options.w|0 || levelRules.width || BASE*lvl, 40, BASE*3);
-    const Hd = clamp(options.h|0 || levelRules.height || BASE*lvl, 40, BASE*3);
+    const config = levelRules || {};
+    const width  = clamp(options.w|0 || config.width || BASE*lvl, 20, BASE*3);
+    const height = clamp(options.h|0 || config.height || BASE*lvl, 20, BASE*3);
 
-    // Grid: 1 muro, 0 suelo
-    const map = Array.from({length:Hd},()=>Array(Wd).fill(1));
-    const rooms=[];
-
-    // Densidades por nivel
-    const dens = {
-      rooms: options.density?.rooms ?? (levelRules.rooms || LAYERS[lvl].rooms),
-      lights: options.density?.lights ?? LAYERS[lvl].lights,
-      worms: options.density?.worms ?? LAYERS[lvl].worms,
-      extraLoops: options.density?.extraLoops ?? LAYERS[lvl].extraLoops,
-    };
-
-    if (levelRules.rules) {
-      try {
-        placements.push({ type: 'level_rules', data: { rules: levelRules.rules } });
-      } catch (_) {}
-    }
-    // 1) Sala de Control (cerca del centro, con jitter) + tallado
-    const ctrl = carveRoomAtCenterish(rng, map, Wd, Hd, { tag:'control' });
-    rooms.push(ctrl);
-
-    // 2) Habitaciones aleatorias (sin solaparse, con padding) y carving
-    attemptRooms(rng, map, rooms, dens.rooms);
-
-    // 3) Corredores MST + algunos loops extra
-    connectRoomsWithCorridors(rng, map, rooms, dens.extraLoops);
-
-    // 4) Cul-de-sacs (gusanos/ruido) → nunca dentro de habitaciones
-    //const wormsCount = Math.floor((Wd*Hd)/3000 * dens.worms * 10);
-    const wormsCount = 0;
-    sprinkleWorms(rng, map, wormsCount, rooms);
-
-    // 4.5) Engordar SOLO corredores a ≥ 3 tiles (habitaciones intactas)
-    thickenCorridors(map, 3, rooms);   // limita pasillos a 3 tiles máximo
-
-    // 4.6) Garantiza conectividad global: todas las salas alcanzables desde Control
-    const ctrlC = centerOf(ctrl);
-    ensureAllRoomsReachable(map, rooms, ctrlC);
-
-    // Anti-diagonal: evita uniones por esquina y vuelve a verificar accesibilidad
-    sealDiagonalCorners(map);
-    ensureAllRoomsReachable(map, rooms, ctrlC);
-
-    // 5) Boss-room = la más lejana a Control
-    let boss = pickFarthestRoom(rooms, ctrlC);
-    if (!boss) boss = rooms[rooms.length-1];
-
-    // 6) Convertir a ASCII base
-    const ascii = Array.from({length:Hd},()=>Array(Wd).fill(cs.wall));
-    for(let y=0;y<Hd;y++) for(let x=0;x<Wd;x++) if(map[y][x]===0) ascii[y][x]=cs.floor;
-    sealMapBorder(ascii, cs);
-    // 7) Puertas: Boss = 1 puerta; resto = 1..4 puertas (todas cuello 1-tile)
-    const doors = [];
-    for (const r of rooms) {
-      const isBoss  = (r === boss);
-      const nDoors  = isBoss ? 1 : rng.int(1, 4); // 1..4 puertas (boss=1)
-
-      // Abrimos en el GRID (0/1) para que el hueco sea exactamente de 1 tile
-      const ds = openMultipleDoors ? openMultipleDoors(rng, map, r, nDoors)
-                                  : [ openSingleDoor(rng, map, r, cs.door) ].filter(Boolean);
-      if (!ds.length) continue;
-
-      // Dibuja puertas en ASCII y crea el "cuello 1-tile" visual
-      for (const d of ds) {
-        put(ascii, d.x, d.y, isBoss ? cs.bossDoor : cs.door);
-        // (sin applyNeck aquí: el cuello se hace solo dentro con enforceNecksWidth1)
-        doors.push({ x: d.x, y: d.y, boss: isBoss, room: r });
-      }
-
-      // Fuerza 1 puerta por habitación (cierra las demás si las hubiera)
-      //enforceOneDoorPerRoom(rng, ascii, r, cs);
-
-      // Sella todo el perímetro salvo la(s) puerta(s) que hayan quedado → cuello 1 tile garantizado
-      const finalDoors = [];
-      // recolecta las puertas que realmente hayan quedado tras enforceOneDoorPerRoom
-      for (let x = r.x; x < r.x + r.w; x++) {
-        if (ascii[r.y - 1]?.[x] === cs.door || ascii[r.y - 1]?.[x] === cs.bossDoor) finalDoors.push({ x, y: r.y - 1 });
-        if (ascii[r.y + r.h]?.[x] === cs.door || ascii[r.y + r.h]?.[x] === cs.bossDoor) finalDoors.push({ x, y: r.y + r.h });
-      }
-      for (let y = r.y; y < r.y + r.h; y++) {
-        if (ascii[y]?.[r.x - 1] === cs.door || ascii[y]?.[r.x - 1] === cs.bossDoor) finalDoors.push({ x: r.x - 1, y });
-        if (ascii[y]?.[r.x + r.w] === cs.door || ascii[y]?.[r.x + r.w] === cs.bossDoor) finalDoors.push({ x: r.x + r.w, y });
-      }
-      enforceNecksWidth1(ascii, r, finalDoors.length ? finalDoors : ds, cs);
-      // Remata el perímetro: si quedó un hueco >1, redúcelo a 1 tile (respeta puertas)
-      fixRoomPerimeterGaps(ascii, r, cs);
+    if (MAP_MODE === 'debug' || MAP_MODE === 'ascii') {
+      return generateLegendPreset({ ...options, seed });
     }
 
-    // 8) Elementos de Control: start + teléfono
-    const start = centerOf(ctrl);
-    put(ascii, start.x, start.y, cs.start);
-    const phone = placeInside(map, ctrl) || start;
-    if (defs.items.phone) put(ascii, phone.tx, phone.ty, cs.phone);
-
-    // 9) Boss marker + puerta Boss ya puesta
-    const bossC = centerOf(boss);
-    put(ascii, bossC.x, bossC.y, cs.boss);
-
-    // 10) Conectividad global (bloqueando boss-room para validar resto)
-    const blockBoss = { x1: boss.x, y1: boss.y, x2: boss.x+boss.w-1, y2: boss.y+boss.h-1 };
-    ensureConnectivity(rng, map, start, blockBoss);
-
-    // 11) Ascensores: 3 pares (1 activo, 2 cerrados) en salas diferentes
-    const elevators = placeElevators(rng, map, rooms, ctrl, boss, ascii, cs);
-
-    // 12) Luces (nunca en paredes). Mezcla rotas / normales. Evitar start inmediato
-    const lights = placeLights(rng, map, ascii, cs, dens.lights, start);
-
-    // 13) Spawns base globales (mosquitos/ratas/staff/carros) por nivel
-    const spawns = placeSpawners(rng, map, ascii, cs, defs, lvl, start, ctrl, boss);
-
-    // 13.1) Spawns extra por habitación (L = nivel) + 1 NPC + 1 celador + 1 carro
-    const extraSpawns = placePerRoomSpawns(rng, rooms, ctrl, boss, lvl, map, ascii, cs);
-
-    // mézclalos
-    spawns.mosquito.push(...extraSpawns.mosquito);
-    spawns.rat.push(...extraSpawns.rat);
-    spawns.staff.push(...extraSpawns.staff);
-    spawns.cart.push(...extraSpawns.cart);
-
-    // 14) Pacientes + pastillas + timbres (7 sets), cada set cercano
-    const {patients, pills, bells} = placePatientsSet(rng, map, ascii, cs, rooms, ctrl, boss);
-
-    // --- PASO EXTRA: reforzar perímetros y cuellos tras TODO ---
-    for (const r of rooms){
-      // localizar las puertas definitivas en ASCII
-      const ds = [];
-      for (let x=r.x; x<r.x+r.w; x++){
-        if (ascii[r.y-1]?.[x]===cs.door || ascii[r.y-1]?.[x]===cs.bossDoor) ds.push({x, y:r.y-1});
-        if (ascii[r.y+r.h]?.[x]===cs.door || ascii[r.y+r.h]?.[x]===cs.bossDoor) ds.push({x, y:r.y+r.h});
-      }
-      for (let y=r.y; y<r.y+r.h; y++){
-        if (ascii[y]?.[r.x-1]===cs.door || ascii[y]?.[r.x-1]===cs.bossDoor) ds.push({x:r.x-1, y});
-        if (ascii[y]?.[r.x+r.w]===cs.door || ascii[y]?.[r.x+r.w]===cs.bossDoor) ds.push({x:r.x+r.w, y});
-      }
-
-      // 1) cuello 1-tile dentro de la sala (1–2 tiles de profundidad)
-      enforceNecksWidth1(ascii, r, ds, cs);
-
-      // 2) perímetro: NINGÚN hueco > 1 y NADA si no hay puerta
-      fixRoomPerimeterGaps(ascii, r, cs);
-    }
-
-    // 15) Validaciones finales
-    const report=[];
-    validateDoorsPerRoom(ascii, rooms, cs, report);
-    validateSetsReachability(map, start, blockBoss, patients, pills, bells, report);
-
-    // 15.5) Marca explícita de boss para los chequeos de puertas (por si no tiene tag)
-    boss.tag = 'boss';
-
-    // Informe ortogonalidad/conectividad 4-dir
-    const diagV = countDiagonalViolations(map);
-    const unreach = countUnreachable(map, start, blockBoss);
-    report.push({
-      summary: {
-        ok: (diagV===0 && unreach===0),
-        unreachable_count: unreach,
-        diagonal_violations: diagV,
-        seed, width:Wd, height:Hd
-      }
+    const asciiRows = generateNormalLayout({
+      width,
+      height,
+      levelConfig: config,
+      rng,
+      charset: cs
     });
 
-    // 16) Luz del boss (rojo/azul cíclico)
-    const bossLight = { tx: bossC.x, ty: bossC.y, cycle: ['#5cc1ff','#ff4d4d'], period: 2.6 };
-
-    // 17) Únicos globales (si tu motor admite placements tipo 'npc')
-    const roomA = rooms.find(r=> r!==ctrl && r!==boss) || ctrl;
-    const roomB = rooms.find(r=> r!==ctrl && r!==boss && r!==roomA) || boss;
-    const a = placeInside(map, roomA) || centerOf(roomA);
-    const b = placeInside(map, roomB) || centerOf(roomB);
-    placements.push({ type:'npc', sub:'supervisora', x:a.tx*TILE, y:a.ty*TILE });
-    placements.push({ type:'npc', sub:'jefe_servicio', x:b.tx*TILE, y:b.ty*TILE });
-
-    const meta = {
+    return {
+      ascii: rowsToString(asciiRows),
+      map: asciiToNumeric(asciiRows),
+      placements: [],
+      areas: {
+        control: asciiRows._control || null,
+        boss: asciiRows._boss || null,
+        rooms: asciiRows._rooms || []
+      },
+      charset: cs,
       seed,
       level: lvl,
-      width: Wd,
-      height: Hd,
-      roomsCount: rooms.length,
-      doorsCount: doors.length,
-      elevatorsCount: Array.isArray(elevators) ? elevators.length : 0,
-      lightsCount: Array.isArray(lights) ? lights.length : 0,
-      spawns: {
-        mosquito: Array.isArray(spawns.mosquito) ? spawns.mosquito.length : 0,
-        rat: Array.isArray(spawns.rat) ? spawns.rat.length : 0,
-        staff: Array.isArray(spawns.staff) ? spawns.staff.length : 0,
-        cart: Array.isArray(spawns.cart) ? spawns.cart.length : 0
-      },
-      patientsCount: Array.isArray(patients) ? patients.length : 0,
-      pillsCount: Array.isArray(pills) ? pills.length : 0,
-      bellsCount: Array.isArray(bells) ? bells.length : 0,
-      animalSpawns: (
-        (Array.isArray(spawns.mosquito) ? spawns.mosquito.length : 0) +
-        (Array.isArray(spawns.rat) ? spawns.rat.length : 0)
-      ),
-      cooling: levelRules.cooling ?? 20
+      width,
+      height,
+      levelRules: config,
+      meta: {
+        seed,
+        width,
+        height,
+        roomsCount: Array.isArray(asciiRows._rooms) ? asciiRows._rooms.length : 0,
+        corridorWidth: asciiRows._corridorWidth,
+        cooling: config.cooling ?? 20
+      }
     };
-
-    const result = {
-      ascii: rowsToString(ascii),
-      map: asciiToNumeric(ascii),
-      placements,
-      areas: { control:ctrl, boss },
-      elevators,
-      report,
-      charset: cs,
-      seed, level:lvl, width:Wd, height:Hd,
-      meta,
-      levelRules
-    };
-    return result;
   }
-
   // ─────────────────────────────────────────
   // Sub-rutinas de generación (detalladas)
   // ─────────────────────────────────────────
+  function create2DArray(h, w, fill){
+    return Array.from({ length: h }, () => Array(w).fill(fill));
+  }
+
+  function randInt(rng, min, max){
+    const lo = Math.min(min, max);
+    const hi = Math.max(min, max);
+    return rng.int ? rng.int(lo, hi) : (lo + Math.floor((rng.rand?.() ?? Math.random()) * (hi - lo + 1)));
+  }
+
+  function randomRoomSize(rng, range){
+    const minW = Math.max(3, range?.minW || 3);
+    const minH = Math.max(3, range?.minH || 3);
+    const maxW = Math.max(minW, range?.maxW || minW);
+    const maxH = Math.max(minH, range?.maxH || minH);
+    return { w: randInt(rng, minW, maxW), h: randInt(rng, minH, maxH) };
+  }
+
+  function roomsOverlapWithPadding(a, b, pad=1){
+    return !(
+      a.x + a.w + pad <= b.x ||
+      b.x + b.w + pad <= a.x ||
+      a.y + a.h + pad <= b.y ||
+      b.y + b.h + pad <= a.y
+    );
+  }
+
+  function roomFits(room, width, height, margin=1){
+    return room.x >= margin && room.y >= margin &&
+           room.x + room.w <= width - margin &&
+           room.y + room.h <= height - margin;
+  }
+
+  function markRoom(ascii, room, cs){
+    for (let y = room.y + 1; y < room.y + room.h - 1; y++){
+      for (let x = room.x + 1; x < room.x + room.w - 1; x++){
+        if (ascii[y]?.[x] !== undefined) ascii[y][x] = cs.floor;
+      }
+    }
+  }
+
+  function addRoomMetadata(room){
+    room.centerX = room.x + Math.floor(room.w / 2);
+    room.centerY = room.y + Math.floor(room.h / 2);
+    return room;
+  }
+
+  function chooseControlRoom(rng, width, height, range, existing){
+    const margin = 2;
+    for (let i = 0; i < 200; i++){
+      const size = randomRoomSize(rng, range);
+      const maxX = Math.max(margin, Math.floor(width * 0.35));
+      const minY = Math.max(margin, Math.floor(height * 0.55) - size.h);
+      const x = randInt(rng, margin, Math.max(margin, Math.min(maxX, width - size.w - margin)));
+      const y = randInt(rng, Math.min(height - size.h - margin, Math.max(margin, minY)), height - size.h - margin);
+      const room = addRoomMetadata({ ...size, x, y, type:'control' });
+      if (!roomFits(room, width, height, margin)) continue;
+      if (existing.some(o => roomsOverlapWithPadding(room, o, 1))) continue;
+      return room;
+    }
+    return null;
+  }
+
+  function chooseBossRoom(rng, width, height, range, controlRoom, existing){
+    const margin = 2;
+    let best = null;
+    let bestDist = -1;
+    for (let i = 0; i < 400; i++){
+      const size = randomRoomSize(rng, range);
+      const x = randInt(rng, margin, width - size.w - margin);
+      const y = randInt(rng, margin, height - size.h - margin);
+      const room = addRoomMetadata({ ...size, x, y, type:'boss' });
+      if (!roomFits(room, width, height, margin)) continue;
+      if (existing.some(o => roomsOverlapWithPadding(room, o, 1))) continue;
+      const dx = room.centerX - controlRoom.centerX;
+      const dy = room.centerY - controlRoom.centerY;
+      const d2 = dx*dx + dy*dy;
+      if (d2 > bestDist){ bestDist = d2; best = room; }
+    }
+    return best;
+  }
+
+  function placeNormalRooms(rng, width, height, range, count, existing){
+    const margin = 2;
+    const rooms = [];
+    let attempts = 0;
+    const maxAttempts = Math.max(1000, count * 80);
+    while (rooms.length < count && attempts < maxAttempts){
+      attempts++;
+      const size = randomRoomSize(rng, range);
+      const x = randInt(rng, margin, width - size.w - margin);
+      const y = randInt(rng, margin, height - size.h - margin);
+      const room = addRoomMetadata({ ...size, x, y, type:'normal' });
+      if (!roomFits(room, width, height, margin)) continue;
+      if (existing.some(o => roomsOverlapWithPadding(room, o, 1))) continue;
+      if (rooms.some(o => roomsOverlapWithPadding(room, o, 1))) continue;
+      rooms.push(room);
+    }
+    return rooms.length === count ? rooms : null;
+  }
+
+  function carveCorridorSegment(ascii, fromX, fromY, toX, toY, width, cs){
+    const half = Math.floor((width - 1) / 2);
+    if (fromX === toX){
+      const xStart = fromX;
+      const y1 = Math.min(fromY, toY);
+      const y2 = Math.max(fromY, toY);
+      for (let y = y1; y <= y2; y++){
+        for (let dx = -half; dx <= half; dx++){
+          if (ascii[y]?.[xStart + dx] !== undefined) ascii[y][xStart + dx] = cs.floor;
+        }
+      }
+    } else if (fromY === toY){
+      const yStart = fromY;
+      const x1 = Math.min(fromX, toX);
+      const x2 = Math.max(fromX, toX);
+      for (let x = x1; x <= x2; x++){
+        for (let dy = -half; dy <= half; dy++){
+          if (ascii[yStart + dy]?.[x] !== undefined) ascii[yStart + dy][x] = cs.floor;
+        }
+      }
+    }
+  }
+
+  function carveCorridor(ascii, start, end, width, rng, cs){
+    const horizontalFirst = rng.rand ? rng.rand() < 0.5 : Math.random() < 0.5;
+    const mid = horizontalFirst
+      ? { x: end.x, y: start.y }
+      : { x: start.x, y: end.y };
+    carveCorridorSegment(ascii, start.x, start.y, mid.x, mid.y, width, cs);
+    carveCorridorSegment(ascii, mid.x, mid.y, end.x, end.y, width, cs);
+  }
+
+  function pickDoorPosition(room, targetCenter, width, height){
+    const dx = targetCenter.x - room.centerX;
+    const dy = targetCenter.y - room.centerY;
+    const preferHorizontal = Math.abs(dx) >= Math.abs(dy);
+    if (preferHorizontal){
+      if (dx >= 0){
+        const y = clamp(room.centerY, room.y + 1, room.y + room.h - 2);
+        return { x: room.x + room.w - 1, y, outX: Math.min(width - 2, room.x + room.w), outY: y };
+      }
+      const y = clamp(room.centerY, room.y + 1, room.y + room.h - 2);
+      return { x: room.x, y, outX: Math.max(1, room.x - 1), outY: y };
+    }
+    if (dy >= 0){
+      const x = clamp(room.centerX, room.x + 1, room.x + room.w - 2);
+      return { y: room.y + room.h - 1, x, outX: x, outY: Math.min(height - 2, room.y + room.h) };
+    }
+    const x = clamp(room.centerX, room.x + 1, room.x + room.w - 2);
+    return { y: room.y, x, outX: x, outY: Math.max(1, room.y - 1) };
+  }
+
+  function connectRoomPair(ascii, roomA, roomB, corridorWidth, rng, cs){
+    const centerA = { x: roomA.centerX, y: roomA.centerY };
+    const centerB = { x: roomB.centerX, y: roomB.centerY };
+    const doorA = pickDoorPosition(roomA, centerB, ascii[0].length, ascii.length);
+    const doorB = pickDoorPosition(roomB, centerA, ascii[0].length, ascii.length);
+
+    carveCorridor(ascii, { x: doorA.outX, y: doorA.outY }, { x: doorB.outX, y: doorB.outY }, corridorWidth, rng, cs);
+
+    ascii[doorA.y][doorA.x] = roomA.type === 'boss' ? cs.bossDoor : cs.door;
+    ascii[doorB.y][doorB.x] = roomB.type === 'boss' ? cs.bossDoor : cs.door;
+  }
+
+  function connectRoomsWithMST(ascii, rooms, corridorWidth, rng, cs){
+    if (!rooms.length) return;
+    const connected = [rooms[0]];
+    const remaining = rooms.slice(1);
+    while (remaining.length){
+      let bestPair = null;
+      let bestDist = Infinity;
+      for (const r of remaining){
+        for (const c of connected){
+          const dx = r.centerX - c.centerX;
+          const dy = r.centerY - c.centerY;
+          const d2 = dx*dx + dy*dy;
+          if (d2 < bestDist){ bestDist = d2; bestPair = { from: c, to: r }; }
+        }
+      }
+      if (!bestPair) break;
+      connectRoomPair(ascii, bestPair.from, bestPair.to, corridorWidth, rng, cs);
+      connected.push(bestPair.to);
+      remaining.splice(remaining.indexOf(bestPair.to), 1);
+    }
+  }
+
+  function generateNormalLayout({ width, height, levelConfig, rng, charset }){
+    const cs = charset || CHARSET_DEFAULT;
+    const totalRooms = Math.max(3, Number(levelConfig.rooms) || 8);
+    const corridorWidth = randInt(rng, levelConfig.corridorWidthMin || 1, levelConfig.corridorWidthMax || levelConfig.corridorWidthMin || 1);
+    const maxRestarts = 20;
+    const normalRange = levelConfig.room?.normal || { minW: 6, minH: 6, maxW: 12, maxH: 10 };
+    const controlRange = levelConfig.room?.control || normalRange;
+    const bossRange = levelConfig.room?.boss || normalRange;
+
+    for (let attempt = 0; attempt < maxRestarts; attempt++){
+      const ascii = create2DArray(height, width, cs.wall);
+      const rooms = [];
+      const control = chooseControlRoom(rng, width, height, controlRange, rooms);
+      if (!control) continue;
+      rooms.push(control);
+
+      const boss = chooseBossRoom(rng, width, height, bossRange, control, rooms);
+      if (!boss) continue;
+      rooms.push(boss);
+
+      const normalsNeeded = totalRooms - 2;
+      const normals = placeNormalRooms(rng, width, height, normalRange, normalsNeeded, rooms);
+      if (!normals) continue;
+      rooms.push(...normals);
+
+      rooms.forEach((r) => markRoom(ascii, r, cs));
+      connectRoomsWithMST(ascii, rooms, corridorWidth, rng, cs);
+      sealMapBorder(ascii, cs);
+
+      ascii._rooms = rooms;
+      ascii._control = control;
+      ascii._boss = boss;
+      ascii._corridorWidth = corridorWidth;
+      return ascii;
+    }
+
+    const fallback = create2DArray(height, width, cs.wall);
+    fallback._rooms = [];
+    fallback._corridorWidth = corridorWidth;
+    return fallback;
+  }
+
   function carveRoomAtCenterish(rng, map, Wd, Hd, meta={}){
     const rw = rng.int(14, 24), rh = rng.int(12, 20);
     const cx = rng.int(Math.floor(Wd*0.35), Math.floor(Wd*0.65));
