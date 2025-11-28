@@ -72,17 +72,18 @@
     if (typeof W.XMLRules?.load === 'function') {
       try {
         const data = await W.XMLRules.load(id);
-        const { globals = {}, level = {}, rules = [] } = data || {};
-        const cooling = Number.isFinite(level.cooling)
-          ? level.cooling
+        const { globals = {}, level = {}, rules = [], config = null } = data || {};
+        const base = config || { ...globals, ...level, rules };
+        const cooling = Number.isFinite(base.cooling)
+          ? base.cooling
           : Number.isFinite(globals.cooling)
             ? globals.cooling
             : 20;
         parsed = {
-          ...globals,
-          ...level,
+          ...base,
+          rules: base.rules || rules,
           cooling,
-          rules
+          culling: Number.isFinite(base.culling) ? base.culling : Number(globals.culling) || 20
         };
       } catch (err) {
         try { console.warn('[MapGen] getLevelRules fallback', err); } catch (_) {}
@@ -95,6 +96,7 @@
         width: BASE * lvlNum,
         height: BASE * lvlNum,
         rooms: (LAYERS[lvlNum]?.rooms / 4) | 0 || 8,
+        culling: 20,
         cooling: 20,
         rules: []
       };
@@ -541,6 +543,8 @@ function fixRoomPerimeterGaps(ascii, room, cs){
     const height = clamp(options.height | 0 || 40, 20, 400);
     const roomsTarget = clamp(options.rooms | 0 || 8, 3, 60);
     const corridors = options.corridors !== false;
+    const corridorWidthMin = Math.max(1, Number(options.corridorWidthMin) || 1);
+    const corridorWidthMax = Math.max(corridorWidthMin, Number(options.corridorWidthMax) || corridorWidthMin);
     const seed = options.seed ?? (G.seed ?? (Date.now() >>> 0));
     const rng = RNG(seed);
 
@@ -618,11 +622,15 @@ function fixRoomPerimeterGaps(ascii, room, cs){
     };
     G.seed = seed;
 
-    return { map, width, height, rooms, control, entrance, boss, bossEntrance, seed };
+    return { map, width, height, rooms, control, entrance, boss, bossEntrance, seed, corridorWidthMin, corridorWidthMax };
   }
 
   function parseRoomSize(value, fallback) {
-    if (!value || typeof value !== 'string') return { ...fallback };
+    if (!value) return { ...fallback };
+    if (typeof value === 'object' && Number.isFinite(value.w) && Number.isFinite(value.h)) {
+      return { w: Math.max(3, value.w), h: Math.max(3, value.h) };
+    }
+    if (typeof value !== 'string') return { ...fallback };
     const parts = value.split('x').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n));
     if (parts.length === 2) {
       return { w: Math.max(3, parts[0]), h: Math.max(3, parts[1]) };
