@@ -115,18 +115,14 @@
       G.TILE_SIZE = globals.tileSize;
     }
     G.globals = { ...(G.globals || {}), ...globals };
-    const vrRaw = Number(globals.visualRadius);
-    const vrTiles = Number.isFinite(vrRaw) && vrRaw > 0 ? vrRaw : 8;
-    G.visualRadiusTiles = vrTiles;
-    const visibleRaw = Number(globals.visibleTilesRadius);
-    if (Number.isFinite(visibleRaw) && visibleRaw > 0) {
-      G.visibleTilesRadius = visibleRaw;
-    } else if (!Number.isFinite(G.visibleTilesRadius) || G.visibleTilesRadius <= 0) {
-      G.visibleTilesRadius = 8;
-    }
+    const cullingRaw = Number(globals.culling);
+    const culling = Number.isFinite(cullingRaw) && cullingRaw > 0
+      ? cullingRaw
+      : (Number.isFinite(G.culling) && G.culling > 0 ? G.culling : 20);
+    G.culling = culling;
     const tile = TILE_SIZE();
     const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
-    G.visualRadiusPx = vrTiles * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
+    G.cullingPx = culling * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     if (typeof globals.defaultHero === 'string' && !G.selectedHero) {
       G.selectedHero = globals.defaultHero;
     }
@@ -722,16 +718,18 @@
     }
 
     const data = await root.XMLRules.load(levelId);
-    const { globals = {}, level = {}, rules = [] } = data || {};
+    const { globals = {}, level = {}, rules = [], config: levelConfig = null } = data || {};
 
     const grid = root.MapGen.ensureGrid({
-      width: level.width,
-      height: level.height,
-      rooms: level.rooms,
-      roomSizeMin: level.roomSizeMin,
-      roomSizeMax: level.roomSizeMax,
+      width: levelConfig?.width ?? level.width,
+      height: levelConfig?.height ?? level.height,
+      rooms: levelConfig?.rooms ?? level.rooms,
+      roomSizeMin: levelConfig?.room?.normal ? { w: levelConfig.room.normal.minW, h: levelConfig.room.normal.minH } : level.roomSizeMin,
+      roomSizeMax: levelConfig?.room?.normal ? { w: levelConfig.room.normal.maxW, h: levelConfig.room.normal.maxH } : level.roomSizeMax,
       corridors: level.corridors !== false,
-      seed: level.seed
+      corridorWidthMin: levelConfig?.corridorWidthMin,
+      corridorWidthMax: levelConfig?.corridorWidthMax,
+      seed: levelConfig?.seed ?? level.seed
     });
 
     const map = grid?.map;
@@ -758,9 +756,14 @@
     }
 
     applyGlobals(globals, G);
-    const levelVisibleRaw = Number(level.visibleTilesRadius);
-    if (Number.isFinite(levelVisibleRaw) && levelVisibleRaw > 0) {
-      G.visibleTilesRadius = levelVisibleRaw;
+    const levelCulling = Number.isFinite(levelConfig?.culling) && levelConfig.culling > 0
+      ? levelConfig.culling
+      : Number(level.culling);
+    if (Number.isFinite(levelCulling) && levelCulling > 0) {
+      G.culling = levelCulling;
+      const tile = TILE_SIZE();
+      const tileSize = Number.isFinite(tile) && tile > 0 ? tile : (root.G?.TILE_SIZE || 32);
+      G.cullingPx = G.culling * (Number.isFinite(tileSize) && tileSize > 0 ? tileSize : 32);
     }
 
     const rng = (typeof root.MapGen?.createRNG === 'function')
@@ -796,7 +799,7 @@
     }
 
     applyLightingConfig(level.lighting, G);
-    G.levelRules = { globals, level, rules };
+    G.levelRules = { globals, level, rules, config: levelConfig };
     G.__placementsApplied = true;
 
     try { Placement.ensureNoPushableOverlap(G, { log: true }); } catch (_) {}

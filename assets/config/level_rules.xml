@@ -5,8 +5,7 @@
     defaultLightAlpha="0.6"
     maxHeroes="2"
     defaultHero="enrique"
-    visualRadius="8"
-    visibleTilesRadius="20"
+    culling="20"
     massHero="1.0"
     massCart="3.5"
     massRat="0.5"
@@ -29,13 +28,14 @@
          seed="auto"
          heroes="1"
          width="60" height="40"
-         visibleTilesRadius="20"
          rooms="8"
+         corridorWidthMin="1" corridorWidthMax="2"
          roomSizeMin="6x6" roomSizeMax="12x10"
+         controlRoomSizeMin="8x6" controlRoomSizeMax="12x10"
+         bossRoomSizeMin="10x8" bossRoomSizeMax="16x12"
          corridors="true"
          difficulty="1"
-         boss="hematologico"
-         bossRoom="big">
+         boss="hematologico">
     <spawn hero="true" x="auto" y="auto"/>
     <minimap startVisible="true" startSmall="true"/>
 
@@ -93,13 +93,14 @@
          seed="auto"
          heroes="2"
          width="80" height="56"
-         visibleTilesRadius="20"
          rooms="12"
+         corridorWidthMin="1" corridorWidthMax="2"
          roomSizeMin="8x8" roomSizeMax="14x12"
+         controlRoomSizeMin="10x8" controlRoomSizeMax="14x12"
+         bossRoomSizeMin="12x10" bossRoomSizeMax="18x14"
          corridors="true"
          difficulty="2"
-         boss="quirurgico"
-         bossRoom="big">
+         boss="quirurgico">
     <spawn hero="true" x="auto" y="auto"/>
     <minimap startVisible="true" startSmall="true"/>
 
@@ -146,13 +147,14 @@
          seed="auto"
          heroes="2"
          width="96" height="64"
-         visibleTilesRadius="20"
          rooms="14"
+         corridorWidthMin="1" corridorWidthMax="2"
          roomSizeMin="9x9" roomSizeMax="16x14"
+         controlRoomSizeMin="12x10" controlRoomSizeMax="16x14"
+         bossRoomSizeMin="14x12" bossRoomSizeMax="20x16"
          corridors="true"
          difficulty="3"
-         boss="psiquiatrico"
-         bossRoom="big">
+         boss="psiquiatrico">
     <spawn hero="true" x="auto" y="auto"/>
     <minimap startVisible="true" startSmall="false"/>
 
