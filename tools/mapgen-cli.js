@@ -30,20 +30,22 @@ if (typeof MapGen?.generate !== 'function') {
   process.exit(2);
 }
 
-const result = MapGen.generate(levelArg, { w: widthArg, h: heightArg, seed: seedArg });
-const spawn = Array.isArray(result.placements)
-  ? result.placements.find((p) => p && (p.kind === 'start' || p.kind === 'player' || p.kind === 'hero'))
-  : null;
+(async () => {
+  const result = await MapGen.generate(levelArg, { w: widthArg, h: heightArg, seed: seedArg });
+  const spawn = Array.isArray(result.placements)
+    ? result.placements.find((p) => p && (p.kind === 'start' || p.kind === 'player' || p.kind === 'hero'))
+    : null;
 
-const payload = {
-  width: result.width,
-  height: result.height,
-  ascii: result.ascii,
-  areas: result.areas || null,
-  control: result.areas?.control || null,
-  spawn: spawn || null,
-  charset: result.charset || null,
-  seed: result.seed,
-};
+  const payload = {
+    width: result.width,
+    height: result.height,
+    ascii: result.ascii,
+    areas: result.areas || null,
+    control: result.areas?.control || null,
+    spawn: spawn || null,
+    charset: result.charset || null,
+    seed: result.seed,
+  };
 
-process.stdout.write(JSON.stringify(payload));
+  process.stdout.write(JSON.stringify(payload));
+})();

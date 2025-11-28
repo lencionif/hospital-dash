@@ -62,6 +62,48 @@
     console.log('%cMAP_MODE', 'color:#0bf', MAP_MODE, usingDefaultMapMode ? '(default)' : '(query)');
   } catch (_) {}
 
+  const _levelRulesCache = new Map();
+
+  async function getLevelRules(levelId) {
+    const id = String(levelId || '1');
+    if (_levelRulesCache.has(id)) return _levelRulesCache.get(id);
+
+    let parsed = null;
+    if (typeof W.XMLRules?.load === 'function') {
+      try {
+        const data = await W.XMLRules.load(id);
+        const { globals = {}, level = {}, rules = [] } = data || {};
+        const cooling = Number.isFinite(level.cooling)
+          ? level.cooling
+          : Number.isFinite(globals.cooling)
+            ? globals.cooling
+            : 20;
+        parsed = {
+          ...globals,
+          ...level,
+          cooling,
+          rules
+        };
+      } catch (err) {
+        try { console.warn('[MapGen] getLevelRules fallback', err); } catch (_) {}
+      }
+    }
+
+    if (!parsed) {
+      const lvlNum = parseInt(id, 10) || 1;
+      parsed = {
+        width: BASE * lvlNum,
+        height: BASE * lvlNum,
+        rooms: (LAYERS[lvlNum]?.rooms / 4) | 0 || 8,
+        cooling: 20,
+        rules: []
+      };
+    }
+
+    _levelRulesCache.set(id, parsed);
+    return parsed;
+  }
+
   // --- REGLAS DE GENERACIÓN (mapa) ---
   const GEN_RULES = {
     MIN_CORRIDOR: 2,          // pasillo mínimo (tiles)
@@ -1107,21 +1149,22 @@ function asciiToNumeric(A){
   // ─────────────────────────────────────────
   // GENERATE (núcleo principal)
   // ─────────────────────────────────────────
-  function generate(level=1, options={}){
+  async function generate(level=1, options={}){
     if (MAP_MODE === 'legend') {
       return generateLegendPreset(options);
     }
     // salidas básicas para el motor (ASCII + placements)
     const placements = [];
     const lvl = clamp(level|0 || 1, 1, 3);
+    const levelRules = await getLevelRules(lvl);
     const defs = options.defs || detectDefs();
     const cs   = { ...CHARSET_DEFAULT, ...(options.charset||{}) };
     const seed = options.seed ?? (W.G?.seed ?? (Date.now()>>>0));
     const rng  = RNG(seed);
 
     // Tamaño
-    const Wd = clamp(options.w|0 || BASE*lvl, 40, BASE*3);
-    const Hd = clamp(options.h|0 || BASE*lvl, 40, BASE*3);
+    const Wd = clamp(options.w|0 || levelRules.width || BASE*lvl, 40, BASE*3);
+    const Hd = clamp(options.h|0 || levelRules.height || BASE*lvl, 40, BASE*3);
 
     // Grid: 1 muro, 0 suelo
     const map = Array.from({length:Hd},()=>Array(Wd).fill(1));
@@ -1129,12 +1172,17 @@ function asciiToNumeric(A){
 
     // Densidades por nivel
     const dens = {
-      rooms: options.density?.rooms ?? LAYERS[lvl].rooms,
+      rooms: options.density?.rooms ?? (levelRules.rooms || LAYERS[lvl].rooms),
       lights: options.density?.lights ?? LAYERS[lvl].lights,
       worms: options.density?.worms ?? LAYERS[lvl].worms,
       extraLoops: options.density?.extraLoops ?? LAYERS[lvl].extraLoops,
     };
-    dens.rooms = 35; // fuerza 35 habitaciones
+
+    if (levelRules.rules) {
+      try {
+        placements.push({ type: 'level_rules', data: { rules: levelRules.rules } });
+      } catch (_) {}
+    }
     // 1) Sala de Control (cerca del centro, con jitter) + tallado
     const ctrl = carveRoomAtCenterish(rng, map, Wd, Hd, { tag:'control' });
     rooms.push(ctrl);
@@ -1313,7 +1361,8 @@ function asciiToNumeric(A){
       animalSpawns: (
         (Array.isArray(spawns.mosquito) ? spawns.mosquito.length : 0) +
         (Array.isArray(spawns.rat) ? spawns.rat.length : 0)
-      )
+      ),
+      cooling: levelRules.cooling ?? 20
     };
 
     const result = {
@@ -1325,7 +1374,8 @@ function asciiToNumeric(A){
       report,
       charset: cs,
       seed, level:lvl, width:Wd, height:Hd,
-      meta
+      meta,
+      levelRules
     };
     return result;
   }

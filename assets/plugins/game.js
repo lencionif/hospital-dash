@@ -508,7 +508,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     if (window.Physics && typeof Physics.registerEntity === 'function') Physics.registerEntity(e);
   }
 
-  function loadLevelWithMapGen(level=1) {
+  async function loadLevelWithMapGen(level=1) {
     if (!window.MapGen) return false;            // fallback al ASCII si no está el plugin
 
     // Tamaños por nivel (ajústalos si quieres)
@@ -522,7 +522,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.player = null; G.cart = null; G.door = null; G.boss = null;
 
     MapGen.init(G);                               // vincula el estado del juego
-    const res = MapGen.generate({
+    const res = await MapGen.generate({
       w: dims.w, h: dims.h, level,
       seed: Date.now(),                           // o un seed fijo si quieres reproducible
       place: true,                                // que coloque entidades vía callbacks
@@ -1610,10 +1610,11 @@ function drawEntities(c2){
     return null;
   }
 
-  function buildLevelForCurrentMode(){
+  async function buildLevelForCurrentMode(){
     const mode = (window.__MAP_MODE || 'normal').toLowerCase();
     const seed = G.seed || Date.now();
     let ascii = null;
+    let levelRules = null;
 
     if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
       try {
@@ -1631,10 +1632,12 @@ function drawEntities(c2){
             width:  window.DEBUG_MINIMAP ? 128 : undefined,
             height: window.DEBUG_MINIMAP ? 128 : undefined
           });
-          if (res && res.ascii) {
-            ascii = String(res.ascii).trim().split('\n');
-            G.mapgenPlacements = res.placements || [];
-            G.mapAreas = res.areas || null;
+          const resolved = await res;
+          if (resolved && resolved.ascii) {
+            ascii = String(resolved.ascii).trim().split('\n');
+            G.mapgenPlacements = resolved.placements || [];
+            G.mapAreas = resolved.areas || null;
+            levelRules = resolved.levelRules || null;
             console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
           }
         }
@@ -1656,6 +1659,24 @@ function drawEntities(c2){
     ASCII_MAP = ascii;
     parseMap(ASCII_MAP);
 
+    if (mode === 'normal') {
+      const coolingValue = Number.isFinite(levelRules?.cooling) ? levelRules.cooling : 20;
+      if (!Number.isFinite(G.cooling)) {
+        G.cooling = coolingValue;
+      } else {
+        G.cooling = coolingValue;
+      }
+      try {
+        console.log('[buildLevel] normal map from level_rules', {
+          level: G.level || 1,
+          width: G.mapW,
+          height: G.mapH,
+          rooms: levelRules?.rooms,
+          cooling: coolingValue
+        });
+      } catch (_) {}
+    }
+
     const placements = (G.mapgenPlacements && G.mapgenPlacements.length)
       ? G.mapgenPlacements
       : (G.__asciiPlacements || []);
@@ -1675,7 +1696,7 @@ function drawEntities(c2){
   // ------------------------------------------------------------
   // Control de estado
   // ------------------------------------------------------------
-  function startGame(){
+  async function startGame(){
     G.state = 'PLAYING';
     // si hay minimapa de debug, muéstralo ahora (no en el menú)
     window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
@@ -1698,7 +1719,7 @@ function drawEntities(c2){
     G.flags.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
     G.flags.DEBUG_MINIMAP = DEBUG_MINIMAP;
 
-    buildLevelForCurrentMode();
+    await buildLevelForCurrentMode();
 
       // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
       if (window.PuppetAPI && G.player){
