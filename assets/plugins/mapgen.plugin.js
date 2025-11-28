@@ -785,7 +785,8 @@ const CHARSET_DEFAULT = {
   mosquito:charFor('mosquito', 'm'), rat:charFor('rat', 'r'),
   nurse:charFor('npc_nurse_sexy', 'n'), tcae:charFor('npc_tcae', 't'), celador:charFor('npc_celador', 'c'), cleaner:charFor('npc_cleaner', 'h'), guardia:charFor('npc_guard', 'g'), medico:charFor('npc_medico', 'k'),
   jefe_servicio:'J', supervisora:charFor('npc_supervisora', 'H'),
-  coin:charFor('coin', 'o'), bag:charFor('money_bag', '$'), food:charFor('food_small', 'y'), power:charFor('syringe_red', '1')
+  coin:charFor('coin', 'o'), bag:charFor('money_bag', '$'), food:charFor('food_small', 'y'), power:charFor('syringe_red', '1'),
+  loot:charFor('loot_random', 'o')
 };
 const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAULT);
 
@@ -1015,6 +1016,49 @@ function asciiToNumeric(A){
   }
   return grid;
 }
+
+  function isWalkableChar(ch, cs){
+    if (ch === undefined || ch === cs.wall) return false;
+    const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
+    const def = legend[ch];
+    if (def && def.blocking) return false;
+    return true;
+  }
+
+  function floodAscii(ascii, sx, sy, cs){
+    const H = ascii.length, W = ascii[0].length;
+    const inb = (x,y)=> y>=0 && y<H && x>=0 && x<W;
+    const vis = Array.from({length:H},()=>Array(W).fill(false));
+    const q=[];
+    if (!inb(sx,sy) || !isWalkableChar(ascii[sy][sx], cs)) return vis;
+    vis[sy][sx] = true; q.push([sx,sy]);
+    while(q.length){
+      const [x,y] = q.shift();
+      for (const [dx,dy] of N4){
+        const nx=x+dx, ny=y+dy;
+        if (!inb(nx,ny) || vis[ny][nx] || !isWalkableChar(ascii[ny][nx], cs)) continue;
+        vis[ny][nx] = true; q.push([nx,ny]);
+      }
+    }
+    return vis;
+  }
+
+  function findRoomWalkableTile(ascii, room, cs, avoid=new Set()){
+    const cx = room.centerX|0, cy = room.centerY|0;
+    const coords = [];
+    for (let y = room.y + 1; y < room.y + room.h - 1; y++){
+      for (let x = room.x + 1; x < room.x + room.w - 1; x++){
+        coords.push({x,y, d: Math.abs(x-cx)+Math.abs(y-cy)});
+      }
+    }
+    coords.sort((a,b)=>a.d-b.d);
+    for (const p of coords){
+      const key = `${p.x},${p.y}`;
+      if (avoid.has(key)) continue;
+      if (isWalkableChar(ascii[p.y]?.[p.x], cs)) return { x:p.x, y:p.y };
+    }
+    return null;
+  }
   function placeInside(map, r, tries=200){
     for(let k=0;k<tries;k++){
       const tx = clamp(r.x + 1 + (Math.random()*Math.max(1,r.w-2))|0, r.x+1, r.x+r.w-2);
@@ -1185,15 +1229,23 @@ function asciiToNumeric(A){
       charset: cs
     });
 
-    return {
+    const allRooms = asciiRows._rooms || [];
+    const reachGrid = asciiRows._reachable || null;
+    const allReachable = allRooms.every(r => reachGrid?.[r.centerY]?.[r.centerX]);
+    const bossReachable = asciiRows._boss ? !!reachGrid?.[asciiRows._boss.centerY]?.[asciiRows._boss.centerX] : false;
+
+    const result = {
       ascii: rowsToString(asciiRows),
       map: asciiToNumeric(asciiRows),
       placements: [],
       areas: {
         control: asciiRows._control || null,
         boss: asciiRows._boss || null,
-        rooms: asciiRows._rooms || []
+        rooms: allRooms
       },
+      grid: asciiRows,
+      rooms: allRooms,
+      reachable: reachGrid,
       charset: cs,
       seed,
       level: lvl,
@@ -1206,9 +1258,24 @@ function asciiToNumeric(A){
         height,
         roomsCount: Array.isArray(asciiRows._rooms) ? asciiRows._rooms.length : 0,
         corridorWidth: asciiRows._corridorWidth,
-        cooling: config.cooling ?? 20
+        cooling: config.cooling ?? 20,
+        allRoomsReachable: allReachable,
+        bossReachable
       }
     };
+
+    try {
+      const G = W.G || (W.G = {});
+      G.seed = seed;
+      G.map = result.map;
+      G.mapAscii = asciiRows;
+      G.mapRooms = allRooms;
+      G.mapAreas = result.areas;
+      G.levelRules = config;
+      G.levelMeta = result.meta;
+    } catch (_) {}
+
+    return result;
   }
   // ─────────────────────────────────────────
   // Sub-rutinas de generación (detalladas)
@@ -1366,6 +1433,36 @@ function asciiToNumeric(A){
     return { y: room.y, x, outX: x, outY: Math.max(1, room.y - 1) };
   }
 
+  function ensureRoomsConnected(ascii, rooms, control, corridorWidth, rng, cs){
+    const start = findRoomWalkableTile(ascii, control, cs) || { x: control.centerX|0, y: control.centerY|0 };
+    let reachable = floodAscii(ascii, start.x, start.y, cs);
+
+    const roomReachable = (room)=> reachable[room.centerY]?.[room.centerX];
+
+    let safety = rooms.length * 2;
+    while (rooms.some(r=>!roomReachable(r)) && safety-- > 0){
+      const reachableRooms = rooms.filter(roomReachable);
+      const unreachable = rooms.filter(r=>!roomReachable(r));
+      if (!reachableRooms.length || !unreachable.length) break;
+
+      const target = unreachable[0];
+      let best = null;
+      let bestD2 = Infinity;
+      for (const base of reachableRooms){
+        const dx = target.centerX - base.centerX;
+        const dy = target.centerY - base.centerY;
+        const d2 = dx*dx + dy*dy;
+        if (d2 < bestD2){ bestD2 = d2; best = base; }
+      }
+      if (!best) break;
+
+      connectRoomPair(ascii, best, target, corridorWidth, rng, cs);
+      reachable = floodAscii(ascii, start.x, start.y, cs);
+    }
+
+    return reachable;
+  }
+
   function connectRoomPair(ascii, roomA, roomB, corridorWidth, rng, cs){
     const centerA = { x: roomA.centerX, y: roomA.centerY };
     const centerB = { x: roomB.centerX, y: roomB.centerY };
@@ -1400,6 +1497,31 @@ function asciiToNumeric(A){
     }
   }
 
+  function parseRangeAvg(text, fallback=0){
+    if (!text) return fallback;
+    if (typeof text === 'number') return text;
+    const str = String(text);
+    if (str.includes('-')){
+      const [a,b] = str.split('-').map(v=>parseFloat(v));
+      if (Number.isFinite(a) && Number.isFinite(b)) return (a + b) / 2;
+    }
+    const n = parseFloat(str);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function gatherRuleCount(rules, type, kind){
+    if (!Array.isArray(rules)) return 0;
+    let total = 0;
+    for (const r of rules){
+      if (!r || r.type !== type) continue;
+      if (kind && r.kind && r.kind !== kind) continue;
+      if (Number.isFinite(r.count)) total += r.count;
+      else if (typeof r.count === 'string'){ total += parseFloat(r.count) || 0; }
+      else if (r.perRoom){ total += parseRangeAvg(r.perRoom, 0); }
+    }
+    return total;
+  }
+
   function generateNormalLayout({ width, height, levelConfig, rng, charset }){
     const cs = charset || CHARSET_DEFAULT;
     const totalRooms = Math.max(3, Number(levelConfig.rooms) || 8);
@@ -1427,12 +1549,75 @@ function asciiToNumeric(A){
 
       rooms.forEach((r) => markRoom(ascii, r, cs));
       connectRoomsWithMST(ascii, rooms, corridorWidth, rng, cs);
+      const reachable = ensureRoomsConnected(ascii, rooms, control, corridorWidth, rng, cs);
+      sealMapBorder(ascii, cs);
+
+      const used = new Set();
+      const occupy = (p)=>{ if (p) used.add(`${p.x},${p.y}`); };
+
+      // Hero spawn
+      const heroPos = findRoomWalkableTile(ascii, control, cs, used) || { x: control.centerX|0, y: control.centerY|0 };
+      if (heroPos) { ascii[heroPos.y][heroPos.x] = cs.start; occupy(heroPos); }
+
+      // Boss marker
+      const bossPos = findRoomWalkableTile(ascii, boss, cs, used) || { x: boss.centerX|0, y: boss.centerY|0 };
+      if (bossPos) { ascii[bossPos.y][bossPos.x] = cs.bossMarker; occupy(bossPos); }
+
+      // Garantizar puertas de urgencias en todas las bocas de la boss room
+      for (let x=boss.x; x<boss.x+boss.w; x++){
+        const top = {x, y: boss.y-1};
+        const bottom = {x, y: boss.y+boss.h};
+        if (ascii[top.y]?.[top.x] && ascii[top.y][top.x] !== cs.wall) ascii[top.y][top.x] = cs.bossDoor;
+        if (ascii[bottom.y]?.[bottom.x] && ascii[bottom.y][bottom.x] !== cs.wall) ascii[bottom.y][bottom.x] = cs.bossDoor;
+      }
+      for (let y=boss.y; y<boss.y+boss.h; y++){
+        const left = {x: boss.x-1, y};
+        const right = {x: boss.x+boss.w, y};
+        if (ascii[left.y]?.[left.x] && ascii[left.y][left.x] !== cs.wall) ascii[left.y][left.x] = cs.bossDoor;
+        if (ascii[right.y]?.[right.x] && ascii[right.y][right.x] !== cs.wall) ascii[right.y][right.x] = cs.bossDoor;
+      }
+
+      const rules = levelConfig.rules || [];
+      const phoneCount = Math.max(1, Math.round(gatherRuleCount(rules, 'phone') || 1));
+      for (let i=0; i<phoneCount; i++){
+        const p = findRoomWalkableTile(ascii, control, cs, used);
+        if (p){ ascii[p.y][p.x] = cs.phone; occupy(p); }
+      }
+
+      const elevatorCount = Math.max(0, Math.round(gatherRuleCount(rules, 'elevator')));
+      const elevatorRooms = rooms.filter(r => r.type !== 'boss');
+      for (let i=0; i<elevatorCount; i++){
+        const rPick = rng.pick(elevatorRooms) || control;
+        const p = findRoomWalkableTile(ascii, rPick, cs, used);
+        if (p){ ascii[p.y][p.x] = cs.elev; occupy(p); }
+      }
+
+      const npcSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'npc')));
+      const animalSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'enemy', 'rat') + gatherRuleCount(rules, 'enemy', 'mosquito')));
+      const cartSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'cart')));
+      const lootSpawns = Math.max(1, Math.round(gatherRuleCount(rules, 'loot') || rooms.length / 4));
+
+      const roomPool = rooms.filter(r=>r.type==='normal' || r.type==='control');
+      function placeInRoomPool(char, count){
+        for (let i=0; i<count; i++){
+          const rr = rng.pick(roomPool) || control;
+          const pos = findRoomWalkableTile(ascii, rr, cs, used);
+          if (pos){ ascii[pos.y][pos.x] = char; occupy(pos); }
+        }
+      }
+
+      placeInRoomPool(cs.spStaff || 'N', npcSpawns);
+      placeInRoomPool(cs.spAnimal || 'A', animalSpawns);
+      placeInRoomPool(cs.spCart || 'C', cartSpawns);
+      placeInRoomPool(cs.loot || 'o', lootSpawns);
+
       sealMapBorder(ascii, cs);
 
       ascii._rooms = rooms;
       ascii._control = control;
       ascii._boss = boss;
       ascii._corridorWidth = corridorWidth;
+      ascii._reachable = reachable;
       return ascii;
     }
 
