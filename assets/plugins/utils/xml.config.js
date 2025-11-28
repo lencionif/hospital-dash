@@ -87,6 +87,31 @@
     return out;
   }
 
+  function groupRulesByType(rules = []) {
+    const grouped = {
+      patient: [],
+      npc: [],
+      enemy: [],
+      cart: [],
+      door: [],
+      elevator: [],
+      light: [],
+      phone: [],
+      other: []
+    };
+
+    for (const rule of rules) {
+      const type = String(rule?.type || rule?._tagName || '').toLowerCase();
+      if (grouped[type]) {
+        grouped[type].push(rule);
+      } else {
+        grouped.other.push(rule);
+      }
+    }
+
+    return grouped;
+  }
+
   function parseChild(node, selector) {
     const child = node.querySelector(`:scope > ${selector}`);
     if (!child) return null;
@@ -167,6 +192,7 @@
     const corridorMaxCandidate = resolveNumber(level.corridorWidthMax, globals.corridorWidthMax, Math.max(corridorMin, 2));
     const corridorMax = Number.isFinite(corridorMaxCandidate) ? Math.max(corridorMin, corridorMaxCandidate) : Math.max(corridorMin, 2);
     const culling = resolveCulling(globals, level);
+    const rulesByType = groupRulesByType(rules);
 
     return {
       id: level.id ?? level.level ?? '1',
@@ -192,8 +218,19 @@
       legend: level.legend || null,
       globals,
       rules,
+      rulesByType,
+      patientRules: rulesByType.patient,
+      npcRules: rulesByType.npc,
+      enemyRules: rulesByType.enemy,
+      cartRules: rulesByType.cart,
+      doorRules: rulesByType.door,
+      elevatorRules: rulesByType.elevator,
+      lightRules: rulesByType.light,
+      phoneRules: rulesByType.phone,
+      otherRules: rulesByType.other,
       deprecated: {
-        bossRoom: level.bossRoom
+        bossRoom: level.bossRoom,
+        bossRoomFlag: level.bossRoom === 'big'
       }
     };
   }
