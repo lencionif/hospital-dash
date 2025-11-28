@@ -715,31 +715,29 @@ function fixRoomPerimeterGaps(ascii, room, cs){
   const BASE = 350; // lado base por nivel
   const TILE = (typeof W.TILE_SIZE!=='undefined') ? W.TILE_SIZE : (W.TILE||32);
 
-// === AMPLIACIÓN CHARSET PARA DEBUG ASCII ===
-const EXTRA_CHARSET = {
-  door:'d', bossDoor:'u', elev:'E', elevClosed:'e',
-  player:'S', followerA:'F', followerB:'G', bossMarker:'X',
-  spAnimal:'A', spStaff:'N', spCart:'C',
-  nurse:'n', tcae:'t', celador:'c', cleaner:'h', guardia:'g', medico:'k',
-  jefe_servicio:'J', supervisora:'H',
-  mosquito:'m', rat:'r',
-  cartUrg:'U', cartMed:'+', cartFood:'F',
-  light:'L', lightBroken:'l',
-  coin:'o', bag:'$', food:'f', power:'u',
-  patient:'p', pill:'i', bell:'b',
-  phone:'T'
-};
+function charFor(key, fallback){
+  if (typeof window !== 'undefined' && window.PlacementAPI?.getCharForKey) {
+    const ch = window.PlacementAPI.getCharForKey(key, null);
+    if (ch) return ch;
+  }
+  return fallback;
+}
 
 // **defecto + extra**
 const CHARSET_DEFAULT = {
-  wall:'#', floor:'.',
-  door:'d', bossDoor:'u',
-  elev:'E', elevClosed:'e',
-  start:'S', light:'L', lightBroken:'l',
-  spAnimal:'A', spStaff:'N', spCart:'C',
-  patient:'p', pill:'i', bell:'b', phone:'T', bossMarker:'X'
+  wall:charFor('wall', '#'), floor:charFor('floor', '.'),
+  door:charFor('door_normal', 'd'), bossDoor:charFor('door_boss', 'u'),
+  elev:charFor('elevator', 'E'), elevClosed:charFor('elevator', 'E'),
+  start:charFor('hero_spawn', 'S'), light:charFor('light_ok', 'L'), lightBroken:charFor('light_broken', 'l'),
+  spAnimal:charFor('spawn_animal', 'A'), spStaff:charFor('spawn_npc', 'N'), spCart:charFor('spawn_cart', 'C'),
+  patient:charFor('patient_bed', 'p'), pill:charFor('pill', 'i'), bell:charFor('bell', 'b'), phone:charFor('phone_central', 'T'), bossMarker:charFor('boss_main', 'X'),
+  cartUrg:charFor('cart_emergency', 'U'), cartMed:charFor('cart_meds', '+'), cartFood:charFor('cart_food', 'F'),
+  mosquito:charFor('mosquito', 'm'), rat:charFor('rat', 'r'),
+  nurse:charFor('npc_nurse_sexy', 'n'), tcae:charFor('npc_tcae', 't'), celador:charFor('npc_celador', 'c'), cleaner:charFor('npc_cleaner', 'h'), guardia:charFor('npc_guard', 'g'), medico:charFor('npc_medico', 'k'),
+  jefe_servicio:'J', supervisora:charFor('npc_supervisora', 'H'),
+  coin:charFor('coin', 'o'), bag:charFor('money_bag', '$'), food:charFor('food_small', 'y'), power:charFor('syringe_red', '1')
 };
-const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET);
+const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAULT);
 
   // Nivel → densidades base (se pueden sobreescribir con options.density)
   const LAYERS = {
@@ -955,7 +953,18 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), EXTRA_CHARSET)
     for (let x=0;x<W;x++){ ascii[0][x]=cs.wall; ascii[H-1][x]=cs.wall; }
     for (let y=0;y<H;y++){ ascii[y][0]=cs.wall; ascii[y][W-1]=cs.wall; }
   }
-  function asciiToNumeric(A){ const H=A.length,W=A[0].length, grid=Array.from({length:H},()=>Array(W)); for(let y=0;y<H;y++) for(let x=0;x<W;x++) grid[y][x]=A[y][x]==='#'?1:0; return grid; }
+function asciiToNumeric(A){
+  const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
+  const H=A.length,W=A[0].length, grid=Array.from({length:H},()=>Array(W));
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const ch = A[y][x];
+      const def = legend[ch];
+      grid[y][x] = def && def.blocking ? 1 : 0;
+    }
+  }
+  return grid;
+}
   function placeInside(map, r, tries=200){
     for(let k=0;k<tries;k++){
       const tx = clamp(r.x + 1 + (Math.random()*Math.max(1,r.w-2))|0, r.x+1, r.x+r.w-2);
