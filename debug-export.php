@@ -32,11 +32,25 @@ try {
     $levelData = is_array($meta['level'] ?? null) ? $meta['level'] : [];
     $globalsData = is_array($meta['globals'] ?? null) ? $meta['globals'] : [];
     $generationRaw = is_array($meta['generation'] ?? null) ? $meta['generation'] : [];
+    $metaExtraBase = [];
+    if (is_array($meta['meta_extra'] ?? null)) {
+        $metaExtraBase = $meta['meta_extra'];
+    } elseif (is_array($meta['metaExtra'] ?? null)) {
+        $metaExtraBase = $meta['metaExtra'];
+    }
+    $metaExtra = array_merge($metaExtraBase, array_diff_key($meta, [
+        'globals' => 1,
+        'level' => 1,
+        'rules' => 1,
+        'generation' => 1,
+        'meta_extra' => 1,
+        'metaExtra' => 1,
+    ]));
 
     $generationDefaults = [
         'roomsRequested'    => $meta['roomsRequested'] ?? $meta['rooms'] ?? ($levelData['rooms'] ?? null),
         'roomsGenerated'    => $meta['roomsGenerated'] ?? ($generationRaw['roomsGenerated'] ?? $meta['roomsCount'] ?? $generationRaw['roomsCount'] ?? null),
-        'corridorWidthUsed' => $meta['corridorWidth'] ?? $generationRaw['corridorWidth'] ?? $generationRaw['corridorWidthUsed'] ?? null,
+        'corridorWidthUsed' => $generationRaw['corridorWidthUsed'] ?? $meta['corridorWidth'] ?? $metaExtra['corridorWidthUsed'] ?? $generationRaw['corridorWidth'] ?? null,
         'corridorWidthMin'  => $meta['corridorWidthMin'] ?? $levelData['corridorWidthMin'] ?? null,
         'corridorWidthMax'  => $meta['corridorWidthMax'] ?? $levelData['corridorWidthMax'] ?? null,
         'culling'           => $meta['culling'] ?? $levelData['culling'] ?? $globalsData['culling'] ?? null,
@@ -46,7 +60,7 @@ try {
         'floorPercent'      => $meta['floorPercent'] ?? $generationRaw['floorPercent'] ?? null,
         'walkableTiles'     => $meta['walkableTiles'] ?? $generationRaw['walkableTiles'] ?? null,
         'totalTiles'        => $meta['totalTiles'] ?? $generationRaw['totalTiles'] ?? null,
-        'numCorridors'      => $meta['corridorsBuilt'] ?? $generationRaw['corridorsBuilt'] ?? null,
+        'numCorridors'      => $meta['corridorsBuilt'] ?? $generationRaw['corridorsBuilt'] ?? $generationRaw['numCorridors'] ?? null,
     ];
 
     $generation = array_merge($generationDefaults, $generationRaw);
@@ -68,7 +82,7 @@ try {
     $entryLines[] = '[generation]';
     $entryLines[] = json_encode($generation, $jsonFlags);
     $entryLines[] = '[meta_extra]';
-    $entryLines[] = json_encode(array_diff_key($meta, ['globals' => 1, 'level' => 1, 'rules' => 1, 'generation' => 1]), $jsonFlags);
+    $entryLines[] = json_encode($metaExtra, $jsonFlags);
     $entryLines[] = '[map]';
     if ($ascii !== '') {
         $entryLines[] = $ascii;

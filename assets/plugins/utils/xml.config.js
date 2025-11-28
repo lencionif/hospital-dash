@@ -2,11 +2,13 @@
   'use strict';
 
   const XMLRules = root.XMLRules = root.XMLRules || {};
+  const LevelRulesAPI = root.LevelRulesAPI = root.LevelRulesAPI || {};
 
   const cache = {
     docPromise: null,
     globals: null,
-    levels: new Map()
+    levels: new Map(),
+    levelConfigs: new Map()
   };
 
   const cssEscape = root.CSS?.escape
@@ -34,6 +36,52 @@
     const result = { globals, level, rules, config };
     cache.levels.set(id, result);
     return result;
+  };
+
+  LevelRulesAPI.loadAllOnce = async function loadAllOnce() {
+    const doc = await ensureDocument();
+    const globals = cache.globals || parseGlobals(doc);
+    cache.globals = globals;
+
+    const levels = Array.from(doc.querySelectorAll('levels > level'));
+    const configs = new Map();
+    for (const node of levels) {
+      const attrs = parseAttributes(node);
+      const id = String(attrs.id ?? attrs.level ?? configs.size + 1);
+      if (cache.levelConfigs.has(id)) {
+        configs.set(id, cache.levelConfigs.get(id));
+        continue;
+      }
+      const level = parseLevel(node, globals);
+      const rules = parseRules(node);
+      const config = buildLevelConfig({ globals, level, rules });
+      const enriched = { ...config, mode: 'normal' };
+      cache.levelConfigs.set(id, enriched);
+      cache.levels.set(id, { globals, level, rules, config });
+      configs.set(id, enriched);
+    }
+    return configs;
+  };
+
+  LevelRulesAPI.getLevelConfig = async function getLevelConfig(levelId, mode = 'normal') {
+    const id = String(levelId || '1');
+    if (cache.levelConfigs.has(id)) {
+      const cfg = cache.levelConfigs.get(id);
+      const withMode = { ...cfg, mode: mode || cfg.mode || 'normal' };
+      LevelRulesAPI.current = withMode;
+      const legacy = root.LevelRules || (root.LevelRules = {});
+      legacy.current = withMode;
+      return withMode;
+    }
+
+    const data = await XMLRules.load(id);
+    const base = data?.config || {};
+    const config = { ...base, mode: mode || base.mode || 'normal' };
+    cache.levelConfigs.set(id, config);
+    LevelRulesAPI.current = config;
+    const legacy = root.LevelRules || (root.LevelRules = {});
+    legacy.current = config;
+    return config;
   };
 
   async function ensureDocument() {
