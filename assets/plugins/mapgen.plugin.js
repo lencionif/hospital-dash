@@ -1237,8 +1237,8 @@ function asciiToNumeric(A){
     const seed = options.rngSeed ?? options.seed ?? (W.G?.seed ?? (Date.now()>>>0));
     const rng  = RNG(seed);
 
-    const width  = clamp(options.width ?? options.w ?? levelConfig.width || BASE*levelId, 20, BASE*3);
-    const height = clamp(options.height ?? options.h ?? levelConfig.height || BASE*levelId, 20, BASE*3);
+    const width  = clamp(options.width ?? options.w ?? (levelConfig.width || BASE*levelId), 20, BASE*3);
+    const height = clamp(options.height ?? options.h ?? (levelConfig.height || BASE*levelId), 20, BASE*3);
 
     if (MAP_MODE === 'debug' || MAP_MODE === 'ascii') {
       return generateLegendPreset({ ...options, seed });
@@ -1269,6 +1269,28 @@ function asciiToNumeric(A){
     const roomsGenerated = Array.isArray(allRooms) ? allRooms.length : 0;
     const corridorsBuilt = Number(asciiRows._corridors || 0);
 
+    const generation = {
+      seed,
+      width,
+      height,
+      roomsCount: roomsGenerated,
+      corridorWidth: asciiRows._corridorWidth,
+      corridorWidthUsed: asciiRows._corridorWidth,
+      corridorWidthMin: levelConfig.corridorWidthMin,
+      corridorWidthMax: levelConfig.corridorWidthMax,
+      cooling: levelConfig.cooling ?? 20,
+      culling: levelConfig.culling,
+      allRoomsReachable: allReachable,
+      bossReachable,
+      roomsRequested,
+      roomsGenerated,
+      corridorsBuilt,
+      totalTiles,
+      walkableTiles,
+      floorPercent,
+      mode
+    };
+
     const result = {
       ascii: rowsToString(asciiRows),
       map: numericMap,
@@ -1288,25 +1310,8 @@ function asciiToNumeric(A){
       height,
       levelRules: levelConfig,
       meta: {
-        seed,
-        width,
-        height,
-        roomsCount: roomsGenerated,
-        corridorWidth: asciiRows._corridorWidth,
-        corridorWidthUsed: asciiRows._corridorWidth,
-        corridorWidthMin: levelConfig.corridorWidthMin,
-        corridorWidthMax: levelConfig.corridorWidthMax,
-        cooling: levelConfig.cooling ?? 20,
-        culling: levelConfig.culling,
-        allRoomsReachable: allReachable,
-        bossReachable,
-        roomsRequested,
-        roomsGenerated,
-        corridorsBuilt,
-        totalTiles,
-        walkableTiles,
-        floorPercent,
-        mode
+        ...generation,
+        generation
       }
     };
 
@@ -1319,6 +1324,7 @@ function asciiToNumeric(A){
       G.mapAreas = result.areas;
       G.levelRules = levelConfig;
       G.levelMeta = result.meta;
+      G.mapGenerationMeta = generation;
       if (typeof W.LevelRulesAPI === 'object') {
         W.LevelRulesAPI.current = levelConfig;
       }
