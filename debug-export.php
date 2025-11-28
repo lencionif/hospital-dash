@@ -5,6 +5,8 @@ header('Content-Type: application/json');
 $outputFile = __DIR__ . '/test-results/debug-load.txt';
 $separator  = str_repeat('=', 32);
 
+$jsonFlags = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES;
+
 try {
     $raw = file_get_contents('php://input');
     if ($raw === false) {
@@ -26,35 +28,48 @@ try {
     $ascii = rtrim($ascii, "\r\n");
     $meta = is_array($meta) ? $meta : [];
 
-    $entryLines = [];
-    $entryLines[] = $separator;
-    $entryLines[] = 'timestamp = ' . date('c');
+    $timestamp = date('Y-m-d H:i:s');
+    $levelData = is_array($meta['level'] ?? null) ? $meta['level'] : [];
+    $globalsData = is_array($meta['globals'] ?? null) ? $meta['globals'] : [];
+    $generationRaw = is_array($meta['generation'] ?? null) ? $meta['generation'] : [];
 
-    $fields = [
-        'levelId', 'mode', 'width', 'height', 'cooling', 'seed'
+    $generationDefaults = [
+        'roomsRequested'    => $meta['roomsRequested'] ?? $meta['rooms'] ?? ($levelData['rooms'] ?? null),
+        'roomsGenerated'    => $meta['roomsGenerated'] ?? ($generationRaw['roomsGenerated'] ?? $meta['roomsCount'] ?? $generationRaw['roomsCount'] ?? null),
+        'corridorWidthUsed' => $meta['corridorWidth'] ?? $generationRaw['corridorWidth'] ?? $generationRaw['corridorWidthUsed'] ?? null,
+        'corridorWidthMin'  => $meta['corridorWidthMin'] ?? $levelData['corridorWidthMin'] ?? null,
+        'corridorWidthMax'  => $meta['corridorWidthMax'] ?? $levelData['corridorWidthMax'] ?? null,
+        'culling'           => $meta['culling'] ?? $levelData['culling'] ?? $globalsData['culling'] ?? null,
+        'cooling'           => $meta['cooling'] ?? $levelData['cooling'] ?? $globalsData['cooling'] ?? null,
+        'bossReachable'     => $meta['bossReachable'] ?? $generationRaw['bossReachable'] ?? null,
+        'allRoomsReachable' => $meta['allRoomsReachable'] ?? $generationRaw['allRoomsReachable'] ?? null,
+        'floorPercent'      => $meta['floorPercent'] ?? $generationRaw['floorPercent'] ?? null,
+        'walkableTiles'     => $meta['walkableTiles'] ?? $generationRaw['walkableTiles'] ?? null,
+        'totalTiles'        => $meta['totalTiles'] ?? $generationRaw['totalTiles'] ?? null,
+        'numCorridors'      => $meta['corridorsBuilt'] ?? $generationRaw['corridorsBuilt'] ?? null,
     ];
 
-    foreach ($fields as $field) {
-        if (array_key_exists($field, $meta) && $meta[$field] !== '' && $meta[$field] !== null) {
-          $entryLines[] = str_pad($field, 9, ' ', STR_PAD_RIGHT) . ' = ' . $meta[$field];
-        }
-    }
+    $generation = array_merge($generationDefaults, $generationRaw);
 
-    // Añadir cualquier otro metadato útil
-    foreach ($meta as $key => $value) {
-        if (in_array($key, $fields, true)) {
-            continue;
-        }
-        if (is_scalar($value) || $value === null) {
-            $entryLines[] = str_pad((string)$key, 9, ' ', STR_PAD_RIGHT) . ' = ' . ($value === null ? 'null' : $value);
-        } else {
-            $entryLines[] = str_pad((string)$key, 9, ' ', STR_PAD_RIGHT) . ' = ' . json_encode($value);
-        }
-    }
-
-    $entryLines[] = 'source    = level_rules.xml';
+    $entryLines = [];
+    $entryLines[] = $separator;
+    $entryLines[] = 'timestamp: ' . $timestamp;
+    if (array_key_exists('levelId', $meta)) $entryLines[] = 'levelId: ' . $meta['levelId'];
+    if (array_key_exists('mode', $meta)) $entryLines[] = 'mode: ' . $meta['mode'];
+    if (array_key_exists('seed', $meta)) $entryLines[] = 'seed: ' . $meta['seed'];
+    $entryLines[] = 'source: level_rules.xml';
     $entryLines[] = '';
-
+    $entryLines[] = '[globals]';
+    $entryLines[] = json_encode($globalsData, $jsonFlags);
+    $entryLines[] = '[level]';
+    $entryLines[] = json_encode($levelData, $jsonFlags);
+    $entryLines[] = '[rules]';
+    $entryLines[] = json_encode($meta['rules'] ?? [], $jsonFlags);
+    $entryLines[] = '[generation]';
+    $entryLines[] = json_encode($generation, $jsonFlags);
+    $entryLines[] = '[meta_extra]';
+    $entryLines[] = json_encode(array_diff_key($meta, ['globals' => 1, 'level' => 1, 'rules' => 1, 'generation' => 1]), $jsonFlags);
+    $entryLines[] = '[map]';
     if ($ascii !== '') {
         $entryLines[] = $ascii;
     }

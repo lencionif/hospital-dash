@@ -1233,10 +1233,22 @@ function asciiToNumeric(A){
     const reachGrid = asciiRows._reachable || null;
     const allReachable = allRooms.every(r => reachGrid?.[r.centerY]?.[r.centerX]);
     const bossReachable = asciiRows._boss ? !!reachGrid?.[asciiRows._boss.centerY]?.[asciiRows._boss.centerX] : false;
+    const numericMap = asciiToNumeric(asciiRows);
+    const totalTiles = width * height;
+    let walkableTiles = 0;
+    for (let y = 0; y < numericMap.length; y++) {
+      for (let x = 0; x < numericMap[y].length; x++) {
+        if (numericMap[y][x] === 0) walkableTiles++;
+      }
+    }
+    const floorPercent = totalTiles > 0 ? (walkableTiles / totalTiles) * 100 : 0;
+    const roomsRequested = Number.isFinite(config.rooms) ? config.rooms : (asciiRows._roomsRequested ?? allRooms.length);
+    const roomsGenerated = Array.isArray(allRooms) ? allRooms.length : 0;
+    const corridorsBuilt = Number(asciiRows._corridors || 0);
 
     const result = {
       ascii: rowsToString(asciiRows),
-      map: asciiToNumeric(asciiRows),
+      map: numericMap,
       placements: [],
       areas: {
         control: asciiRows._control || null,
@@ -1256,11 +1268,20 @@ function asciiToNumeric(A){
         seed,
         width,
         height,
-        roomsCount: Array.isArray(asciiRows._rooms) ? asciiRows._rooms.length : 0,
+        roomsCount: roomsGenerated,
         corridorWidth: asciiRows._corridorWidth,
+        corridorWidthMin: levelConfig.corridorWidthMin,
+        corridorWidthMax: levelConfig.corridorWidthMax,
         cooling: config.cooling ?? 20,
+        culling: config.culling,
         allRoomsReachable: allReachable,
-        bossReachable
+        bossReachable,
+        roomsRequested,
+        roomsGenerated,
+        corridorsBuilt,
+        totalTiles,
+        walkableTiles,
+        floorPercent
       }
     };
 
@@ -1473,6 +1494,7 @@ function asciiToNumeric(A){
 
     ascii[doorA.y][doorA.x] = roomA.type === 'boss' ? cs.bossDoor : cs.door;
     ascii[doorB.y][doorB.x] = roomB.type === 'boss' ? cs.bossDoor : cs.door;
+    ascii._corridors = (ascii._corridors || 0) + 1;
   }
 
   function connectRoomsWithMST(ascii, rooms, corridorWidth, rng, cs){
@@ -1533,6 +1555,8 @@ function asciiToNumeric(A){
 
     for (let attempt = 0; attempt < maxRestarts; attempt++){
       const ascii = create2DArray(height, width, cs.wall);
+      ascii._corridors = 0;
+      ascii._roomsRequested = totalRooms;
       const rooms = [];
       const control = chooseControlRoom(rng, width, height, controlRange, rooms);
       if (!control) continue;
@@ -1618,6 +1642,7 @@ function asciiToNumeric(A){
       ascii._boss = boss;
       ascii._corridorWidth = corridorWidth;
       ascii._reachable = reachable;
+      ascii._roomsGenerated = rooms.length;
       return ascii;
     }
 

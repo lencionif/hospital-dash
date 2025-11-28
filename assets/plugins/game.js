@@ -110,15 +110,57 @@
     const meta = state.meta || {};
     const asciiRows = Array.isArray(state.asciiRows) ? state.asciiRows.map(String) : [];
 
+    const width = meta.width ?? (asciiRows[0] ? asciiRows[0].length : 0);
+    const height = meta.height ?? asciiRows.length;
+    const roomsRequested = meta.roomsRequested ?? meta.rooms ?? meta.level?.rooms;
+    const roomsGenerated = meta.roomsGenerated ?? meta.roomsCount;
+    const floorPercent = meta.floorPercent ?? null;
+    const generationBase = { ...(meta.generation || {}) };
+
+    const generation = {
+      ...generationBase,
+      roomsRequested: generationBase.roomsRequested ?? roomsRequested,
+      roomsGenerated: generationBase.roomsGenerated ?? roomsGenerated,
+      corridorWidthUsed: generationBase.corridorWidthUsed ?? meta.corridorWidth ?? generationBase.corridorWidth,
+      corridorWidthMin: generationBase.corridorWidthMin ?? meta.corridorWidthMin ?? meta.level?.corridorWidthMin,
+      corridorWidthMax: generationBase.corridorWidthMax ?? meta.corridorWidthMax ?? meta.level?.corridorWidthMax,
+      corridorsBuilt: generationBase.corridorsBuilt ?? meta.corridorsBuilt ?? meta.generation?.corridorsBuilt,
+      culling: generationBase.culling ?? meta.culling ?? meta.level?.culling ?? meta.globals?.culling,
+      cooling: generationBase.cooling ?? meta.cooling ?? meta.level?.cooling ?? meta.globals?.cooling,
+      floorPercent: generationBase.floorPercent ?? floorPercent,
+      walkableTiles: generationBase.walkableTiles ?? meta.walkableTiles,
+      totalTiles: generationBase.totalTiles ?? meta.totalTiles,
+      allRoomsReachable: generationBase.allRoomsReachable ?? meta.allRoomsReachable,
+      bossReachable: generationBase.bossReachable ?? meta.bossReachable,
+      boss: generationBase.boss ?? meta.boss ?? meta.level?.boss,
+      difficulty: generationBase.difficulty ?? meta.difficulty ?? meta.level?.difficulty
+    };
+
+    const normalizedMeta = {
+      ...meta,
+      width,
+      height,
+      generation,
+      roomsRequested,
+      roomsGenerated,
+      floorPercent
+    };
+
     const lines = [];
-    lines.push('timestamp = ' + new Date().toISOString());
-    if (meta.levelId != null)  lines.push('levelId   = ' + meta.levelId);
-    if (meta.mode)             lines.push('mode      = ' + meta.mode);
-    if (meta.width != null)    lines.push('width     = ' + meta.width);
-    if (meta.height != null)   lines.push('height    = ' + meta.height);
-    if (meta.cooling != null)  lines.push('cooling   = ' + meta.cooling);
-    if (meta.seed != null)     lines.push('seed      = ' + meta.seed);
-    lines.push('source    = level_rules.xml');
+    lines.push('timestamp: ' + new Date().toISOString());
+    if (meta.levelId != null)  lines.push('levelId: ' + meta.levelId);
+    if (meta.mode)             lines.push('mode: ' + meta.mode);
+    if (meta.seed != null)     lines.push('seed: ' + meta.seed);
+    if (generation.culling != null) lines.push('culling: ' + generation.culling);
+    lines.push('source: level_rules.xml');
+    lines.push('[globals]');
+    lines.push(JSON.stringify(meta.globals || {}, null, 2));
+    lines.push('[level]');
+    lines.push(JSON.stringify(meta.level || {}, null, 2));
+    lines.push('[rules]');
+    lines.push(JSON.stringify(meta.rules || [], null, 2));
+    lines.push('[generation]');
+    lines.push(JSON.stringify(generation, null, 2));
     lines.push('');
 
     for (let i = 0; i < asciiRows.length; i++) {
@@ -127,7 +169,7 @@
     lines.push('');
 
     return {
-      meta,
+      meta: normalizedMeta,
       ascii: asciiRows.join('\n'),
       textBlock: lines.join('\n')
     };
@@ -1663,6 +1705,7 @@ function drawEntities(c2){
     const seed = G.seed || Date.now();
     let ascii = null;
     let levelRules = null;
+    let generationMeta = null;
 
     if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
       try {
@@ -1686,6 +1729,7 @@ function drawEntities(c2){
             G.mapgenPlacements = resolved.placements || [];
             G.mapAreas = resolved.areas || null;
             levelRules = resolved.levelRules || null;
+            generationMeta = resolved.meta || null;
             console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
           }
         }
@@ -1709,15 +1753,36 @@ function drawEntities(c2){
         const asciiRows = ascii.map(String);
         const width = asciiRows[0] ? asciiRows[0].length : 0;
         const height = asciiRows.length;
+        const globalsMeta = levelRules?.globals || null;
+        const levelMeta = levelRules ? { ...levelRules } : null;
+        if (levelMeta && levelMeta.globals) delete levelMeta.globals;
+        const generation = {
+          ...(generationMeta || {}),
+          roomsRequested: generationMeta?.roomsRequested ?? levelRules?.rooms,
+          roomsGenerated: generationMeta?.roomsGenerated ?? generationMeta?.roomsCount,
+          corridorWidthMin: generationMeta?.corridorWidthMin ?? levelRules?.corridorWidthMin,
+          corridorWidthMax: generationMeta?.corridorWidthMax ?? levelRules?.corridorWidthMax,
+          corridorWidth: generationMeta?.corridorWidth ?? generationMeta?.corridorWidthUsed,
+          culling: generationMeta?.culling ?? levelRules?.culling ?? globalsMeta?.culling,
+          cooling: generationMeta?.cooling ?? levelRules?.cooling ?? globalsMeta?.cooling,
+          bossReachable: generationMeta?.bossReachable,
+          allRoomsReachable: generationMeta?.allRoomsReachable
+        };
         const meta = {
           levelId: levelRules?.id ?? levelRules?.level ?? G.level ?? 1,
           mode: 'normal',
           width,
           height,
-          cooling: Number.isFinite(levelRules?.cooling) ? levelRules.cooling : undefined,
           seed: levelRules?.seed ?? seed ?? G.seed,
+          culling: levelRules?.culling ?? globalsMeta?.culling,
+          cooling: levelRules?.cooling ?? globalsMeta?.cooling,
           rooms: levelRules?.rooms,
-          boss: levelRules?.boss
+          boss: levelRules?.boss,
+          difficulty: levelRules?.difficulty,
+          globals: globalsMeta,
+          level: levelMeta,
+          rules: levelRules?.rules || [],
+          generation
         };
 
         const dump = DebugMapExport.buildAsciiDump({
