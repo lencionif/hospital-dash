@@ -98,6 +98,54 @@
     cycleSeconds: 0
   };
   window.G = G; // (expuesto)
+
+  // ------------------------------------------------------------
+  // Exportador de mapas ASCII para debug
+  // ------------------------------------------------------------
+  window.DebugMapExport = window.DebugMapExport || {};
+  const DebugMapExport = window.DebugMapExport;
+
+  DebugMapExport.buildAsciiDump = function(levelState){
+    const state = levelState || {};
+    const meta = state.meta || {};
+    const asciiRows = Array.isArray(state.asciiRows) ? state.asciiRows.map(String) : [];
+
+    const lines = [];
+    lines.push('timestamp = ' + new Date().toISOString());
+    if (meta.levelId != null)  lines.push('levelId   = ' + meta.levelId);
+    if (meta.mode)             lines.push('mode      = ' + meta.mode);
+    if (meta.width != null)    lines.push('width     = ' + meta.width);
+    if (meta.height != null)   lines.push('height    = ' + meta.height);
+    if (meta.cooling != null)  lines.push('cooling   = ' + meta.cooling);
+    if (meta.seed != null)     lines.push('seed      = ' + meta.seed);
+    lines.push('source    = level_rules.xml');
+    lines.push('');
+
+    for (let i = 0; i < asciiRows.length; i++) {
+      lines.push(asciiRows[i]);
+    }
+    lines.push('');
+
+    return {
+      meta,
+      ascii: asciiRows.join('\n'),
+      textBlock: lines.join('\n')
+    };
+  };
+
+  DebugMapExport.sendToServer = function(dump){
+    if (!dump) return Promise.resolve();
+    return fetch('debug-export.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        meta: dump.meta || {},
+        ascii: dump.ascii || ''
+      })
+    }).catch(function(err){
+      console.error('[DebugMapExport] Error al enviar mapa al servidor', err);
+    });
+  };
   // Control de respawn diferido (solo al morir)
   const SPAWN = {
     max: BALANCE.enemies.mosquito.max,
@@ -1656,6 +1704,33 @@ function drawEntities(c2){
       console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
     }
 
+    if (mode === 'normal' && Array.isArray(ascii) && ascii.length && !G._debugExported) {
+      try {
+        const asciiRows = ascii.map(String);
+        const width = asciiRows[0] ? asciiRows[0].length : 0;
+        const height = asciiRows.length;
+        const meta = {
+          levelId: levelRules?.id ?? levelRules?.level ?? G.level ?? 1,
+          mode: 'normal',
+          width,
+          height,
+          cooling: Number.isFinite(levelRules?.cooling) ? levelRules.cooling : undefined,
+          seed: levelRules?.seed ?? seed ?? G.seed,
+          rooms: levelRules?.rooms,
+          boss: levelRules?.boss
+        };
+
+        const dump = DebugMapExport.buildAsciiDump({
+          asciiRows,
+          meta
+        });
+        DebugMapExport.sendToServer(dump);
+        G._debugExported = true;
+      } catch (err) {
+        console.warn('[DebugMapExport] No se pudo exportar el mapa', err);
+      }
+    }
+
     ASCII_MAP = ascii;
     parseMap(ASCII_MAP);
 
@@ -1711,7 +1786,8 @@ function drawEntities(c2){
     // Reset de estado base
     G.time = 0; G.score = 0; G.health = 6; G.delivered = 0; G.timbresRest = 1;
     G.carry = null;
-    G._placementsFinalized = false; 
+    G._placementsFinalized = false;
+    G._debugExported = false;
 
     // Flag global (lo usará placement.api.js para NO sembrar)
     window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
