@@ -75,7 +75,7 @@
       try {
         parsed = await W.LevelRulesAPI.getLevelConfig(id, mode);
       } catch (err) {
-        try { console.warn('[MapGen] getLevelRules LevelRulesAPI fallback', err); } catch (_) {}
+        try { console.warn('[MAPGEN_WARNING] getLevelRules LevelRulesAPI fallback', err); } catch (_) {}
       }
     }
 
@@ -97,7 +97,7 @@
           culling: Number.isFinite(base.culling) ? base.culling : Number(globals.culling) || 20
         };
       } catch (err) {
-        try { console.warn('[MapGen] getLevelRules fallback', err); } catch (_) {}
+        try { console.warn('[MAPGEN_WARNING] getLevelRules fallback', err); } catch (_) {}
       }
     }
 
@@ -956,7 +956,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
     const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
     const def = legend[ch];
     if (!def) {
-      try { console.warn('[ASCII] Unknown char in map:', JSON.stringify(ch), context || ''); } catch (_) {}
+    try { console.warn('[MAPGEN_WARNING] Unknown char in map:', JSON.stringify(ch), context || ''); } catch (_) {}
     }
     return def || null;
   }

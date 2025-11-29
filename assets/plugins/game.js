@@ -1695,13 +1695,16 @@ function drawEntities(c2){
     let generationMeta = null;
     let levelConfig = null;
     let mapgenResult = null;
+    let asciiRows = [];
+    let mapWidth = 0;
+    let mapHeight = 0;
 
     if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
       try {
         if (window.MapGen && typeof MapGen.generate === 'function') {
           if (typeof MapGen.init === 'function') MapGen.init(G);
         }
-      } catch(e){ console.warn('[MapGen] init/generate falló:', e); }
+      } catch(e){ console.error('[MAPGEN_ERROR] init/generate falló:', e); }
 
       try {
         if (typeof window.LevelRulesAPI?.getLevelConfig === 'function') {
@@ -1734,7 +1737,7 @@ function drawEntities(c2){
             console.log('%cMAP_MODE','color:#0bf', window.DEBUG_MINIMAP ? 'procedural mini' : 'procedural normal');
           }
         }
-      } catch(e){ console.warn('[MapGenAPI] generate falló:', e); }
+      } catch(e){ console.error('[MAPGEN_ERROR] generate falló:', e); }
     }
 
     if (!ascii && (mode === 'debug' || mode === 'ascii')) {
@@ -1749,11 +1752,37 @@ function drawEntities(c2){
       console.log('%cMAP_MODE','color:#0bf', 'fallback DEFAULT_ASCII_MAP');
     }
 
+    asciiRows = Array.isArray(ascii) ? ascii.map((row) => String(row)) : [];
+    mapWidth = asciiRows[0] ? asciiRows[0].length : 0;
+    mapHeight = asciiRows.length;
+
+    if (mode === 'normal' && asciiRows.length) {
+      try {
+        const walkableTiles = generationMeta?.walkableTiles;
+        const totalTiles = generationMeta?.totalTiles ?? (mapWidth * mapHeight) || null;
+        const floorPercent = Number.isFinite(generationMeta?.floorPercent)
+          ? generationMeta.floorPercent
+          : (Number.isFinite(walkableTiles) && totalTiles)
+            ? Math.round((walkableTiles / totalTiles) * 1000) / 10
+            : null;
+        console.log('[MAPGEN_SUMMARY]', {
+          roomsRequested: generationMeta?.roomsRequested ?? levelRules?.rooms,
+          roomsGenerated: generationMeta?.roomsGenerated ?? generationMeta?.roomsCount ?? mapgenResult?.rooms?.length,
+          width: mapWidth,
+          height: mapHeight,
+          floorPercent,
+          walkableTiles,
+          totalTiles,
+          numCorridors: generationMeta?.corridorsBuilt ?? generationMeta?.numCorridors ?? null
+        });
+      } catch (_) {}
+    }
+
     if (mode === 'normal' && Array.isArray(ascii) && ascii.length && !G._debugExported) {
       try {
-        const asciiRows = ascii.map(String);
-        const width = asciiRows[0] ? asciiRows[0].length : 0;
-        const height = asciiRows.length;
+        const asciiRowsExport = asciiRows;
+        const width = mapWidth;
+        const height = mapHeight;
         const globalsMeta = levelRules?.globals || null;
         const levelMeta = levelRules ? { ...levelRules } : null;
         if (levelMeta && levelMeta.globals) delete levelMeta.globals;
@@ -1839,7 +1868,7 @@ function drawEntities(c2){
 
     G.__allowASCIIPlacements = true;
     if (typeof window.applyPlacementsFromMapgen === 'function' && placements && placements.length) {
-      try { window.applyPlacementsFromMapgen(placements); } catch (e) { console.warn('[MapGen] applyPlacements', e); }
+      try { window.applyPlacementsFromMapgen(placements); } catch (e) { console.warn('[MAPGEN_WARNING] applyPlacements', e); }
     }
 
     finalizeLevelBuildOnce();
