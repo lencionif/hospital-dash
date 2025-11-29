@@ -131,6 +131,28 @@
     return arr.map((a) => (a instanceof Error ? (a.stack || a.message || String(a)) : a));
   }
 
+  function sendConsoleExport(level, args, meta = {}) {
+    if (typeof fetch !== 'function') return;
+    try {
+      const payload = {
+        level,
+        message: normaliseArgs(args).map(toText).join(' '),
+        meta: {
+          tag: meta.tag || null,
+          source: meta.source || null,
+          stack: meta.stack || null,
+        },
+      };
+      fetch('console_export.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (_) {
+      // evitar loops de error
+    }
+  }
+
   function shouldIgnore(entry) {
     if (!entry || !entry.text) return false;
     return NOISE_PATTERNS.some((re) => re.test(entry.text));
@@ -595,18 +617,22 @@
     console.log = function (...args) {
       originalConsole.log(...args);
       record('info', args, { source: 'console.log' });
+      sendConsoleExport('log', args, { source: 'console.log' });
     };
     console.info = function (...args) {
       originalConsole.info(...args);
       record('info', args, { source: 'console.info' });
+      sendConsoleExport('log', args, { source: 'console.info' });
     };
     console.warn = function (...args) {
       originalConsole.warn(...args);
       record('warn', args, { source: 'console.warn' });
+      sendConsoleExport('warn', args, { source: 'console.warn' });
     };
     console.error = function (...args) {
       originalConsole.error(...args);
       record('error', args, { source: 'console.error' });
+      sendConsoleExport('error', args, { source: 'console.error' });
     };
   }
 
