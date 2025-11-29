@@ -1651,16 +1651,22 @@ function asciiToNumeric(A){
     return min + Math.floor(Math.random() * (maxInclusive - min + 1));
   }
 
-  function randomFreeTileInRoom(grid, room, cs=CHARSET_DEFAULT) {
+  function randomFreeTileInRoom(grid, room) {
     let tries = 0;
     while (tries++ < 100) {
       const x = randomInt(room.x + 1, room.x + room.w - 2);
       const y = randomInt(room.y + 1, room.y + room.h - 2);
-      if (isWalkableChar(grid[y][x], cs)) {
+
+      if (grid[y][x] === '.' || grid[y][x] === '-' || grid[y][x] === ',' || grid[y][x] === ';') {
         return { x, y };
       }
     }
+
     return { x: room.centerX, y: room.centerY };
+  }
+
+  function isFloorTile(ch) {
+    return ch === '.' || ch === '-' || ch === ',' || ch === ';';
   }
 
   function placePatientsFromRule(grid, rooms, rule) {
@@ -1672,10 +1678,11 @@ function asciiToNumeric(A){
     while (patientsLeft > 0 && candidateRooms.length > 0) {
       const room = candidateRooms[roomIndex % candidateRooms.length];
 
-      const x = randomInt(room.x + 1, room.x + room.w - 2);
-      const y = randomInt(room.y + 1, room.y + room.h - 2);
+      const pos = randomFreeTileInRoom(grid, room);
+      const x = pos.x;
+      const y = pos.y;
 
-      if (grid[y][x] !== '.') {
+      if (grid[y][x] !== '.' && grid[y][x] !== '-' && grid[y][x] !== ',' && grid[y][x] !== ';') {
         roomIndex++;
         continue;
       }
@@ -1683,11 +1690,14 @@ function asciiToNumeric(A){
       grid[y][x] = 'p';
 
       if (rule.bell) {
-        if (grid[y][x + 1] === '.') grid[y][x + 1] = 'b';
-        else if (grid[y][x - 1] === '.') grid[y][x - 1] = 'b';
+        if (grid[y][x + 1] && (grid[y][x + 1] === '.' || grid[y][x + 1] === '-' || grid[y][x + 1] === ',' || grid[y][x + 1] === ';')) {
+          grid[y][x + 1] = 'b';
+        } else if (grid[y][x - 1] && (grid[y][x - 1] === '.' || grid[y][x - 1] === '-' || grid[y][x - 1] === ',' || grid[y][x - 1] === ';')) {
+          grid[y][x - 1] = 'b';
+        }
       }
 
-      if (grid[y + 1] && grid[y + 1][x] === '.') {
+      if (grid[y + 1] && (grid[y + 1][x] === '.' || grid[y + 1][x] === '-' || grid[y + 1][x] === ',' || grid[y + 1][x] === ';')) {
         grid[y + 1][x] = 'i';
       }
 
@@ -1696,20 +1706,40 @@ function asciiToNumeric(A){
     }
   }
 
-  function placeElevatorsFromRule(grid, rooms, rule, cs) {
+  function placeElevatorsFromRule(grid, rooms, rule) {
     const pairs = rule.count || 1;
 
-    const safeRooms = rooms.filter(r => r.type !== 'boss');
+    const eligibleRooms = rooms.filter(r => r.type !== 'boss');
+
+    if (eligibleRooms.length < 2) return;
 
     for (let i = 0; i < pairs; i++) {
-      const fromRoom = safeRooms.find(r => r.type === 'control') || safeRooms[0] || rooms[0];
-      const toRoom   = safeRooms.find(r => r !== fromRoom) || fromRoom;
+      const fromRoom = eligibleRooms.find(r => r.type === 'control') || eligibleRooms[0];
+      let toRoom = eligibleRooms.find(r => r.type === 'miniboss') || eligibleRooms[eligibleRooms.length - 1];
 
-      const fromPos = randomFreeTileInRoom(grid, fromRoom, cs);
-      const toPos   = randomFreeTileInRoom(grid, toRoom, cs);
+      if (toRoom === fromRoom && eligibleRooms.length > 1) {
+        toRoom = eligibleRooms[(eligibleRooms.indexOf(fromRoom) + 1) % eligibleRooms.length];
+      }
+
+      const fromPos = randomFreeTileInRoom(grid, fromRoom);
+      const toPos   = randomFreeTileInRoom(grid, toRoom);
 
       grid[fromPos.y][fromPos.x] = 'E';
       grid[toPos.y][toPos.x]     = 'E';
+    }
+  }
+
+  function placeControlRoomPhone(grid, rooms, used = new Set()) {
+    const controlRoom = rooms.find(r => r.type === 'control');
+    if (!controlRoom) return;
+
+    for (let i = 0; i < 50; i++) {
+      const pos = randomFreeTileInRoom(grid, controlRoom);
+      const key = `${pos.x},${pos.y}`;
+      if (used.has(key)) continue;
+      grid[pos.y][pos.x] = 't';
+      used.add(key);
+      return;
     }
   }
 
@@ -1752,13 +1782,23 @@ function asciiToNumeric(A){
 
       const used = new Set();
       const occupy = (p)=>{ if (p) used.add(`${p.x},${p.y}`); };
+      const pickFreeTile = (room)=>{
+        for (let i = 0; i < 100; i++) {
+          const pos = randomFreeTileInRoom(ascii, room);
+          const key = `${pos.x},${pos.y}`;
+          if (used.has(key)) continue;
+          if (!isFloorTile(ascii[pos.y][pos.x])) continue;
+          return pos;
+        }
+        return { x: room.centerX|0, y: room.centerY|0 };
+      };
 
       // Hero spawn
-      const heroPos = findRoomWalkableTile(ascii, control, cs, used) || { x: control.centerX|0, y: control.centerY|0 };
+      const heroPos = pickFreeTile(control);
       if (heroPos) { ascii[heroPos.y][heroPos.x] = cs.start; occupy(heroPos); }
 
       // Boss marker
-      const bossPos = findRoomWalkableTile(ascii, boss, cs, used) || { x: boss.centerX|0, y: boss.centerY|0 };
+      const bossPos = pickFreeTile(boss);
       if (bossPos) { ascii[bossPos.y][bossPos.x] = cs.bossMarker; occupy(bossPos); }
 
       const rules = levelConfig.rules || [];
@@ -1768,15 +1808,18 @@ function asciiToNumeric(A){
             placePatientsFromRule(ascii, rooms, rule);
             break;
           case 'elevator':
-            placeElevatorsFromRule(ascii, rooms, rule, cs);
+            placeElevatorsFromRule(ascii, rooms, rule);
             break;
         }
       });
-      const phoneCount = Math.max(1, Math.round(gatherRuleCount(rules, 'phone') || 1));
-      for (let i=0; i<phoneCount; i++){
-        const p = findRoomWalkableTile(ascii, control, cs, used);
-        if (p){ ascii[p.y][p.x] = cs.phone; occupy(p); }
-      }
+      placeControlRoomPhone(ascii, rooms, used);
+
+      rooms.forEach(room => {
+        const pos = pickFreeTile(room);
+        const broken = Math.random() < 0.2;
+        ascii[pos.y][pos.x] = broken ? 'l' : 'L';
+        occupy(pos);
+      });
 
       const npcSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'npc')));
       const animalSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'enemy', 'rat') + gatherRuleCount(rules, 'enemy', 'mosquito')));
@@ -1787,7 +1830,7 @@ function asciiToNumeric(A){
       function placeInRoomPool(char, count){
         for (let i=0; i<count; i++){
           const rr = rng.pick(roomPool) || control;
-          const pos = findRoomWalkableTile(ascii, rr, cs, used);
+          const pos = pickFreeTile(rr);
           if (pos){ ascii[pos.y][pos.x] = char; occupy(pos); }
         }
       }
