@@ -56,6 +56,7 @@
     'P': { key: 'furious_patient',kind: 'furious_patient',factoryKey: 'npc_furious_patient', isEnemy: true },
 
     // NPC humanos concretos (colocados manualmente)
+    'J': { key: 'npc_jefe',        kind: 'jefe',          factoryKey: 'npc_jefe_servicio', isNPC: true },
     'H': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
     'k': { key: 'npc_medico',      kind: 'medico',        factoryKey: 'npc_medico',      isNPC: true },
     't': { key: 'npc_tcae',        kind: 'tcae',          factoryKey: 'npc_tcae',        isNPC: true },

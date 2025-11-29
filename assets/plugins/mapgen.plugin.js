@@ -1634,6 +1634,19 @@ function asciiToNumeric(A){
     return Number.isFinite(n) ? n : fallback;
   }
 
+  function parsePerRoom(perRoomStr) {
+    if (!perRoomStr) return { min: 0, max: 0 };
+    const parts = String(perRoomStr).split('-');
+    if (parts.length === 1) {
+      const v = parseInt(parts[0], 10) || 0;
+      return { min: v, max: v };
+    }
+    return {
+      min: parseInt(parts[0], 10) || 0,
+      max: parseInt(parts[1], 10) || 0
+    };
+  }
+
   function gatherRuleCount(rules, type, kind){
     if (!Array.isArray(rules)) return 0;
     let total = 0;
@@ -1667,6 +1680,132 @@ function asciiToNumeric(A){
 
   function isFloorTile(ch) {
     return ch === '.' || ch === '-' || ch === ',' || ch === ';';
+  }
+
+  function placeNpcsFromRule(grid, rooms, rule) {
+    const perRoom = parsePerRoom(rule.perRoom);
+    const minPer = Math.max(0, Math.min(perRoom.min, perRoom.max));
+    const maxPer = Math.max(minPer, Math.max(perRoom.min, perRoom.max));
+    let remaining = rule.unique ? 1 : (Number.isFinite(rule.count) ? rule.count : 0);
+    if (remaining <= 0) return;
+
+    const bossRoom = rooms.find(r => r.type === 'boss');
+    const controlRoom = rooms.find(r => r.type === 'control');
+
+    const char = (kind => {
+      switch ((kind || '').toLowerCase()) {
+        case 'medico': return 'k';
+        case 'guardia': return 'g';
+        case 'familiar': return 'v';
+        case 'celador': return 'c';
+        case 'limpieza': return 'h';
+        case 'supervisora': return 'H';
+        case 'jefe': return 'J';
+        default: return 'N';
+      }
+    })(rule.kind);
+
+    const roomsByPreference = () => {
+      if (rule.unique && rule.kind === 'supervisora' && controlRoom) return [controlRoom];
+      if (rule.unique && rule.kind === 'jefe' && bossRoom) {
+        const bossCenter = { x: bossRoom.centerX, y: bossRoom.centerY };
+        const candidates = rooms.filter(r => r.type !== 'boss' && r.type !== 'control');
+        candidates.sort((a, b) => {
+          const da = Math.pow(a.centerX - bossCenter.x, 2) + Math.pow(a.centerY - bossCenter.y, 2);
+          const db = Math.pow(b.centerX - bossCenter.x, 2) + Math.pow(b.centerY - bossCenter.y, 2);
+          return da - db;
+        });
+        return candidates;
+      }
+      const normals = rooms.filter(r => r.type === 'normal');
+      const extra = rooms.filter(r => r.type === 'miniboss');
+      if (controlRoom && !rule.unique) extra.push(controlRoom);
+      return normals.concat(extra);
+    }();
+
+    for (const room of roomsByPreference) {
+      if (remaining <= 0) break;
+      const desired = rule.unique ? 1 : randomInt(minPer, maxPer);
+      const nRoom = Math.min(remaining, Math.max(1, desired));
+      for (let i = 0; i < nRoom && remaining > 0; i++) {
+        const pos = randomFreeTileInRoom(grid, room);
+        if (!pos || !isFloorTile(grid[pos.y][pos.x])) continue;
+        grid[pos.y][pos.x] = char;
+        remaining--;
+        if (rule.unique) return;
+      }
+    }
+  }
+
+  function placeEnemiesFromRule(grid, rooms, rule) {
+    const perRoom = parsePerRoom(rule.perRoom);
+    const minPer = Math.max(0, Math.min(perRoom.min, perRoom.max));
+    const maxPer = Math.max(minPer, Math.max(perRoom.min, perRoom.max));
+    let remaining = Number.isFinite(rule.count) ? rule.count : 0;
+    if (remaining <= 0) return;
+
+    const char = (kind => {
+      switch ((kind || '').toLowerCase()) {
+        case 'rat': return 'r';
+        case 'mosquito': return 'm';
+        case 'furious': return 'P';
+        default: return 'A';
+      }
+    })(rule.kind);
+
+    const eligible = rooms.filter(r => r.type === 'normal' || r.type === 'miniboss');
+
+    for (const room of eligible) {
+      if (remaining <= 0) break;
+      const nRoom = Math.min(remaining, randomInt(minPer, maxPer));
+      for (let i = 0; i < nRoom && remaining > 0; i++) {
+        const pos = randomFreeTileInRoom(grid, room);
+        if (!pos || !isFloorTile(grid[pos.y][pos.x])) continue;
+        grid[pos.y][pos.x] = char;
+        remaining--;
+      }
+    }
+  }
+
+  function placeCartsFromRule(grid, rooms, rule) {
+    const perRoom = parsePerRoom(rule.perRoom);
+    const minPer = Math.max(0, Math.min(perRoom.min, perRoom.max));
+    const maxPer = Math.max(minPer, Math.max(perRoom.min, perRoom.max));
+    let remaining = Number.isFinite(rule.count) ? rule.count : 0;
+    if (remaining <= 0) return;
+
+    const char = (kind => {
+      switch ((kind || '').toLowerCase()) {
+        case 'comida': return 'F';
+        case 'medicina': return '+';
+        case 'urgencias': return 'U';
+        default: return 'C';
+      }
+    })(rule.kind);
+
+    const bossRoom = rooms.find(r => r.type === 'boss');
+    const candidates = rooms.filter(r => r.type !== 'boss');
+
+    const sorted = [...candidates];
+    if (rule.kind === 'urgencias' && bossRoom) {
+      const center = { x: bossRoom.centerX, y: bossRoom.centerY };
+      sorted.sort((a, b) => {
+        const da = Math.pow(a.centerX - center.x, 2) + Math.pow(a.centerY - center.y, 2);
+        const db = Math.pow(b.centerX - center.x, 2) + Math.pow(b.centerY - center.y, 2);
+        return da - db;
+      });
+    }
+
+    for (const room of sorted) {
+      if (remaining <= 0) break;
+      const nRoom = Math.min(remaining, randomInt(minPer, maxPer));
+      for (let i = 0; i < nRoom && remaining > 0; i++) {
+        const pos = randomFreeTileInRoom(grid, room);
+        if (!pos || !isFloorTile(grid[pos.y][pos.x])) continue;
+        grid[pos.y][pos.x] = char;
+        remaining--;
+      }
+    }
   }
 
   function placePatientsFromRule(grid, rooms, rule) {
@@ -1810,6 +1949,15 @@ function asciiToNumeric(A){
           case 'elevator':
             placeElevatorsFromRule(ascii, rooms, rule);
             break;
+          case 'npc':
+            placeNpcsFromRule(ascii, rooms, rule);
+            break;
+          case 'enemy':
+            placeEnemiesFromRule(ascii, rooms, rule);
+            break;
+          case 'cart':
+            placeCartsFromRule(ascii, rooms, rule);
+            break;
         }
       });
       placeControlRoomPhone(ascii, rooms, used);
@@ -1821,9 +1969,6 @@ function asciiToNumeric(A){
         occupy(pos);
       });
 
-      const npcSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'npc')));
-      const animalSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'enemy', 'rat') + gatherRuleCount(rules, 'enemy', 'mosquito')));
-      const cartSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'cart')));
       const lootSpawns = Math.max(1, Math.round(gatherRuleCount(rules, 'loot') || rooms.length / 4));
 
       const roomPool = rooms.filter(r=>r.type==='normal' || r.type==='control');
@@ -1835,9 +1980,6 @@ function asciiToNumeric(A){
         }
       }
 
-      placeInRoomPool(cs.spStaff || 'N', npcSpawns);
-      placeInRoomPool(cs.spAnimal || 'A', animalSpawns);
-      placeInRoomPool(cs.spCart || 'C', cartSpawns);
       placeInRoomPool(cs.loot || 'o', lootSpawns);
 
       sealMapBorder(ascii, cs);
