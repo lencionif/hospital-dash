@@ -3,13 +3,28 @@
 
   const root = typeof W !== 'undefined' ? W : window;
 
+  // Tabla ASCII centralizada y única. Los caracteres oficiales son:
+  //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
+  //   Spawns:  'S' héroe, 'X' boss, 'M' miniboss
+  //   Objetos críticos: 'd' puerta normal, 'u' puerta boss/urgencias, 'E' ascensor,
+  //     'T' teléfono, 'b' timbre, 'p' cama con paciente, 'i' pastilla vinculada,
+  //     'F' carro comida, 'U' carro urgencias, '+' carro medicinas
+  //   Spawns genéricos: 'N' NPC, 'A' animal, 'C' carro, 'o' loot aleatorio
+  //   Enemigos/otros: 'm' mosquito, 'r' rata, 'x' fuego, '~' agua, 'e' extintor
+  //   Recompensas: '$' moneda, '%' bolsa, '1/2/3' jeringas, '4/5/6' goteros, 'y/Y' comida
+  //   NPC manuales: 'J' jefe, 'H' supervisora, 'k' médico, 't' TCAE, 'c' celador,
+  //     'n' enfermera sexy, 'h' limpieza, 'g' guardia, 'v' familiar
+  //   Extras: 'B' cama vacía, 'P' paciente furioso (debug), 'L/l' luces
+  // Caracteres descartados: 'D' (puerta antigua), variaciones de pacientes/loot sin
+  // normalizar. Los mapas debug y generador usan únicamente los símbolos oficiales.
+
   const TINT_COLORS = {
     blue: 0x6bd3ff,
     green: 0x6bff8a,
     red: 0xff6b6b
   };
 
-  root.AsciiLegend = {
+  const LEGEND = {
     // Terreno / fuera del mapa
     '#': { key: 'wall',        kind: 'wall',        blocking: true },
     '.': { key: 'floor',       kind: 'floor',       factoryKey: 'floor_normal', blocking: false, isWalkable: true },
@@ -19,9 +34,9 @@
     ' ': { key: 'void',        kind: 'void',        blocking: false },
 
     // Posición del héroe / puntos especiales
-    'S': { key: 'hero_spawn',  kind: 'hero_spawn',  factoryKey: 'hero_spawn', isSpawn: true },
-    'X': { key: 'boss_main',   kind: 'boss_main',   factoryKey: 'boss_main_spawn', isBoss: true },
-    'M': { key: 'mini_boss',   kind: 'mini_boss',   factoryKey: 'mini_boss_spawn', isMiniBoss: true },
+    'S': { key: 'hero_spawn',  kind: 'hero_spawn',      factoryKey: 'hero_spawn', isSpawn: true },
+    'X': { key: 'boss_main',   kind: 'boss_main',       factoryKey: 'boss_main_spawn', isBoss: true },
+    'M': { key: 'mini_boss',   kind: 'mini_boss',       factoryKey: 'mini_boss_spawn', isMiniBoss: true },
 
     // Teléfono de control room
     'T': { key: 'phone_central', kind: 'phone',     factoryKey: 'phone_central' },
@@ -31,15 +46,15 @@
     'l': { key: 'light_broken',kind: 'light_broken',factoryKey: 'light_broken' },
 
     // Pacientes
-    'p': { key: 'patient_bed', kind: 'patient',     factoryKey: 'patient_normal', isPatient: true },
+    'p': { key: 'patient_bed', kind: 'patient_bed', factoryKey: 'patient_normal', isPatient: true },
     'f': { key: 'patient_fury',kind: 'patient_fury',factoryKey: 'patient_furious_debug', isPatient: true },
 
     // Timbre asociado
     'b': { key: 'bell',        kind: 'bell',        factoryKey: 'bell_patient', isTrigger: true },
 
     // Puertas
-    'd': { key: 'door_normal', kind: 'door',        factoryKey: 'door_normal', blocking: false, isWalkable: true, isDoor: true },
-    'u': { key: 'door_boss',   kind: 'door_urg',    factoryKey: 'door_urgencias', blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
+    'd': { key: 'door_normal', kind: 'door_normal', factoryKey: 'door_normal', blocking: false, isWalkable: true, isDoor: true },
+    'u': { key: 'door_boss',   kind: 'door_boss',   factoryKey: 'door_urgencias', blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
 
     // Spawns abstractos según level_rules
     'N': { key: 'spawn_npc',   kind: 'spawn_npc',   factoryKey: 'spawn_npc_human', isSpawn: true },
@@ -109,9 +124,36 @@
     'e': { key: 'extinguisher',   kind: 'extinguisher',   factoryKey: 'extinguisher' }
   };
 
+  root.AsciiLegend = root.AsciiLegend || LEGEND;
+
+  const unknownCache = new Set();
+
+  function warnUnknownChar(ch, context){
+    const key = typeof ch === 'string' ? ch : String(ch);
+    if (unknownCache.has(key)) return;
+    unknownCache.add(key);
+    try {
+      console.warn('[ASCII] Unknown char in map:', JSON.stringify(ch), context || '');
+    } catch (_) {}
+  }
+
+  function getLegendDef(ch, opts = {}) {
+    const legend = root.AsciiLegend || {};
+    const def = legend[ch];
+    if (!def && opts.log !== false) warnUnknownChar(ch, opts.context);
+    return def || null;
+  }
+
   root.PlacementAPI = root.PlacementAPI || {};
+  root.AsciiLegendAPI = root.AsciiLegendAPI || {};
 
   const PlacementAPI = root.PlacementAPI;
+  const AsciiLegendAPI = root.AsciiLegendAPI;
+
+  PlacementAPI.getDefFromChar = function getDefFromChar(ch, opts = {}) {
+    return getLegendDef(ch, opts);
+  };
+  AsciiLegendAPI.getDef = getLegendDef;
 
   PlacementAPI.getCharForKey = function getCharForKey(key, fallback) {
     if (!key || typeof key !== 'string') return fallback;
@@ -223,8 +265,11 @@
     return placeholder;
   };
 
-  PlacementAPI.spawnFromAscii = function spawnFromAscii(def, tx, ty, context, char) {
-    const asciiChar = char || context?.char || def?.char;
+  PlacementAPI.spawnFromAscii = function spawnFromAscii(defOrChar, tx, ty, context, char) {
+    const def = (typeof defOrChar === 'string' || typeof defOrChar === 'number')
+      ? PlacementAPI.getDefFromChar(defOrChar, { context: 'PlacementAPI.spawnFromAscii' })
+      : defOrChar;
+    const asciiChar = char || context?.char || (typeof defOrChar === 'string' ? defOrChar : def?.char);
     if (!def || typeof tx !== 'number' || typeof ty !== 'number') {
       return PlacementAPI.spawnFallbackPlaceholder(asciiChar, null, tx, ty, 'AsciiLegend entry missing', context);
     }

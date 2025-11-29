@@ -930,7 +930,13 @@
   }
 
   function legendDef(ch){
-    return (root.AsciiLegend && root.AsciiLegend[ch]) || null;
+    const api = root.AsciiLegendAPI || null;
+    if (api?.getDef) return api.getDef(ch, { context: 'Placement' });
+    const def = (root.AsciiLegend && root.AsciiLegend[ch]) || null;
+    if (!def) {
+      try { console.warn('[ASCII] Unknown char in map:', JSON.stringify(ch), 'Placement'); } catch (_) {}
+    }
+    return def;
   }
 
   function findHeroPosFromAsciiOrCenter(cfg, G){

@@ -729,7 +729,7 @@ const CHARSET_DEFAULT = {
   mosquito:charFor('mosquito', 'm'), rat:charFor('rat', 'r'),
   nurse:charFor('npc_nurse_sexy', 'n'), tcae:charFor('npc_tcae', 't'), celador:charFor('npc_celador', 'c'), cleaner:charFor('npc_cleaner', 'h'), guardia:charFor('npc_guard', 'g'), medico:charFor('npc_medico', 'k'),
   jefe_servicio:'J', supervisora:charFor('npc_supervisora', 'H'),
-  coin:charFor('coin', 'o'), bag:charFor('money_bag', '$'), food:charFor('food_small', 'y'), power:charFor('syringe_red', '1'),
+  coin:charFor('coin', '$'), bag:charFor('money_bag', '%'), food:charFor('food_small', 'y'), power:charFor('syringe_red', '1'),
   loot:charFor('loot_random', 'o')
 };
 const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAULT);
@@ -950,23 +950,32 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
     for (let x=0;x<W;x++){ ascii[0][x]=cs.wall; ascii[H-1][x]=cs.wall; }
     for (let y=0;y<H;y++){ ascii[y][0]=cs.wall; ascii[y][W-1]=cs.wall; }
   }
-function asciiToNumeric(A){
-  const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
-  const H=A.length,W=A[0].length, grid=Array.from({length:H},()=>Array(W));
-  for(let y=0;y<H;y++){
-    for(let x=0;x<W;x++){
-      const ch = A[y][x];
-      const def = legend[ch];
-      grid[y][x] = def && def.blocking ? 1 : 0;
+  function legendDef(ch, context){
+    const api = (typeof window !== 'undefined' && window.AsciiLegendAPI) || null;
+    if (api?.getDef) return api.getDef(ch, { context });
+    const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
+    const def = legend[ch];
+    if (!def) {
+      try { console.warn('[ASCII] Unknown char in map:', JSON.stringify(ch), context || ''); } catch (_) {}
     }
+    return def || null;
   }
-  return grid;
-}
+
+  function asciiToNumeric(A){
+    const H=A.length,W=A[0].length, grid=Array.from({length:H},()=>Array(W));
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const ch = A[y][x];
+        const def = legendDef(ch, 'MapGen.asciiToNumeric');
+        grid[y][x] = def && def.blocking ? 1 : 0;
+      }
+    }
+    return grid;
+  }
 
   function isWalkableChar(ch, cs){
     if (ch === undefined || ch === cs.wall) return false;
-    const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
-    const def = legend[ch];
+    const def = legendDef(ch, 'MapGen.walkable');
     if (def){
       if (def.blocking) return false;
       if (typeof def.isWalkable !== 'undefined') return !!def.isWalkable;
@@ -2350,16 +2359,16 @@ function asciiToNumeric(A){
     const bossC = centerOf(bossR), nearBossR2 = Math.pow(120,2);
     for (const r of rooms){
       let p = randomInside(r,2);
-      placements.push({type:'item', sub:'power', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.power||'u');
+      placements.push({type:'item', sub:'power', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.power||'1');
       for (let i=0;i<2;i++){ p = randomInside(r,2);
-        placements.push({type:'item', sub:'food', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.food||'f');
+        placements.push({type:'item', sub:'food', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.food||'y');
       }
       for (let i=0;i<3;i++){ p = randomInside(r,2);
-        placements.push({type:'item', sub:'coin', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.coin||'o');
+        placements.push({type:'item', sub:'coin', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.coin||'$');
       }
       const rc = centerOf(r);
       if (dist2(rc,bossC) <= nearBossR2){ p = randomInside(r,2);
-        placements.push({type:'item', sub:'bag', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.bag||'$');
+        placements.push({type:'item', sub:'bag', x:p.x, y:p.y}); markAscii(p.x,p.y, charset.bag||'%');
       }
     }
 
