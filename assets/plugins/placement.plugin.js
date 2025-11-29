@@ -809,6 +809,17 @@
     return { countsPorTipo: { ...counts }, total };
   };
 
+  function fallbackCharForPlacement(entry, defaultKey){
+    if (entry?.char) return entry.char;
+    const key = entry?.key || entry?.kind || entry?.type || defaultKey;
+    if (root.PlacementAPI?.getCharForKey) {
+      const fromLegend = root.PlacementAPI.getCharForKey(key, null);
+      if (fromLegend) return fromLegend;
+    }
+    const normalized = String(key || defaultKey || '?');
+    return normalized ? normalized[0] : '?';
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
@@ -1548,24 +1559,30 @@
       const { tx, ty } = normalizePlacementToTile(entry, cfg);
       const world = toWorld(tx, ty);
       const sub = String(entry?.sub || entry?.npc || entry?.name || '').toLowerCase();
+      const char = fallbackCharForPlacement(entry, sub || type);
+      let failReason = '';
       const payload = { ...entry, _units: 'px' };
       let npc = null;
-      if (root.Entities?.NPC?.spawn) {
-        npc = root.Entities.NPC.spawn(sub, world.x, world.y, payload);
+      try {
+        if (root.Entities?.NPC?.spawn) {
+          npc = root.Entities.NPC.spawn(sub, world.x, world.y, payload);
+        }
+        if (!npc) {
+          npc = spawnNPCBySubtype(sub, world.x, world.y, payload);
+        }
+      } catch (err) {
+        failReason = err?.message || String(err);
       }
-      if (!npc) {
-        npc = spawnNPCBySubtype(sub, world.x, world.y, payload);
-      }
-      if (!npc) {
-        npc = {
-          kind: 'NPC',
-          x: world.x,
-          y: world.y,
-          w: TILE_SIZE() * 0.85,
-          h: TILE_SIZE(),
-          sub,
-          rigOk: false
-        };
+      if (!npc && root.PlacementAPI?.spawnFallbackPlaceholder) {
+        const def = { kind: 'NPC', factoryKey: sub || type, type };
+        const fallback = root.PlacementAPI.spawnFallbackPlaceholder(char, def, tx, ty, failReason || 'NPC spawn failed', { G, map: cfg?.map, autoRegister: false });
+        if (fallback) {
+          fallback.group = fallback.group || 'human';
+          ensureNPCVisuals(fallback);
+          placeEntitySafely(fallback, G, tx, ty, { char, maxRadius: 10 });
+          out.push(fallback);
+        }
+        continue;
       }
       npc.rigOk = npc.rigOk === true;
       if (!npc.group) npc.group = 'human';
@@ -1748,21 +1765,41 @@
       const subtype = String(entry?.sub || '').toLowerCase();
       const { tx, ty } = normalizePlacementToTile(entry, cfg);
       const world = toWorld(tx, ty);
+      const char = fallbackCharForPlacement(entry, subtype || type);
+      let failReason = '';
       let entity = null;
-      if (type === 'enemy' || type === 'spawner') {
-        if (subtype.includes('mosquito') && root.MosquitoAPI?.spawn) {
-          entity = root.MosquitoAPI.spawn(world.x, world.y, { _units: 'px' });
-        } else if (subtype.includes('rat') && root.RatsAPI?.spawn) {
-          entity = root.RatsAPI.spawn(world.x, world.y, { _units: 'px' });
-        } else if (subtype.includes('furious')) {
-          entity = spawnFuriousFromPlacement(world.x, world.y, cfg, G);
+      try {
+        if (type === 'enemy' || type === 'spawner') {
+          if (subtype.includes('mosquito') && root.MosquitoAPI?.spawn) {
+            entity = root.MosquitoAPI.spawn(world.x, world.y, { _units: 'px' });
+          } else if (subtype.includes('rat') && root.RatsAPI?.spawn) {
+            entity = root.RatsAPI.spawn(world.x, world.y, { _units: 'px' });
+          } else if (subtype.includes('furious')) {
+            entity = spawnFuriousFromPlacement(world.x, world.y, cfg, G);
+          }
         }
+        if (!entity && type === 'mosquito' && root.MosquitoAPI?.spawn) {
+          entity = root.MosquitoAPI.spawn(world.x, world.y, { _units: 'px' });
+        }
+        if (!entity && type === 'rat' && root.RatsAPI?.spawn) {
+          entity = root.RatsAPI.spawn(world.x, world.y, { _units: 'px' });
+        }
+      } catch (err) {
+        failReason = err?.message || String(err);
       }
-      if (!entity && type === 'mosquito' && root.MosquitoAPI?.spawn) {
-        entity = root.MosquitoAPI.spawn(world.x, world.y, { _units: 'px' });
-      }
-      if (!entity && type === 'rat' && root.RatsAPI?.spawn) {
-        entity = root.RatsAPI.spawn(world.x, world.y, { _units: 'px' });
+      if (!entity && root.PlacementAPI?.spawnFallbackPlaceholder) {
+        const def = { kind: subtype || type, factoryKey: subtype || type, type };
+        const fallback = root.PlacementAPI.spawnFallbackPlaceholder(char, def, tx, ty, failReason || 'Enemy spawn failed', { G, map: cfg?.map, autoRegister: false });
+        if (fallback) {
+          if (!fallback.group) {
+            if (subtype.includes('furious')) fallback.group = 'human';
+            else fallback.group = 'animal';
+          }
+          ensureNPCVisuals(fallback);
+          placeEntitySafely(fallback, G, tx, ty, { char, maxRadius: 10 });
+          out.push(fallback);
+        }
+        continue;
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true;
@@ -1795,74 +1832,90 @@
       const type = String(entry?.type || '').toLowerCase();
       const { tx, ty } = normalizePlacementToTile(entry, cfg);
       const world = toWorld(tx, ty);
+      const char = fallbackCharForPlacement(entry, type);
+      let failReason = '';
       let entity = null;
-      if (type === 'cart' && root.Entities?.Cart?.spawn) {
-        const sub = String(entry?.sub || '').toLowerCase();
-        const normalized = sub === 'urgencias' ? 'er'
-          : (sub === 'medicinas' || sub === 'meds' ? 'med'
-          : (sub === 'comida' || sub === 'food' ? 'food' : (sub || 'med')));
-        const payload = { ...entry, sub: normalized };
-        entity = root.Entities.Cart.spawn(normalized, world.x, world.y, payload);
-        if (entity) {
-          placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 8 });
+      try {
+        if (type === 'cart' && root.Entities?.Cart?.spawn) {
+          const sub = String(entry?.sub || '').toLowerCase();
+          const normalized = sub === 'urgencias' ? 'er'
+            : (sub === 'medicinas' || sub === 'meds' ? 'med'
+            : (sub === 'comida' || sub === 'food' ? 'food' : (sub || 'med')));
+          const payload = { ...entry, sub: normalized };
+          entity = root.Entities.Cart.spawn(normalized, world.x, world.y, payload);
+          if (entity) {
+            placeEntitySafely(entity, G, tx, ty, { char: entry?.char || type, maxRadius: 8 });
+          }
+        } else if (type === 'door' && root.Entities?.Door?.spawn) {
+          entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
+        } else if (type === 'boss_door' && root.Entities?.Door?.spawn) {
+          const payload = { ...(entry || {}), bossDoor: true };
+          entity = root.Entities.Door.spawn(world.x, world.y, payload);
+        } else if (type === 'elevator' && root.Entities?.Elevator?.spawn) {
+          entity = root.Entities.Elevator.spawn(world.x, world.y, entry || {});
+        } else if (type === 'light' && root.Entities?.Light?.spawn) {
+          const light = root.Entities.Light.spawn(world.x + TILE_SIZE() * 0.5, world.y + TILE_SIZE() * 0.5, entry || {});
+          if (light) {
+            light.isBroken = !!entry?.broken;
+            entity = light;
+          }
+        } else if (type === 'boss_light' && root.Entities?.BossLight) {
+          const light = root.Entities.spawnFromPlacement_BossLight?.({ ...entry, x: world.x, y: world.y })
+            || root.Entities.BossLight.spawn?.(world.x, world.y, entry || {});
+          if (light) entity = light;
+        } else if (type === 'phone') {
+          entity = root.PhoneAPI?.spawnPhone?.(world.x, world.y, entry || {})
+            || root.spawnPhone?.(world.x, world.y, entry || {});
+        } else if (type === 'bell') {
+          entity = spawnBell(tx, ty, entry || {}, cfg, G);
+        } else if (type === 'hazard_wet') {
+          if (root.HazardsAPI?.spawnWet) {
+            entity = root.HazardsAPI.spawnWet(tx, ty, entry || {});
+          } else {
+            const size = TILE_SIZE() * 0.8;
+            entity = {
+              kind: 'HAZARD_WET',
+              x: world.x + (TILE_SIZE() - size) * 0.5,
+              y: world.y + (TILE_SIZE() - size) * 0.5,
+              w: size,
+              h: size,
+              solid: false,
+              dynamic: false,
+              pushable: false,
+              rigOk: false
+            };
+          }
+        } else if (type === 'hazard_fire') {
+          if (root.HazardsAPI?.spawnFire) {
+            entity = root.HazardsAPI.spawnFire(tx, ty, entry || {});
+          } else {
+            const size = TILE_SIZE() * 0.8;
+            entity = {
+              kind: 'HAZARD_FIRE',
+              x: world.x + (TILE_SIZE() - size) * 0.5,
+              y: world.y + (TILE_SIZE() - size) * 0.5,
+              w: size,
+              h: size,
+              solid: false,
+              dynamic: false,
+              pushable: false,
+              color: '#ff8a3c',
+              rigOk: false
+            };
+          }
         }
-      } else if (type === 'door' && root.Entities?.Door?.spawn) {
-        entity = root.Entities.Door.spawn(world.x, world.y, entry || {});
-      } else if (type === 'boss_door' && root.Entities?.Door?.spawn) {
-        const payload = { ...(entry || {}), bossDoor: true };
-        entity = root.Entities.Door.spawn(world.x, world.y, payload);
-      } else if (type === 'elevator' && root.Entities?.Elevator?.spawn) {
-        entity = root.Entities.Elevator.spawn(world.x, world.y, entry || {});
-      } else if (type === 'light' && root.Entities?.Light?.spawn) {
-        const light = root.Entities.Light.spawn(world.x + TILE_SIZE() * 0.5, world.y + TILE_SIZE() * 0.5, entry || {});
-        if (light) {
-          light.isBroken = !!entry?.broken;
-          entity = light;
+      } catch (err) {
+        failReason = err?.message || String(err);
+      }
+      if (!entity && root.PlacementAPI?.spawnFallbackPlaceholder) {
+        const def = { kind: entry?.kind || type, factoryKey: entry?.factoryKey || type, type };
+        const fallback = root.PlacementAPI.spawnFallbackPlaceholder(char, def, tx, ty, failReason || 'World object spawn failed', { G, map: cfg?.map, autoRegister: false });
+        if (fallback) {
+          fallback.group = fallback.group || 'object';
+          placeEntitySafely(fallback, G, tx, ty, { char, maxRadius: 6 });
+          out.push(fallback);
         }
-      } else if (type === 'boss_light' && root.Entities?.BossLight) {
-        const light = root.Entities.spawnFromPlacement_BossLight?.({ ...entry, x: world.x, y: world.y })
-          || root.Entities.BossLight.spawn?.(world.x, world.y, entry || {});
-        if (light) entity = light;
-      } else if (type === 'phone') {
-        entity = root.PhoneAPI?.spawnPhone?.(world.x, world.y, entry || {})
-          || root.spawnPhone?.(world.x, world.y, entry || {});
-      } else if (type === 'bell') {
-        entity = spawnBell(tx, ty, entry || {}, cfg, G);
-      } else if (type === 'hazard_wet') {
-        if (root.HazardsAPI?.spawnWet) {
-          entity = root.HazardsAPI.spawnWet(tx, ty, entry || {});
-        } else {
-          const size = TILE_SIZE() * 0.8;
-          entity = {
-            kind: 'HAZARD_WET',
-            x: world.x + (TILE_SIZE() - size) * 0.5,
-            y: world.y + (TILE_SIZE() - size) * 0.5,
-            w: size,
-            h: size,
-            solid: false,
-            dynamic: false,
-            pushable: false,
-            rigOk: false
-          };
-        }
-      } else if (type === 'hazard_fire') {
-        if (root.HazardsAPI?.spawnFire) {
-          entity = root.HazardsAPI.spawnFire(tx, ty, entry || {});
-        } else {
-          const size = TILE_SIZE() * 0.8;
-          entity = {
-            kind: 'HAZARD_FIRE',
-            x: world.x + (TILE_SIZE() - size) * 0.5,
-            y: world.y + (TILE_SIZE() - size) * 0.5,
-            w: size,
-            h: size,
-            solid: false,
-            dynamic: false,
-            pushable: false,
-            color: '#ff8a3c',
-            rigOk: false
-          };
-        }
+        continue;
       }
       if (entity) {
         entity.rigOk = entity.rigOk === true || true;

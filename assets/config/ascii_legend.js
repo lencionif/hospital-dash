@@ -122,9 +122,114 @@
     return fallback;
   };
 
-  PlacementAPI.spawnFromAscii = function spawnFromAscii(def, tx, ty, context) {
-    if (!def || typeof tx !== 'number' || typeof ty !== 'number') return null;
+  function ensureFloorAt(mapOrGame, tx, ty){
+    const map = Array.isArray(mapOrGame) ? mapOrGame : (mapOrGame?.map || null);
+    if (!Array.isArray(map)) return;
+    if (!Array.isArray(map[ty])) map[ty] = [];
+    map[ty][tx] = 0;
+  }
+
+  function resolvePlaceholderColor(def){
+    const kind = String(def?.kind || def?.factoryKey || '').toLowerCase();
+    const tag = (def?.type || '').toLowerCase();
+    const has = (needle) => kind.includes(needle) || tag.includes(needle);
+    if (has('hero')) return '#6bd3ff';
+    if (has('npc') || has('staff')) return '#ff9800';
+    if (has('enemy') || has('hostile')) return '#f44336';
+    if (has('cart')) return '#9e9e9e';
+    if (has('light')) return '#ffffff';
+    if (has('elevator')) return '#9c27b0';
+    if (has('door')) return '#795548';
+    if (has('patient') || has('bed') || has('bell')) return '#e91e63';
+    if (has('boss')) return '#111111';
+    if (has('fire')) return '#ffeb3b';
+    if (has('water') || has('wet')) return '#2196f3';
+    if (has('loot') || has('pill') || has('syringe') || has('drip') || has('food') || has('object')) return '#4caf50';
+    if (has('phone')) return '#90a4ae';
+    return '#607d8b';
+  }
+
+  function ensurePlaceholderSprite(key, char, color){
+    const sprites = root.Sprites;
+    if (!sprites || !sprites._imgs) return null;
+    const cacheKey = `${key}_${char || '?'}`;
+    if (sprites._imgs[cacheKey]) return cacheKey;
+    const tile = sprites._opts?.tile || root.TILE_SIZE || 32;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = tile;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = color || '#607d8b';
+      ctx.fillRect(0, 0, tile, tile);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, tile - 2, tile - 2);
+      ctx.fillStyle = (color === '#111111') ? '#f8f8f8' : '#ffffff';
+      ctx.font = `${Math.floor(tile * 0.7)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(char || '?', tile * 0.5, tile * 0.55);
+      sprites._imgs[cacheKey] = canvas;
+      if (!sprites._keys.includes(cacheKey)) sprites._keys.push(cacheKey);
+      return cacheKey;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  PlacementAPI.spawnFallbackPlaceholder = function spawnFallbackPlaceholder(char, def, tx, ty, reason, context = {}) {
+    const tile = root.TILE_SIZE || root.TILE || 32;
+    const asciiChar = char || def?.char || def?.key || '?';
+    ensureFloorAt(context.map || context.G, tx, ty);
+    const color = resolvePlaceholderColor(def);
+    const spriteKey = ensurePlaceholderSprite('spawn_placeholder', asciiChar, color);
+    const placeholder = {
+      kind: def?.kind || def?.key || 'PLACEHOLDER',
+      type: def?.type,
+      factoryKey: def?.factoryKey,
+      x: tx * tile,
+      y: ty * tile,
+      w: tile,
+      h: tile,
+      blocking: false,
+      dynamic: false,
+      pushable: false,
+      char: asciiChar,
+      color,
+      spriteKey,
+      placeholder: true,
+      rigOk: false
+    };
+
+    if (typeof console !== 'undefined' && console.error) {
+      try {
+        console.error('[SPAWN_FALLBACK]', {
+          char: asciiChar,
+          kind: def?.kind,
+          factoryKey: def?.factoryKey,
+          x: tx,
+          y: ty,
+          reason
+        });
+      } catch (_) {}
+    }
+
+    const shouldRegister = context.autoRegister !== false;
+    const game = context.G || root.G;
+    if (shouldRegister && game && Array.isArray(game.entities) && !game.entities.includes(placeholder)) {
+      game.entities.push(placeholder);
+    }
+
+    return placeholder;
+  };
+
+  PlacementAPI.spawnFromAscii = function spawnFromAscii(def, tx, ty, context, char) {
+    const asciiChar = char || context?.char || def?.char;
+    if (!def || typeof tx !== 'number' || typeof ty !== 'number') {
+      return PlacementAPI.spawnFallbackPlaceholder(asciiChar, null, tx, ty, 'AsciiLegend entry missing', context);
+    }
     const kind = def.kind || def.key;
+    const factoryKey = def.factoryKey || kind;
     const opts = { _ascii: def, tx, ty, context };
     const applyLegendTint = (entity) => {
       const tintKey = typeof def.tint === 'string' ? def.tint.toLowerCase() : null;
@@ -139,10 +244,26 @@
       return entity;
     };
     if (def.isSpawn) {
-      try { return applyLegendTint(root.SpawnerManager?.spawnFromDef?.(def, tx, ty, opts)); } catch (_) {}
+      try {
+        const entity = root.SpawnerManager?.spawnFromDef?.(def, tx, ty, opts);
+        return entity ? applyLegendTint(entity) : PlacementAPI.spawnFallbackPlaceholder(asciiChar, def, tx, ty, 'Spawner returned null', context);
+      } catch (err) {
+        return PlacementAPI.spawnFallbackPlaceholder(asciiChar, def, tx, ty, `Spawner error: ${err?.message || err}`, context);
+      }
     }
     if (kind === 'wall' || kind === 'void') return null;
-    try { return applyLegendTint(root.Entities?.factory?.(def.factoryKey || kind, opts)); } catch (_) {}
-    return null;
+    const factory = root.Entities?.factory;
+    if (!factory || typeof factory !== 'function') {
+      return PlacementAPI.spawnFallbackPlaceholder(asciiChar, def, tx, ty, `Factory not found: ${factoryKey}`, context);
+    }
+    try {
+      const entity = factory(factoryKey, opts);
+      if (!entity) {
+        return PlacementAPI.spawnFallbackPlaceholder(asciiChar, def, tx, ty, `Factory returned null: ${factoryKey}`, context);
+      }
+      return applyLegendTint(entity);
+    } catch (err) {
+      return PlacementAPI.spawnFallbackPlaceholder(asciiChar, def, tx, ty, `Exception: ${err?.message || err}`, context);
+    }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
