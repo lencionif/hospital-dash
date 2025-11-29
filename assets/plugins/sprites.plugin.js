@@ -193,11 +193,23 @@
             const img = this._imgs['pared'];
             img ? ctx.drawImage(img, px, py, tile, tile) : (ctx.fillStyle='#5d4037', ctx.fillRect(px,py,tile,tile));
           } else {
+            const shade = Array.isArray(G.floorColors) ? (G.floorColors[y]?.[x] || null) : null;
+            if (shade) {
+              ctx.fillStyle = shade;
+              ctx.fillRect(px, py, tile, tile);
+            }
             // ajedrez (clarito/normal)
             const useLight = ((x + y) & 1) === 0;
             const img = useLight ? (this._imgs['suelo_claro'] || this._imgs['suelo'])
                                  : (this._imgs['suelo_oscuro'] || this._imgs['suelo']);
-            img ? ctx.drawImage(img, px, py, tile, tile) : (ctx.fillStyle='#37474f', ctx.fillRect(px,py,tile,tile));
+            if (img) {
+              if (shade) ctx.globalAlpha = 0.82;
+              ctx.drawImage(img, px, py, tile, tile);
+              if (shade) ctx.globalAlpha = 1;
+            } else {
+              ctx.fillStyle='#37474f';
+              ctx.fillRect(px,py,tile,tile);
+            }
           }
         }
       }

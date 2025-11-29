@@ -27,10 +27,10 @@
   const LEGEND = {
     // Terreno / fuera del mapa
     '#': { key: 'wall',        kind: 'wall',        blocking: true },
-    '.': { key: 'floor',       kind: 'floor',       factoryKey: 'floor_normal', blocking: false, isWalkable: true },
-    '-': { key: 'floor_control', kind: 'floor_control', baseKind: 'floor', factoryKey: 'floor_control', blocking: false, isWalkable: true, specialRoom: 'control', tint: 'blue' },
-    ';': { key: 'floor_boss',    kind: 'floor_boss',    baseKind: 'floor', factoryKey: 'floor_boss', blocking: false, isWalkable: true, specialRoom: 'boss', tint: 'red' },
-    ',': { key: 'floor_miniboss',kind: 'floor_miniboss',baseKind: 'floor', factoryKey: 'floor_miniboss', blocking: false, isWalkable: true, specialRoom: 'miniboss', tint: 'green' },
+    '.': { key: 'floor',       kind: 'floor',       factoryKey: 'floor_normal', blocking: false, isWalkable: true, color: '#1b262f' },
+    '-': { key: 'floor_control', kind: 'floor_control', baseKind: 'floor', factoryKey: 'floor_control', blocking: false, isWalkable: true, specialRoom: 'control', tint: 'blue', color: '#123b5c' },
+    ';': { key: 'floor_boss',    kind: 'floor_boss',    baseKind: 'floor', factoryKey: 'floor_boss', blocking: false, isWalkable: true, specialRoom: 'boss', tint: 'red', color: '#4a1010' },
+    ',': { key: 'floor_miniboss',kind: 'floor_miniboss',baseKind: 'floor', factoryKey: 'floor_miniboss', blocking: false, isWalkable: true, specialRoom: 'miniboss', tint: 'green', color: '#0f3d26' },
     ' ': { key: 'void',        kind: 'void',        blocking: false },
 
     // Posición del héroe / puntos especiales
