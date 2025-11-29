@@ -1828,7 +1828,7 @@ function asciiToNumeric(A){
       const fillBase = 0.45 + ((rng.rand?.() ?? Math.random()) * 0.1); // 45%-55%
       const fillRatio = clamp(fillBase - attempt * 0.02, 0.35, 0.55);
       const targetRoomsArea = mapArea * fillRatio;
-      const normalsNeeded = Math.max(0, totalRooms - 3);
+      const normalsNeeded = Math.max(0, totalRooms - 2);
       const weights = { control: 1.15, boss: 1.4, miniboss: 1.2, normal: 1 };
       const totalWeight = weights.control + weights.boss + weights.miniboss + weights.normal * Math.max(1, normalsNeeded);
       const baseArea = targetRoomsArea / Math.max(1, totalWeight);
