@@ -51,8 +51,6 @@ try {
         'roomsRequested'    => $meta['roomsRequested'] ?? $meta['rooms'] ?? ($levelData['rooms'] ?? null),
         'roomsGenerated'    => $meta['roomsGenerated'] ?? ($generationRaw['roomsGenerated'] ?? $meta['roomsCount'] ?? $generationRaw['roomsCount'] ?? null),
         'corridorWidthUsed' => $generationRaw['corridorWidthUsed'] ?? $meta['corridorWidth'] ?? $metaExtra['corridorWidthUsed'] ?? $generationRaw['corridorWidth'] ?? null,
-        'corridorWidthMin'  => $meta['corridorWidthMin'] ?? $levelData['corridorWidthMin'] ?? null,
-        'corridorWidthMax'  => $meta['corridorWidthMax'] ?? $levelData['corridorWidthMax'] ?? null,
         'culling'           => $meta['culling'] ?? $levelData['culling'] ?? $globalsData['culling'] ?? null,
         'cooling'           => $meta['cooling'] ?? $levelData['cooling'] ?? $globalsData['cooling'] ?? null,
         'bossReachable'     => $meta['bossReachable'] ?? $generationRaw['bossReachable'] ?? null,
