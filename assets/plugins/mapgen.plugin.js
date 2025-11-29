@@ -1616,6 +1616,70 @@ function asciiToNumeric(A){
     return total;
   }
 
+  function randomInt(min, maxInclusive) {
+    return min + Math.floor(Math.random() * (maxInclusive - min + 1));
+  }
+
+  function randomFreeTileInRoom(grid, room) {
+    let tries = 0;
+    while (tries++ < 100) {
+      const x = randomInt(room.x + 1, room.x + room.w - 2);
+      const y = randomInt(room.y + 1, room.y + room.h - 2);
+      if (grid[y][x] === '.') {
+        return { x, y };
+      }
+    }
+    return { x: room.centerX, y: room.centerY };
+  }
+
+  function placePatientsFromRule(grid, rooms, rule) {
+    const candidateRooms = rooms.filter(r => r.type === 'normal');
+
+    let patientsLeft = rule.count || 0;
+    let roomIndex = 0;
+
+    while (patientsLeft > 0 && candidateRooms.length > 0) {
+      const room = candidateRooms[roomIndex % candidateRooms.length];
+
+      const x = randomInt(room.x + 1, room.x + room.w - 2);
+      const y = randomInt(room.y + 1, room.y + room.h - 2);
+
+      if (grid[y][x] !== '.') {
+        roomIndex++;
+        continue;
+      }
+
+      grid[y][x] = 'p';
+
+      if (rule.bell) {
+        if (grid[y][x + 1] === '.') grid[y][x + 1] = 'b';
+        else if (grid[y][x - 1] === '.') grid[y][x - 1] = 'b';
+      }
+
+      if (grid[y + 1] && grid[y + 1][x] === '.') {
+        grid[y + 1][x] = 'i';
+      }
+
+      patientsLeft--;
+      roomIndex++;
+    }
+  }
+
+  function placeElevatorsFromRule(grid, rooms, rule) {
+    const pairs = rule.count || 1;
+
+    for (let i = 0; i < pairs; i++) {
+      const fromRoom = rooms.find(r => r.type === 'control') || rooms[0];
+      const toRoom   = rooms.find(r => r.type === 'boss') || rooms[rooms.length - 1];
+
+      const fromPos = randomFreeTileInRoom(grid, fromRoom);
+      const toPos   = randomFreeTileInRoom(grid, toRoom);
+
+      grid[fromPos.y][fromPos.x] = 'E';
+      grid[toPos.y][toPos.x]     = 'E';
+    }
+  }
+
   function generateNormalLayout({ width, height, levelConfig, rng, charset }){
     const cs = charset || CHARSET_DEFAULT;
     const totalRooms = Math.max(3, Number(levelConfig.rooms) || 8);
@@ -1674,18 +1738,20 @@ function asciiToNumeric(A){
       }
 
       const rules = levelConfig.rules || [];
+      rules.forEach(rule => {
+        switch (rule.type) {
+          case 'patient':
+            placePatientsFromRule(ascii, rooms, rule);
+            break;
+          case 'elevator':
+            placeElevatorsFromRule(ascii, rooms, rule);
+            break;
+        }
+      });
       const phoneCount = Math.max(1, Math.round(gatherRuleCount(rules, 'phone') || 1));
       for (let i=0; i<phoneCount; i++){
         const p = findRoomWalkableTile(ascii, control, cs, used);
         if (p){ ascii[p.y][p.x] = cs.phone; occupy(p); }
-      }
-
-      const elevatorCount = Math.max(0, Math.round(gatherRuleCount(rules, 'elevator')));
-      const elevatorRooms = rooms.filter(r => r.type !== 'boss');
-      for (let i=0; i<elevatorCount; i++){
-        const rPick = rng.pick(elevatorRooms) || control;
-        const p = findRoomWalkableTile(ascii, rPick, cs, used);
-        if (p){ ascii[p.y][p.x] = cs.elev; occupy(p); }
       }
 
       const npcSpawns = Math.max(0, Math.round(gatherRuleCount(rules, 'npc')));
