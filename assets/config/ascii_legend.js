@@ -3,13 +3,19 @@
 
   const root = typeof W !== 'undefined' ? W : window;
 
+  const TINT_COLORS = {
+    blue: 0x6bd3ff,
+    green: 0x6bff8a,
+    red: 0xff6b6b
+  };
+
   root.AsciiLegend = {
     // Terreno / fuera del mapa
     '#': { key: 'wall',        kind: 'wall',        blocking: true },
-    '.': { key: 'floor',       kind: 'floor',       factoryKey: 'floor', blocking: false, isWalkable: true },
-    '-': { key: 'floor_control', kind: 'floor_control', baseKind: 'floor', factoryKey: 'floor', blocking: false, isWalkable: true, specialRoom: 'control', tint: 'blue' },
-    ';': { key: 'floor_boss',    kind: 'floor_boss',    baseKind: 'floor', factoryKey: 'floor', blocking: false, isWalkable: true, specialRoom: 'boss', tint: 'red' },
-    ',': { key: 'floor_miniboss',kind: 'floor_miniboss',baseKind: 'floor', factoryKey: 'floor', blocking: false, isWalkable: true, specialRoom: 'miniboss', tint: 'green' },
+    '.': { key: 'floor',       kind: 'floor',       factoryKey: 'floor_normal', blocking: false, isWalkable: true },
+    '-': { key: 'floor_control', kind: 'floor_control', baseKind: 'floor', factoryKey: 'floor_control', blocking: false, isWalkable: true, specialRoom: 'control', tint: 'blue' },
+    ';': { key: 'floor_boss',    kind: 'floor_boss',    baseKind: 'floor', factoryKey: 'floor_boss', blocking: false, isWalkable: true, specialRoom: 'boss', tint: 'red' },
+    ',': { key: 'floor_miniboss',kind: 'floor_miniboss',baseKind: 'floor', factoryKey: 'floor_miniboss', blocking: false, isWalkable: true, specialRoom: 'miniboss', tint: 'green' },
     ' ': { key: 'void',        kind: 'void',        blocking: false },
 
     // Posición del héroe / puntos especiales
@@ -120,11 +126,23 @@
     if (!def || typeof tx !== 'number' || typeof ty !== 'number') return null;
     const kind = def.kind || def.key;
     const opts = { _ascii: def, tx, ty, context };
+    const applyLegendTint = (entity) => {
+      const tintKey = typeof def.tint === 'string' ? def.tint.toLowerCase() : null;
+      const tint = tintKey ? TINT_COLORS[tintKey] : null;
+      if (!entity || !tint) return entity;
+      try {
+        if (typeof entity.setTint === 'function') entity.setTint(tint);
+        if (entity.sprite && typeof entity.sprite.setTint === 'function') entity.sprite.setTint(tint);
+        else if (entity.sprite && typeof entity.sprite.tint !== 'undefined') entity.sprite.tint = tint;
+        else if (typeof entity.tint !== 'undefined') entity.tint = tint;
+      } catch (_) {}
+      return entity;
+    };
     if (def.isSpawn) {
-      try { return root.SpawnerManager?.spawnFromDef?.(def, tx, ty, opts); } catch (_) {}
+      try { return applyLegendTint(root.SpawnerManager?.spawnFromDef?.(def, tx, ty, opts)); } catch (_) {}
     }
     if (kind === 'wall' || kind === 'void') return null;
-    try { return root.Entities?.factory?.(def.factoryKey || kind, opts); } catch (_) {}
+    try { return applyLegendTint(root.Entities?.factory?.(def.factoryKey || kind, opts)); } catch (_) {}
     return null;
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -724,11 +724,6 @@
       width: levelConfig?.width ?? level.width,
       height: levelConfig?.height ?? level.height,
       rooms: levelConfig?.rooms ?? level.rooms,
-      roomSizeMin: levelConfig?.room?.normal ? { w: levelConfig.room.normal.minW, h: levelConfig.room.normal.minH } : level.roomSizeMin,
-      roomSizeMax: levelConfig?.room?.normal ? { w: levelConfig.room.normal.maxW, h: levelConfig.room.normal.maxH } : level.roomSizeMax,
-      corridors: level.corridors !== false,
-      corridorWidthMin: levelConfig?.corridorWidthMin,
-      corridorWidthMax: levelConfig?.corridorWidthMax,
       seed: levelConfig?.seed ?? level.seed
     });
 

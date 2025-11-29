@@ -555,67 +555,15 @@ function fixRoomPerimeterGaps(ascii, room, cs){
     const width = clamp(options.width | 0 || 60, 20, 400);
     const height = clamp(options.height | 0 || 40, 20, 400);
     const roomsTarget = clamp(options.rooms | 0 || 8, 3, 60);
-    const corridors = options.corridors !== false;
-    const corridorWidthMin = Math.max(1, Number(options.corridorWidthMin) || 1);
-    const corridorWidthMax = Math.max(corridorWidthMin, Number(options.corridorWidthMax) || corridorWidthMin);
     const seed = options.seed ?? (G.seed ?? (Date.now() >>> 0));
     const rng = RNG(seed);
 
-    const sizeMin = parseRoomSize(options.roomSizeMin, { w: 6, h: 6 });
-    const sizeMax = parseRoomSize(options.roomSizeMax, { w: 12, h: 10 });
-
-    const map = Array.from({ length: height }, () => Array(width).fill(1));
-    const rooms = [];
-    const carve = (rect) => {
-      for (let y = rect.y; y < rect.y + rect.h; y++) {
-        for (let x = rect.x; x < rect.x + rect.w; x++) {
-          if (y <= 0 || y >= height - 1 || x <= 0 || x >= width - 1) continue;
-          map[y][x] = 0;
-        }
-      }
-    };
-
-    const attempts = roomsTarget * 30;
-    for (let attempt = 0; attempt < attempts && rooms.length < roomsTarget; attempt++) {
-      const rw = clamp(rng.int(sizeMin.w, sizeMax.w), 3, width - 4);
-      const rh = clamp(rng.int(sizeMin.h, sizeMax.h), 3, height - 4);
-      const rx = clamp(rng.int(1, width - rw - 1), 1, width - rw - 2);
-      const ry = clamp(rng.int(1, height - rh - 1), 1, height - rh - 2);
-      const rect = { x: rx, y: ry, w: rw, h: rh, id: `room_${rooms.length + 1}` };
-      if (rooms.some((other) => roomsOverlap(rect, other, 2))) continue;
-      rooms.push(rect);
-      carve(rect);
-    }
-
-    if (!rooms.length) {
-      const fallback = { x: 2, y: 2, w: width - 4, h: height - 4, id: 'room_1' };
-      rooms.push(fallback);
-      carve(fallback);
-    }
-
-    const centers = rooms.map((r) => ({
-      room: r,
-      x: r.x + Math.floor(r.w / 2),
-      y: r.y + Math.floor(r.h / 2)
-    }));
-
-    if (corridors && rooms.length > 1) {
-      const ordered = [...centers].sort((a, b) => (a.x + a.y * 0.5) - (b.x + b.y * 0.5));
-      for (let i = 1; i < ordered.length; i++) {
-        digCorridor(map, ordered[i - 1], ordered[i]);
-      }
-    }
-
-    sealBorders(map);
-
-    const control = pickControlRoom(rooms, width, height);
-    const entrance = pickEntranceRoom(rooms);
-    const boss = pickBossRoom(rooms, control);
-
-    if (control) control.tag = 'room:control';
-    if (entrance) entrance.tag = 'room:entrance';
-    if (boss) boss.tag = 'bossRoom';
-
+    const layout = generateNormalLayout({ width, height, levelConfig: { rooms: roomsTarget, rules: [] }, rng, charset: CHARSET_DEFAULT });
+    const map = asciiToNumeric(layout);
+    const rooms = layout._rooms || [];
+    const control = layout._control || pickControlRoom(rooms, width, height);
+    const entrance = layout._entrance || pickEntranceRoom(rooms);
+    const boss = layout._boss || pickBossRoom(rooms, control);
     const bossEntrance = boss
       ? {
           tx: clamp(boss.x + Math.floor(boss.w / 2), 1, width - 2),
@@ -635,24 +583,7 @@ function fixRoomPerimeterGaps(ascii, room, cs){
     };
     G.seed = seed;
 
-    return { map, width, height, rooms, control, entrance, boss, bossEntrance, seed, corridorWidthMin, corridorWidthMax };
-  }
-
-  function parseRoomSize(value, fallback) {
-    if (!value) return { ...fallback };
-    if (typeof value === 'object' && Number.isFinite(value.w) && Number.isFinite(value.h)) {
-      return { w: Math.max(3, value.w), h: Math.max(3, value.h) };
-    }
-    if (typeof value !== 'string') return { ...fallback };
-    const parts = value.split('x').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n));
-    if (parts.length === 2) {
-      return { w: Math.max(3, parts[0]), h: Math.max(3, parts[1]) };
-    }
-    const num = parseInt(value, 10);
-    if (Number.isFinite(num)) {
-      return { w: Math.max(3, num), h: Math.max(3, num) };
-    }
-    return { ...fallback };
+    return { map, width, height, rooms, control, entrance, boss, bossEntrance, seed, corridorWidth: layout._corridorWidth };
   }
 
   function roomsOverlap(a, b, pad = 0) {
@@ -1281,8 +1212,6 @@ function asciiToNumeric(A){
       roomsCount: roomsGenerated,
       corridorWidth: asciiRows._corridorWidth,
       corridorWidthUsed: asciiRows._corridorWidth,
-      corridorWidthMin: levelConfig.corridorWidthMin,
-      corridorWidthMax: levelConfig.corridorWidthMax,
       cooling: levelConfig.cooling ?? 20,
       culling: levelConfig.culling,
       allRoomsReachable: allReachable,
@@ -1350,12 +1279,17 @@ function asciiToNumeric(A){
     return rng.int ? rng.int(lo, hi) : (lo + Math.floor((rng.rand?.() ?? Math.random()) * (hi - lo + 1)));
   }
 
-  function randomRoomSize(rng, range){
-    const minW = Math.max(3, range?.minW || 3);
-    const minH = Math.max(3, range?.minH || 3);
-    const maxW = Math.max(minW, range?.maxW || minW);
-    const maxH = Math.max(minH, range?.maxH || minH);
-    return { w: randInt(rng, minW, maxW), h: randInt(rng, minH, maxH) };
+  function planRoomSize(rng, targetArea, width, height, margin=2){
+    const minSide = 6;
+    const usableW = Math.max(minSide, width - (margin + 1) * 2);
+    const usableH = Math.max(minSide, height - (margin + 1) * 2);
+    const area = Math.max(targetArea, minSide * minSide);
+    const ratio = 0.7 + ((rng.rand?.() ?? Math.random()) * 0.6); // 0.7 - 1.3
+    let w = Math.max(minSide, Math.round(Math.sqrt(area * ratio)));
+    let h = Math.max(minSide, Math.round(area / w));
+    w = clamp(w, minSide, usableW);
+    h = clamp(h, minSide, usableH);
+    return { w, h };
   }
 
   function roomsOverlapWithPadding(a, b, pad=1){
@@ -1387,7 +1321,7 @@ function asciiToNumeric(A){
         if (isBorder) {
           ascii[y][x] = cs.wall;
         } else {
-          ascii[y][x] = cs.floor;
+          ascii[y][x] = '.';
         }
       }
     }
@@ -1412,9 +1346,7 @@ function asciiToNumeric(A){
 
     for (let y = room.y + 1; y < room.y + room.h - 1; y++){
       for (let x = room.x + 1; x < room.x + room.w - 1; x++){
-        if (grid[y]?.[x] !== undefined){
-          grid[y][x] = tile;
-        }
+        if (grid[y]?.[x] !== undefined && isFloorTile(grid[y][x])) grid[y][x] = tile;
       }
     }
   }
@@ -1425,10 +1357,10 @@ function asciiToNumeric(A){
     return room;
   }
 
-  function chooseControlRoom(rng, width, height, range, existing){
+  function chooseControlRoom(rng, width, height, sizePicker, existing){
     const margin = 2;
     for (let i = 0; i < 200; i++){
-      const size = randomRoomSize(rng, range);
+      const size = typeof sizePicker === 'function' ? sizePicker() : { w: 8, h: 8 };
       const maxX = Math.max(margin, Math.floor(width * 0.35));
       const minY = Math.max(margin, Math.floor(height * 0.55) - size.h);
       const x = randInt(rng, margin, Math.max(margin, Math.min(maxX, width - size.w - margin)));
@@ -1441,12 +1373,12 @@ function asciiToNumeric(A){
     return null;
   }
 
-  function chooseBossRoom(rng, width, height, range, controlRoom, existing){
+  function chooseBossRoom(rng, width, height, sizePicker, controlRoom, existing){
     const margin = 2;
     let best = null;
     let bestDist = -1;
     for (let i = 0; i < 400; i++){
-      const size = randomRoomSize(rng, range);
+      const size = typeof sizePicker === 'function' ? sizePicker() : { w: 10, h: 10 };
       const x = randInt(rng, margin, width - size.w - margin);
       const y = randInt(rng, margin, height - size.h - margin);
       const room = addRoomMetadata({ ...size, x, y, type:'boss' });
@@ -1460,14 +1392,15 @@ function asciiToNumeric(A){
     return best;
   }
 
-  function placeNormalRooms(rng, width, height, range, count, existing){
+  function placeNormalRooms(rng, width, height, sizePickers, existing){
     const margin = 2;
     const rooms = [];
     let attempts = 0;
-    const maxAttempts = Math.max(1000, count * 80);
-    while (rooms.length < count && attempts < maxAttempts){
+    const maxAttempts = Math.max(1200, sizePickers.length * 120);
+    while (rooms.length < sizePickers.length && attempts < maxAttempts){
       attempts++;
-      const size = randomRoomSize(rng, range);
+      const picker = sizePickers[rooms.length] || sizePickers[sizePickers.length - 1];
+      const size = typeof picker === 'function' ? picker() : { w: 8, h: 8 };
       const x = randInt(rng, margin, width - size.w - margin);
       const y = randInt(rng, margin, height - size.h - margin);
       const room = addRoomMetadata({ ...size, x, y, type:'normal' });
@@ -1476,7 +1409,7 @@ function asciiToNumeric(A){
       if (rooms.some(o => roomsOverlapWithPadding(room, o, 1))) continue;
       rooms.push(room);
     }
-    return rooms.length === count ? rooms : null;
+    return rooms.length === sizePickers.length ? rooms : null;
   }
 
   function openDoorBetween(grid, room, fromX, fromY, isBossRoom, cs){
@@ -1497,6 +1430,7 @@ function asciiToNumeric(A){
 
   function paintCorridorStripe(ascii, x, y, width, orientation, protectedRooms, cs){
     const offset = Math.floor(width / 2);
+    const floorChar = '.';
     for (let w = 0; w < width; w++){
       const delta = w - offset;
       const tx = orientation === 'vertical' ? x + delta : x;
@@ -1504,7 +1438,7 @@ function asciiToNumeric(A){
       if (ascii[ty]?.[tx] === undefined) continue;
       const touchesRoom = protectedRooms?.some(r => isInsideRoom(r, tx, ty));
       if (touchesRoom) continue;
-      ascii[ty][tx] = cs.floor;
+      ascii[ty][tx] = floorChar;
     }
   }
 
@@ -1679,7 +1613,8 @@ function asciiToNumeric(A){
   }
 
   function isFloorTile(ch) {
-    return ch === '.' || ch === '-' || ch === ',' || ch === ';';
+    const baseFloor = CHARSET_DEFAULT?.floor || '.';
+    return ch === baseFloor || ch === '.' || ch === '-' || ch === ',' || ch === ';';
   }
 
   function placeNpcsFromRule(grid, rooms, rule) {
@@ -1885,27 +1820,42 @@ function asciiToNumeric(A){
   function generateNormalLayout({ width, height, levelConfig, rng, charset }){
     const cs = charset || CHARSET_DEFAULT;
     const totalRooms = Math.max(3, Number(levelConfig.rooms) || 8);
-    const corridorWidth = randInt(rng, levelConfig.corridorWidthMin || 1, levelConfig.corridorWidthMax || levelConfig.corridorWidthMin || 1);
+    const corridorWidth = Math.max(2, Math.min(4, Math.round(Math.min(width, height) / 30)));
     const maxRestarts = 20;
-    const normalRange = levelConfig.room?.normal || { minW: 6, minH: 6, maxW: 12, maxH: 10 };
-    const controlRange = levelConfig.room?.control || normalRange;
-    const bossRange = levelConfig.room?.boss || normalRange;
+    const mapArea = width * height;
 
     for (let attempt = 0; attempt < maxRestarts; attempt++){
+      const fillBase = 0.45 + ((rng.rand?.() ?? Math.random()) * 0.1); // 45%-55%
+      const fillRatio = clamp(fillBase - attempt * 0.02, 0.35, 0.55);
+      const targetRoomsArea = mapArea * fillRatio;
+      const normalsNeeded = Math.max(0, totalRooms - 3);
+      const weights = { control: 1.15, boss: 1.4, miniboss: 1.2, normal: 1 };
+      const totalWeight = weights.control + weights.boss + weights.miniboss + weights.normal * Math.max(1, normalsNeeded);
+      const baseArea = targetRoomsArea / Math.max(1, totalWeight);
+      const jitter = () => 0.85 + ((rng.rand?.() ?? Math.random()) * 0.3);
+      const controlPicker = () => planRoomSize(rng, baseArea * weights.control * jitter(), width, height);
+      const bossPicker = () => planRoomSize(rng, baseArea * weights.boss * jitter(), width, height);
+      const normalPickers = [];
+      if (normalsNeeded > 0) {
+        normalPickers.push(() => planRoomSize(rng, baseArea * weights.miniboss * jitter(), width, height));
+      }
+      for (let n = 1; n < normalsNeeded; n++) {
+        normalPickers.push(() => planRoomSize(rng, baseArea * weights.normal * jitter(), width, height));
+      }
+
       const ascii = create2DArray(height, width, cs.wall);
       ascii._corridors = 0;
       ascii._roomsRequested = totalRooms;
       const rooms = [];
-      const control = chooseControlRoom(rng, width, height, controlRange, rooms);
+      const control = chooseControlRoom(rng, width, height, controlPicker, rooms);
       if (!control) continue;
       rooms.push(control);
 
-      const boss = chooseBossRoom(rng, width, height, bossRange, control, rooms);
+      const boss = chooseBossRoom(rng, width, height, bossPicker, control, rooms);
       if (!boss) continue;
       rooms.push(boss);
 
-      const normalsNeeded = totalRooms - 2;
-      const normals = placeNormalRooms(rng, width, height, normalRange, normalsNeeded, rooms);
+      const normals = placeNormalRooms(rng, width, height, normalPickers, rooms);
       if (!normals) continue;
       rooms.push(...normals);
 

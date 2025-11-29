@@ -190,33 +190,6 @@
     return trimmed;
   }
 
-  function parseSize(value) {
-    if (!value) return null;
-    if (typeof value === 'object' && Number.isFinite(value.w) && Number.isFinite(value.h)) {
-      return { w: value.w, h: value.h };
-    }
-    if (typeof value !== 'string') return null;
-    const parts = value.split('x').map((v) => parseInt(v.trim(), 10)).filter((n) => Number.isFinite(n));
-    if (parts.length === 2) {
-      return { w: parts[0], h: parts[1] };
-    }
-    const square = parseInt(value, 10);
-    if (Number.isFinite(square)) {
-      return { w: square, h: square };
-    }
-    return null;
-  }
-
-  function buildSizeRange(minValue, maxValue, fallback) {
-    const minParsed = parseSize(minValue) || fallback?.min || fallback;
-    const maxParsed = parseSize(maxValue) || fallback?.max || fallback;
-    const minW = Math.max(1, parseInt(minParsed?.w, 10) || 0);
-    const minH = Math.max(1, parseInt(minParsed?.h, 10) || 0);
-    const maxW = Math.max(minW, parseInt(maxParsed?.w, 10) || minW);
-    const maxH = Math.max(minH, parseInt(maxParsed?.h, 10) || minH);
-    return { minW, minH, maxW, maxH };
-  }
-
   function resolveNumber(...values) {
     for (const value of values) {
       const num = Number(value);
@@ -232,13 +205,6 @@
   }
 
   function buildLevelConfig({ globals = {}, level = {}, rules = [] } = {}) {
-    const roomFallback = buildSizeRange(level.roomSizeMin, level.roomSizeMax, { min: { w: 6, h: 6 }, max: { w: 12, h: 10 } });
-    const roomFallbackRange = { min: { w: roomFallback.minW, h: roomFallback.minH }, max: { w: roomFallback.maxW, h: roomFallback.maxH } };
-    const controlFallback = buildSizeRange(level.controlRoomSizeMin ?? level.roomSizeMin, level.controlRoomSizeMax ?? level.roomSizeMax, roomFallbackRange);
-    const bossFallback = buildSizeRange(level.bossRoomSizeMin ?? level.roomSizeMin, level.bossRoomSizeMax ?? level.roomSizeMax, roomFallbackRange);
-    const corridorMin = resolveNumber(level.corridorWidthMin, globals.corridorWidthMin, 1) || 1;
-    const corridorMaxCandidate = resolveNumber(level.corridorWidthMax, globals.corridorWidthMax, Math.max(corridorMin, 2));
-    const corridorMax = Number.isFinite(corridorMaxCandidate) ? Math.max(corridorMin, corridorMaxCandidate) : Math.max(corridorMin, 2);
     const culling = resolveCulling(globals, level);
     const rulesByType = groupRulesByType(rules);
 
@@ -248,13 +214,6 @@
       height: resolveNumber(level.height, globals.height),
       rooms: resolveNumber(level.rooms, globals.rooms),
       culling,
-      corridorWidthMin: corridorMin,
-      corridorWidthMax: corridorMax,
-      room: {
-        normal: roomFallback,
-        control: controlFallback,
-        boss: bossFallback
-      },
       heroes: resolveNumber(level.heroes, globals.maxHeroes),
       difficulty: resolveNumber(level.difficulty, globals.difficulty),
       boss: level.boss,
@@ -278,7 +237,15 @@
       otherRules: rulesByType.other,
       deprecated: {
         bossRoom: level.bossRoom,
-        bossRoomFlag: level.bossRoom === 'big'
+        bossRoomFlag: level.bossRoom === 'big',
+        roomSizeMin: level.roomSizeMin,
+        roomSizeMax: level.roomSizeMax,
+        controlRoomSizeMin: level.controlRoomSizeMin,
+        controlRoomSizeMax: level.controlRoomSizeMax,
+        bossRoomSizeMin: level.bossRoomSizeMin,
+        bossRoomSizeMax: level.bossRoomSizeMax,
+        corridorWidthMin: level.corridorWidthMin,
+        corridorWidthMax: level.corridorWidthMax
       }
     };
   }
