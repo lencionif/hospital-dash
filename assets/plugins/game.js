@@ -691,10 +691,55 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // y como último recurso 32.
     const TILE = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || 32;
 
+    const legendApi = window.AsciiLegendAPI || window.PlacementAPI || {};
+    const getAsciiDef = legendApi.getDefFromChar || legendApi.getDef || ((ch, opts) => {
+      const def = (window.AsciiLegend && window.AsciiLegend[ch]) || null;
+      if (!def && opts?.log !== false) {
+        try { console.warn('[ASCII] Unknown char in map:', JSON.stringify(ch), opts?.context || 'parseMap'); } catch (_) {}
+      }
+      return def;
+    });
+
+    const ENTITY_FACTORIES = {
+      hero_spawn(tx, ty) {
+        const wx = tx * TILE;
+        const wy = ty * TILE;
+        const p = (typeof makePlayer === 'function')
+          ? makePlayer(wx + 4, wy + 4)
+          : (window.Entities?.Hero?.spawnPlayer?.(wx + 4, wy + 4, {}) || null);
+        if (p) {
+          G.player = p;
+          G.safeRect = { x: wx - 2 * TILE, y: wy - 2 * TILE, w: 5 * TILE, h: 5 * TILE };
+          G.roomLights.push({ x: (p.x || wx) + TILE / 2, y: (p.y || wy) + TILE / 2, r: 5.5 * TILE, baseA: 0.28 });
+        }
+        return p;
+      }
+    };
+
+    const spawnFromKind = (def, tx, ty, ch) => {
+      if (!def) return null;
+      const factory = ENTITY_FACTORIES[def.kind] || ENTITY_FACTORIES[def.factoryKey];
+      if (typeof factory === 'function') return factory(tx, ty, def);
+      if (window.PlacementAPI?.spawnFromAscii) {
+        return window.PlacementAPI.spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch });
+      }
+      return null;
+    };
+
+    const addEntity = (entity) => {
+      if (!entity) return;
+      if (!Array.isArray(G.entities)) G.entities = [];
+      if (!G.entities.includes(entity)) G.entities.push(entity);
+      if (!entity.static && (entity.dynamic || entity.pushable || entity.vx || entity.vy)) {
+        if (!G.movers.includes(entity)) G.movers.push(entity);
+      }
+    };
+
     // === Validación mínima de entrada ===
     if (!Array.isArray(lines) || !lines.length){
       G.mapH = 1; G.mapW = 1;
       G.map = [[0]];
+      G.floorColors = [[null]];
       // No colocamos nada más para no romper.
       return;
     }
@@ -703,6 +748,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.mapH = lines.length;
     G.mapW = lines[0].length;
     G.map = [];
+    G.floorColors = [];
 
     // Recogeremos aquí los placements derivados del ASCII (en píxeles)
     const asciiPlacements = [];
@@ -711,94 +757,31 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
     for (let y = 0; y < G.mapH; y++){
       const row = [];
+      const colorRow = [];
       const line = lines[y] || '';
       for (let x = 0; x < G.mapW; x++){
         const ch = line[x] || ' ';
-        const wx = x * TILE, wy = y * TILE;
+        const def = getAsciiDef(ch, { context: 'parseMap' });
+        const blocking = def?.blocking === true || ch === '#';
+        row.push(blocking ? 1 : 0);
+        colorRow.push(def?.color || null);
 
-        // pared/espacio (igual que la antigua)
-        if (ch === '#') { row.push(1); } else { row.push(0); }
+        if (!def) continue;
+        if (def.kind === 'wall' || def.kind === 'void') continue;
+        if (def.baseKind === 'floor' || def.kind === 'floor') continue;
 
-        // === MARCAS ASCII ===
-        if (ch === 'S') {
-          // HÉROE: se crea INMEDIATO como antes (no depende de factories)
-          const p = (typeof makePlayer === 'function')
-            ? makePlayer(wx+4, wy+4)
-            : (window.Entities?.Hero?.spawnPlayer?.(wx+4, wy+4, {}) || null);
-
-          if (p){
-            G.player = p; G.entities.push(p);
-            // sala segura (5x5 tiles centrados en S)
-            G.safeRect = { x: wx - 2*TILE, y: wy - 2*TILE, w: 5*TILE, h: 5*TILE };
-            // luz blanca suave en sala de control
-            G.roomLights.push({ x: (p.x||wx)+TILE/2, y: (p.y||wy)+TILE/2, r: 5.5*TILE, baseA: 0.28 });
+        const entity = spawnFromKind(def, x, y, ch);
+        if (entity) {
+          addEntity(entity);
+          if (!G.player && def.kind === 'hero_spawn') {
+            G.player = entity;
           }
+        } else if (def.isSpawn) {
+          asciiPlacements.push({ type: def.kind, tx: x, ty: y, char: ch });
         }
-        else if (ch === 'P') {
-          // Paciente: placement (NO instanciamos aquí)
-          asciiPlacements.push({ type:'patient', x: wx+4, y: wy+4, _units:'px' });
-          // luz clara de sala (igual que antigua)
-          G.roomLights.push({ x: wx+TILE/2, y: wy+TILE/2, r: 5.0*TILE, baseA: 0.25 });
-        }
-        else if (ch === 'I') {
-          asciiPlacements.push({ type:'pill', x: wx+8, y: wy+8, _units:'px' });
-        }
-        else if (ch === 'C') {
-          // Orden debug: 1º ER, 2º MED, 3º+ FOOD
-          window.G = window.G || {};
-          const n = (G._debugCartCount = (G._debugCartCount|0) + 1);
-          const sub = (n === 1) ? 'er' : (n === 2 ? 'med' : 'food');
-          asciiPlacements.push({ type:'cart', sub, x: wx+6, y: wy+8, _units:'px' });
-        }
-        else if (ch === 'M') {
-          // Spawner mosquito: SOLO lo apuntamos (si lo apagas en debug/HTML no romperá)
-          asciiPlacements.push({ type:'spawn_mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'R') {
-          asciiPlacements.push({ type:'spawn_rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'D') {
-          asciiPlacements.push({ type:'door', x: wx, y: wy, locked:true, _units:'px' });
-        }
-        else if (ch === 'X') {
-          asciiPlacements.push({ type:'boss', x: wx+TILE/2, y: wy+TILE/2, _units:'px', tier:1 });
-        }
-        else if (ch === 'L') {
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'm') { // enemigo directo: mosquito
-          asciiPlacements.push({ type:'enemy', sub:'mosquito', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'r') { // enemigo directo: rata
-          asciiPlacements.push({ type:'enemy', sub:'rat', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'E') { // ascensor activo
-          asciiPlacements.push({ type:'elevator', active:true, x: wx, y: wy, _units:'px' });
-        }
-        else if (ch === 'H') { // NPC: médico
-          asciiPlacements.push({ type:'npc', sub:'medico', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'U') { // NPC: supervisora
-          asciiPlacements.push({ type:'npc', sub:'supervisora', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'T') { // NPC: tcae
-          asciiPlacements.push({ type:'npc', sub:'tcae', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'G') { // NPC: guardia
-          asciiPlacements.push({ type:'npc', sub:'guardia', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'F') { // NPC: familiar molesto
-          asciiPlacements.push({ type:'npc', sub:'familiar', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'N') { // NPC: enfermera sexy
-          asciiPlacements.push({ type:'npc', sub:'enfermera_sexy', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        else if (ch === 'L') { // luz de sala
-          asciiPlacements.push({ type:'light', x: wx+TILE/2, y: wy+TILE/2, _units:'px' });
-        }
-        // Si añades más letras ASCII, convierte aquí a placements (en píxeles).
       }
       G.map.push(row);
+      G.floorColors.push(colorRow);
     }
 
     // Mezclamos con placements del generador (si ya existían)
