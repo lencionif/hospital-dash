@@ -155,7 +155,7 @@
   // --- Carvar corredor recto tipo Bresenham con ancho (3..5) ---
   // Pasillo en L estrictamente ortogonal (usa digH/digV)
   function carveOrthCorridor(map, x0, y0, x1, y1, width=3){
-    const w = clamp(width || GEN_RULES.MIN_CORRIDOR, GEN_RULES.MIN_CORRIDOR, GEN_RULES.MAX_CORRIDOR);
+    const w = Math.max(1, Math.floor(width || 1));
     // escogemos el orden que menos “muerde” paredes
     const hFirst = Math.abs(x1-x0) >= Math.abs(y1-y0);
     if (hFirst){
@@ -897,18 +897,20 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
   function expand(r, p){return {x:r.x-p, y:r.y-p, w:r.w+2*p, h:r.h+2*p};}
   function centerOf(r){return {x: (r.x + ((r.w/2)|0)), y: (r.y + ((r.h/2)|0))};}
   function digH(map, x1, x2, y, w){
-    const useW = clamp(w || GEN_RULES.MIN_CORRIDOR, GEN_RULES.MIN_CORRIDOR, GEN_RULES.MAX_CORRIDOR);
-    const r = Math.max(0, ((useW - 1) / 2) | 0);
-    for (let yy = y - r; yy <= y + r; yy++){
+    const useW = Math.max(1, Math.floor(w || 1));
+    const offset = Math.floor(useW / 2);
+    for (let ww = 0; ww < useW; ww++){
+      const yy = y + (ww - offset);
       for (let x = x1; x <= x2; x++){
         if (inB(map[0].length, map.length, x, yy)) map[yy][x] = 0; // 0 = suelo
       }
     }
   }
   function digV(map, y1, y2, x, w){
-    const useW = clamp(w || GEN_RULES.MIN_CORRIDOR, GEN_RULES.MIN_CORRIDOR, GEN_RULES.MAX_CORRIDOR);
-    const r = Math.max(0, ((useW - 1) / 2) | 0);
-    for (let xx = x - r; xx <= x + r; xx++){
+    const useW = Math.max(1, Math.floor(w || 1));
+    const offset = Math.floor(useW / 2);
+    for (let ww = 0; ww < useW; ww++){
+      const xx = x + (ww - offset);
       for (let y = y1; y <= y2; y++){
         if (inB(map[0].length, map.length, xx, y)) map[y][xx] = 0; // 0 = suelo
       }
@@ -1034,7 +1036,10 @@ function asciiToNumeric(A){
     if (ch === undefined || ch === cs.wall) return false;
     const legend = (typeof window !== 'undefined' && window.AsciiLegend) || {};
     const def = legend[ch];
-    if (def && def.blocking) return false;
+    if (def){
+      if (def.blocking) return false;
+      if (typeof def.isWalkable !== 'undefined') return !!def.isWalkable;
+    }
     return true;
   }
 
@@ -1388,6 +1393,32 @@ function asciiToNumeric(A){
     }
   }
 
+  function applyRoomFloorChars(grid, room){
+    let tile;
+    switch (room.type){
+      case 'control':
+        tile = '-';
+        break;
+      case 'boss':
+        tile = ';';
+        break;
+      case 'miniboss':
+        tile = ',';
+        break;
+      default:
+        tile = '.';
+        break;
+    }
+
+    for (let y = room.y + 1; y < room.y + room.h - 1; y++){
+      for (let x = room.x + 1; x < room.x + room.w - 1; x++){
+        if (grid[y]?.[x] !== undefined){
+          grid[y][x] = tile;
+        }
+      }
+    }
+  }
+
   function addRoomMetadata(room){
     room.centerX = room.x + Math.floor(room.w / 2);
     room.centerY = room.y + Math.floor(room.h / 2);
@@ -1620,12 +1651,12 @@ function asciiToNumeric(A){
     return min + Math.floor(Math.random() * (maxInclusive - min + 1));
   }
 
-  function randomFreeTileInRoom(grid, room) {
+  function randomFreeTileInRoom(grid, room, cs=CHARSET_DEFAULT) {
     let tries = 0;
     while (tries++ < 100) {
       const x = randomInt(room.x + 1, room.x + room.w - 2);
       const y = randomInt(room.y + 1, room.y + room.h - 2);
-      if (grid[y][x] === '.') {
+      if (isWalkableChar(grid[y][x], cs)) {
         return { x, y };
       }
     }
@@ -1665,15 +1696,17 @@ function asciiToNumeric(A){
     }
   }
 
-  function placeElevatorsFromRule(grid, rooms, rule) {
+  function placeElevatorsFromRule(grid, rooms, rule, cs) {
     const pairs = rule.count || 1;
 
-    for (let i = 0; i < pairs; i++) {
-      const fromRoom = rooms.find(r => r.type === 'control') || rooms[0];
-      const toRoom   = rooms.find(r => r.type === 'boss') || rooms[rooms.length - 1];
+    const safeRooms = rooms.filter(r => r.type !== 'boss');
 
-      const fromPos = randomFreeTileInRoom(grid, fromRoom);
-      const toPos   = randomFreeTileInRoom(grid, toRoom);
+    for (let i = 0; i < pairs; i++) {
+      const fromRoom = safeRooms.find(r => r.type === 'control') || safeRooms[0] || rooms[0];
+      const toRoom   = safeRooms.find(r => r !== fromRoom) || fromRoom;
+
+      const fromPos = randomFreeTileInRoom(grid, fromRoom, cs);
+      const toPos   = randomFreeTileInRoom(grid, toRoom, cs);
 
       grid[fromPos.y][fromPos.x] = 'E';
       grid[toPos.y][toPos.x]     = 'E';
@@ -1707,7 +1740,12 @@ function asciiToNumeric(A){
       if (!normals) continue;
       rooms.push(...normals);
 
+      const candidatesMiniBoss = rooms.filter(r => r !== control && r !== boss);
+      const miniBoss = pickFarthestRoom(candidatesMiniBoss, { x: control.centerX, y: control.centerY });
+      if (miniBoss) miniBoss.type = 'miniboss';
+
       rooms.forEach((r) => markRoom(ascii, r, cs));
+      rooms.forEach((r) => applyRoomFloorChars(ascii, r));
       connectRoomsWithMST(ascii, rooms, corridorWidth, rng, cs);
       const reachable = ensureRoomsConnected(ascii, rooms, control, corridorWidth, rng, cs);
       sealMapBorder(ascii, cs);
@@ -1723,20 +1761,6 @@ function asciiToNumeric(A){
       const bossPos = findRoomWalkableTile(ascii, boss, cs, used) || { x: boss.centerX|0, y: boss.centerY|0 };
       if (bossPos) { ascii[bossPos.y][bossPos.x] = cs.bossMarker; occupy(bossPos); }
 
-      // Garantizar puertas de urgencias en todas las bocas de la boss room
-      for (let x=boss.x; x<boss.x+boss.w; x++){
-        const top = {x, y: boss.y-1};
-        const bottom = {x, y: boss.y+boss.h};
-        if (ascii[top.y]?.[top.x] && ascii[top.y][top.x] !== cs.wall) ascii[top.y][top.x] = cs.bossDoor;
-        if (ascii[bottom.y]?.[bottom.x] && ascii[bottom.y][bottom.x] !== cs.wall) ascii[bottom.y][bottom.x] = cs.bossDoor;
-      }
-      for (let y=boss.y; y<boss.y+boss.h; y++){
-        const left = {x: boss.x-1, y};
-        const right = {x: boss.x+boss.w, y};
-        if (ascii[left.y]?.[left.x] && ascii[left.y][left.x] !== cs.wall) ascii[left.y][left.x] = cs.bossDoor;
-        if (ascii[right.y]?.[right.x] && ascii[right.y][right.x] !== cs.wall) ascii[right.y][right.x] = cs.bossDoor;
-      }
-
       const rules = levelConfig.rules || [];
       rules.forEach(rule => {
         switch (rule.type) {
@@ -1744,7 +1768,7 @@ function asciiToNumeric(A){
             placePatientsFromRule(ascii, rooms, rule);
             break;
           case 'elevator':
-            placeElevatorsFromRule(ascii, rooms, rule);
+            placeElevatorsFromRule(ascii, rooms, rule, cs);
             break;
         }
       });
@@ -1778,6 +1802,7 @@ function asciiToNumeric(A){
       ascii._rooms = rooms;
       ascii._control = control;
       ascii._boss = boss;
+      ascii._miniboss = miniBoss || null;
       ascii._corridorWidth = corridorWidth;
       ascii._reachable = reachable;
       ascii._roomsGenerated = rooms.length;
