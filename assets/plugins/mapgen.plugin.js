@@ -1369,9 +1369,21 @@ function asciiToNumeric(A){
   }
 
   function markRoom(ascii, room, cs){
-    for (let y = room.y + 1; y < room.y + room.h - 1; y++){
-      for (let x = room.x + 1; x < room.x + room.w - 1; x++){
-        if (ascii[y]?.[x] !== undefined) ascii[y][x] = cs.floor;
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        const isBorder =
+          x === room.x ||
+          x === room.x + room.w - 1 ||
+          y === room.y ||
+          y === room.y + room.h - 1;
+
+        if (ascii[y]?.[x] === undefined) continue;
+
+        if (isBorder) {
+          ascii[y][x] = cs.wall;
+        } else {
+          ascii[y][x] = cs.floor;
+        }
       }
     }
   }
@@ -1436,36 +1448,61 @@ function asciiToNumeric(A){
     return rooms.length === count ? rooms : null;
   }
 
-  function carveCorridorSegment(ascii, fromX, fromY, toX, toY, width, cs){
-    const half = Math.floor((width - 1) / 2);
-    if (fromX === toX){
-      const xStart = fromX;
-      const y1 = Math.min(fromY, toY);
-      const y2 = Math.max(fromY, toY);
-      for (let y = y1; y <= y2; y++){
-        for (let dx = -half; dx <= half; dx++){
-          if (ascii[y]?.[xStart + dx] !== undefined) ascii[y][xStart + dx] = cs.floor;
-        }
-      }
-    } else if (fromY === toY){
-      const yStart = fromY;
-      const x1 = Math.min(fromX, toX);
-      const x2 = Math.max(fromX, toX);
-      for (let x = x1; x <= x2; x++){
-        for (let dy = -half; dy <= half; dy++){
-          if (ascii[yStart + dy]?.[x] !== undefined) ascii[yStart + dy][x] = cs.floor;
-        }
-      }
+  function openDoorBetween(grid, room, fromX, fromY, isBossRoom, cs){
+    let doorX = fromX;
+    let doorY = fromY;
+
+    if (doorX < room.x) doorX = room.x;
+    if (doorX >= room.x + room.w) doorX = room.x + room.w - 1;
+    if (doorY < room.y) doorY = room.y;
+    if (doorY >= room.y + room.h) doorY = room.y + room.h - 1;
+
+    grid[doorY][doorX] = isBossRoom ? cs.bossDoor : cs.door;
+  }
+
+  function isInsideRoom(room, x, y){
+    return x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+  }
+
+  function paintCorridorStripe(ascii, x, y, width, orientation, protectedRooms, cs){
+    const offset = Math.floor(width / 2);
+    for (let w = 0; w < width; w++){
+      const delta = w - offset;
+      const tx = orientation === 'vertical' ? x + delta : x;
+      const ty = orientation === 'vertical' ? y : y + delta;
+      if (ascii[ty]?.[tx] === undefined) continue;
+      const touchesRoom = protectedRooms?.some(r => isInsideRoom(r, tx, ty));
+      if (touchesRoom) continue;
+      ascii[ty][tx] = cs.floor;
     }
   }
 
-  function carveCorridor(ascii, start, end, width, rng, cs){
+  function carveCorridorSegment(ascii, fromX, fromY, toX, toY, width, cs, protectedRooms){
+    const isVertical = fromX === toX;
+    const stepX = isVertical ? 0 : (toX > fromX ? 1 : -1);
+    const stepY = isVertical ? (toY > fromY ? 1 : -1) : 0;
+    const steps = isVertical ? Math.abs(toY - fromY) : Math.abs(toX - fromX);
+    const orientation = isVertical ? 'vertical' : 'horizontal';
+
+    paintCorridorStripe(ascii, fromX, fromY, width, orientation, protectedRooms, cs);
+
+    let x = fromX;
+    let y = fromY;
+    for (let i = 0; i < steps; i++){
+      x += stepX;
+      y += stepY;
+      paintCorridorStripe(ascii, x, y, width, orientation, protectedRooms, cs);
+    }
+  }
+
+  function carveCorridor(ascii, start, end, width, rng, cs, protectedRooms){
     const horizontalFirst = rng.rand ? rng.rand() < 0.5 : Math.random() < 0.5;
     const mid = horizontalFirst
       ? { x: end.x, y: start.y }
       : { x: start.x, y: end.y };
-    carveCorridorSegment(ascii, start.x, start.y, mid.x, mid.y, width, cs);
-    carveCorridorSegment(ascii, mid.x, mid.y, end.x, end.y, width, cs);
+    const roomsToProtect = Array.isArray(protectedRooms) ? protectedRooms : [];
+    carveCorridorSegment(ascii, start.x, start.y, mid.x, mid.y, width, cs, roomsToProtect);
+    carveCorridorSegment(ascii, mid.x, mid.y, end.x, end.y, width, cs, roomsToProtect);
   }
 
   function pickDoorPosition(room, targetCenter, width, height){
@@ -1511,23 +1548,24 @@ function asciiToNumeric(A){
       }
       if (!best) break;
 
-      connectRoomPair(ascii, best, target, corridorWidth, rng, cs);
+      connectRoomPair(ascii, best, target, corridorWidth, rng, cs, rooms);
       reachable = floodAscii(ascii, start.x, start.y, cs);
     }
 
     return reachable;
   }
 
-  function connectRoomPair(ascii, roomA, roomB, corridorWidth, rng, cs){
+  function connectRoomPair(ascii, roomA, roomB, corridorWidth, rng, cs, allRooms){
     const centerA = { x: roomA.centerX, y: roomA.centerY };
     const centerB = { x: roomB.centerX, y: roomB.centerY };
     const doorA = pickDoorPosition(roomA, centerB, ascii[0].length, ascii.length);
     const doorB = pickDoorPosition(roomB, centerA, ascii[0].length, ascii.length);
 
-    carveCorridor(ascii, { x: doorA.outX, y: doorA.outY }, { x: doorB.outX, y: doorB.outY }, corridorWidth, rng, cs);
+    openDoorBetween(ascii, roomA, doorA.x, doorA.y, roomA.type === 'boss', cs);
+    openDoorBetween(ascii, roomB, doorB.x, doorB.y, roomB.type === 'boss', cs);
 
-    ascii[doorA.y][doorA.x] = roomA.type === 'boss' ? cs.bossDoor : cs.door;
-    ascii[doorB.y][doorB.x] = roomB.type === 'boss' ? cs.bossDoor : cs.door;
+    const protectedRooms = Array.isArray(allRooms) ? allRooms : [roomA, roomB];
+    carveCorridor(ascii, { x: doorA.outX, y: doorA.outY }, { x: doorB.outX, y: doorB.outY }, corridorWidth, rng, cs, protectedRooms);
     ascii._corridors = (ascii._corridors || 0) + 1;
   }
 
@@ -1547,7 +1585,7 @@ function asciiToNumeric(A){
         }
       }
       if (!bestPair) break;
-      connectRoomPair(ascii, bestPair.from, bestPair.to, corridorWidth, rng, cs);
+      connectRoomPair(ascii, bestPair.from, bestPair.to, corridorWidth, rng, cs, rooms);
       connected.push(bestPair.to);
       remaining.splice(remaining.indexOf(bestPair.to), 1);
     }
