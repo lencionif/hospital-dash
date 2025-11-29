@@ -1737,7 +1737,7 @@ function asciiToNumeric(A){
       const pos = randomFreeTileInRoom(grid, controlRoom);
       const key = `${pos.x},${pos.y}`;
       if (used.has(key)) continue;
-      grid[pos.y][pos.x] = 't';
+      grid[pos.y][pos.x] = 'T';
       used.add(key);
       return;
     }
