@@ -6,7 +6,10 @@
   root.AsciiLegend = {
     // Terreno / fuera del mapa
     '#': { key: 'wall',        kind: 'wall',        blocking: true },
-    '.': { key: 'floor',       kind: 'floor',       blocking: false },
+    '.': { key: 'floor',       kind: 'floor',       factoryKey: 'floor', blocking: false, isWalkable: true },
+    '-': { key: 'floor_control', kind: 'floor_control', baseKind: 'floor', factoryKey: 'floor', blocking: false, isWalkable: true, specialRoom: 'control', tint: 'blue' },
+    ';': { key: 'floor_boss',    kind: 'floor_boss',    baseKind: 'floor', factoryKey: 'floor', blocking: false, isWalkable: true, specialRoom: 'boss', tint: 'red' },
+    ',': { key: 'floor_miniboss',kind: 'floor_miniboss',baseKind: 'floor', factoryKey: 'floor', blocking: false, isWalkable: true, specialRoom: 'miniboss', tint: 'green' },
     ' ': { key: 'void',        kind: 'void',        blocking: false },
 
     // Posición del héroe / puntos especiales
@@ -29,8 +32,8 @@
     'b': { key: 'bell',        kind: 'bell',        factoryKey: 'bell_patient', isTrigger: true },
 
     // Puertas
-    'd': { key: 'door_normal', kind: 'door',        factoryKey: 'door_normal' },
-    'u': { key: 'door_boss',   kind: 'door_urg',    factoryKey: 'door_urgencias', bossDoor: true },
+    'd': { key: 'door_normal', kind: 'door',        factoryKey: 'door_normal', blocking: false, isWalkable: true, isDoor: true },
+    'u': { key: 'door_boss',   kind: 'door_urg',    factoryKey: 'door_urgencias', blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
 
     // Spawns abstractos según level_rules
     'N': { key: 'spawn_npc',   kind: 'spawn_npc',   factoryKey: 'spawn_npc_human', isSpawn: true },
