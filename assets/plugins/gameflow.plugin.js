@@ -34,13 +34,12 @@
     gameover:    (typeof document !== 'undefined') ? document.getElementById('game-over-screen') : null
   };
 
-  const musicFade = (id, fadeTime = 2.0) => {
-    try { window.MusicManager?.fadeTo?.(id, { fadeTime }); } catch (_) {}
+  const musicPlay = (id, opts = {}) => {
+    try { window.MusicManager?.play?.(id, opts); } catch (_) {}
   };
-  const levelTrackFor = (level) => {
-    if (level === 2) return 'level2';
-    if (level === 3) return 'level3';
-    return 'level1';
+  const musicCrossfade = (id, fadeTime = 2.0) => {
+    try { window.MusicManager?.crossfade?.(id, fadeTime); }
+    catch (_) { try { window.MusicManager?.fadeTo?.(id, { fadeTime }); } catch (_) {} }
   };
 
   let readyOverlayEl = null;
@@ -293,7 +292,7 @@
       lockBossDoor();
       syncUrgenciasFromStats();
       if (W.FogAPI && typeof W.FogAPI.reset === 'function') W.FogAPI.reset();
-      musicFade(levelTrackFor(S.level));
+      musicCrossfade('level_theme', 1.0);
       try {
         W.Narrator?.init?.({ level: S.level, levelId: S.level });
         W.Narrator?.onEvent?.('LEVEL_START', { level: S.level, levelId: S.level });
@@ -344,7 +343,7 @@
 
     notifyBossFinalDelivered() {
       S.finalDelivered = true;
-      musicFade('fire_escape');
+      musicCrossfade('fire_escape');
     },
 
     notifyHeroDeath() {
@@ -534,9 +533,9 @@
       W.Narrator?.onEvent?.('BOSS_DOOR_OPEN', { level: S.level, levelId: S.level, remaining });
     } catch (_) {}
     // Música según fase del nivel
-    if (S.level === 1) musicFade('boss1');
-    else if (S.level === 2) musicFade('boss2');
-    else if (S.level === 3) musicFade('pre_final_boss');
+    if (S.level === 1) musicCrossfade('boss_theme', 1.0);
+    else if (S.level === 2) musicCrossfade('boss_theme', 1.0);
+    else if (S.level === 3) musicCrossfade('boss_theme', 1.0);
   }
 
   // Fog + Zoom al boss
@@ -642,6 +641,7 @@
   function triggerGameOver() {
     S.gameOver = true;
     S.running = false;
+    musicCrossfade('gameover_theme', 0.8);
     const reason = (S.G && S.G._gameOverReason) || 'health_depleted';
     if (S.G) S.G._gameOverReason = reason;
     if (S.G) S.G.state = 'GAMEOVER';
@@ -735,7 +735,7 @@
         totalPatients: S.totalPatients || 0,
       });
     }
-    musicFade('score');
+    musicCrossfade('score');
     try {
       W.Narrator?.onEvent?.('OBJECTIVE_COMPLETED', { level: S.level, levelId: S.level, objective: 'nivel' });
       W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 }, { priority: 'high' });

@@ -240,16 +240,27 @@
 </script>
 
 <script>
-  window.addEventListener('load', () => { 
+  const ensureMenuMusic = (() => {
+    let started = false;
+    return (opts = {}) => {
+      if (started) return;
+      started = true;
+      try {
+        window.MusicManager?.play?.('menu_theme', Object.assign({ loop: true, fadeTime: 0.35 }, opts));
+      } catch (_) {}
+    };
+  })();
+
+  window.addEventListener('load', () => {
     // ---- flujo normal (sin ?mini=1 ni ?map=mini|debug) ----
-    if (window.MusicAPI && MusicAPI.init) {
-      MusicAPI.init({ urls: { intro: 'assets/music/intro.ogg' } });
-    }
+    try { window.MusicManager?.init?.(); } catch (_) {}
     if (window.PresentationAPI && PresentationAPI.playIntroSequence) {
       PresentationAPI.playIntroSequence();
+    } else {
+      ensureMenuMusic();
     }
   });
-
+ 
 // Cuando la intro termina, aparece el start-screen y NOS ASEGURAMOS
 // de que nada quede por encima bloqueando clics.
 window.addEventListener('intro:complete', () => {
@@ -266,6 +277,7 @@ window.addEventListener('intro:complete', () => {
     document.getElementById('start-button')?.addEventListener('click', killBrand, { once:true });
     window.addEventListener('game:start', killBrand, { once:true });
   }
+  ensureMenuMusic({ fadeTime: 0.45 });
   document.body.classList.remove('intro-playing');
 });
 </script>
