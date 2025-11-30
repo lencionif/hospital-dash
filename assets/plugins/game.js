@@ -1384,6 +1384,7 @@ function updateEntities(dt){
   function update(dt){
     window.SkyFX?.update?.(dt);
     try { window.ArrowGuide?.update?.(dt); } catch(e){}
+    try { window.Narrator?.update?.(dt, G); } catch(e){}
     if (G.state !== 'PLAYING' || !G.player) return; // <-- evita tocar nada sin jugador
     G.time += dt;
     G.cycleSeconds += dt;
