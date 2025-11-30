@@ -1759,7 +1759,7 @@ function drawEntities(c2){
     if (mode === 'normal' && asciiRows.length) {
       try {
         const walkableTiles = generationMeta?.walkableTiles;
-        const totalTiles = generationMeta?.totalTiles ?? (mapWidth * mapHeight) || null;
+        const totalTiles = generationMeta?.totalTiles ?? ((mapWidth * mapHeight) || null);
         const floorPercent = Number.isFinite(generationMeta?.floorPercent)
           ? generationMeta.floorPercent
           : (Number.isFinite(walkableTiles) && totalTiles)
