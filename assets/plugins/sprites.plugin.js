@@ -160,6 +160,9 @@
       if (!G || !Array.isArray(G.map)) return;
       const fallbackTile = (this._opts.tile|0) || (global.TILE_SIZE|0) || 32;
       const tile = Number.isFinite(G?.TILE_SIZE) && G.TILE_SIZE > 0 ? G.TILE_SIZE : fallbackTile;
+      const gridToWorld = (global.GridMath && typeof global.GridMath.gridToWorld === 'function')
+        ? global.GridMath.gridToWorld
+        : ((tx, ty) => ({ x: tx * tile, y: ty * tile }));
       const mapH = Number.isFinite(G?.mapH) && G.mapH > 0 ? G.mapH : (Array.isArray(G.map) ? G.map.length : 0);
       const mapW = Number.isFinite(G?.mapW) && G.mapW > 0 ? G.mapW : (mapH > 0 && Array.isArray(G.map[0]) ? G.map[0].length : 0);
       if (!mapW || !mapH) return;
@@ -186,8 +189,9 @@
       for (let y = minY; y <= maxY; y++) {
         const row = G.map[y];
         for (let x = minX; x <= maxX; x++) {
-          const px = x * tile;
-          const py = y * tile;
+          const pos = gridToWorld(x, y);
+          const px = pos.x;
+          const py = pos.y;
           const isWall = !!(row && row[x]);
           if (isWall) {
             const img = this._imgs['pared'];
