@@ -1771,7 +1771,13 @@ function drawEntities(c2){
     if (mode === 'normal' && asciiRows.length) {
       try {
         const walkableTiles = generationMeta?.walkableTiles;
-        const totalTiles = generationMeta?.totalTiles ?? (mapWidth * mapHeight) || null;
+        // IMPORTANTE: no mezclar ?? con || en la misma expresión.
+        // Chrome/Firefox lanzan SyntaxError si se combinan sin paréntesis.
+        // Usar el patrón totalTilesRaw + totalTiles de arriba.
+        const totalTilesRaw = Number.isFinite(generationMeta?.totalTiles)
+          ? generationMeta.totalTiles
+          : (mapWidth && mapHeight ? mapWidth * mapHeight : null);
+        const totalTiles = Number.isFinite(totalTilesRaw) ? totalTilesRaw : null;
         const floorPercent = Number.isFinite(generationMeta?.floorPercent)
           ? generationMeta.floorPercent
           : (Number.isFinite(walkableTiles) && totalTiles)
@@ -1886,6 +1892,11 @@ function drawEntities(c2){
     finalizeLevelBuildOnce();
     window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
   }
+
+  // [SANITY CHECKS] Activar en caso de dudas durante depuración.
+  // console.log('[SANITY] typeof buildLevelForCurrentMode =', typeof buildLevelForCurrentMode);
+  // console.log('[SANITY] typeof MapGenPlugin =', typeof window.MapGenPlugin);
+  // console.log('[SANITY] typeof MapGenPlugin.generateLevel =', typeof window.MapGenPlugin?.generateLevel);
   // ------------------------------------------------------------
   // Control de estado
   // ------------------------------------------------------------

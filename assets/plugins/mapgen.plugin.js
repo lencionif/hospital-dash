@@ -1626,7 +1626,14 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
     return ch === baseFloor || ch === '.' || ch === '-' || ch === ',' || ch === ';';
   }
 
-  function placeNpcsFromRule(grid, rooms, rule) {
+  // ============================================================================
+  //  NPC PLACEMENT – ZONA ESTABLE
+  //  NO modificar la estructura de llaves/paréntesis de este bloque.
+  //  Si necesitas cambiar la lógica interna, no toques:
+  //    - La IIFE (function (W) { ... })(window);
+  //    - La firma de _placeNpcsFromRule(grid, rooms, rule)
+  // ============================================================================
+  function _placeNpcsFromRule(grid, rooms, rule) {
     const perRoom = parsePerRoom(rule.perRoom);
     const minPer = Math.max(0, Math.min(perRoom.min, perRoom.max));
     const maxPer = Math.max(minPer, Math.max(perRoom.min, perRoom.max));
@@ -1649,7 +1656,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
       }
     })(rule.kind);
 
-    const roomsByPreference = () => {
+    function roomsByPreference() {
       if (rule.unique && rule.kind === 'supervisora' && controlRoom) return [controlRoom];
       if (rule.unique && rule.kind === 'jefe' && bossRoom) {
         const bossCenter = { x: bossRoom.centerX, y: bossRoom.centerY };
@@ -1665,9 +1672,9 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
       const extra = rooms.filter(r => r.type === 'miniboss');
       if (controlRoom && !rule.unique) extra.push(controlRoom);
       return normals.concat(extra);
-    }();
+    }
 
-    for (const room of roomsByPreference) {
+    for (const room of roomsByPreference()) {
       if (remaining <= 0) break;
       const desired = rule.unique ? 1 : randomInt(minPer, maxPer);
       const nRoom = Math.min(remaining, Math.max(1, desired));
@@ -1680,6 +1687,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
       }
     }
   }
+  // ============================================================================
 
   function placeEnemiesFromRule(grid, rooms, rule) {
     const perRoom = parsePerRoom(rule.perRoom);
@@ -1909,7 +1917,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
             placeElevatorsFromRule(ascii, rooms, rule);
             break;
           case 'npc':
-            placeNpcsFromRule(ascii, rooms, rule);
+            _placeNpcsFromRule(ascii, rooms, rule);
             break;
           case 'enemy':
             placeEnemiesFromRule(ascii, rooms, rule);
@@ -2416,4 +2424,8 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
     return placements;
   }
 
-})(this);
+// ============================================================================
+//  FIN DEL PLUGIN mapgen.plugin.js
+//  NO añadir código después de esta línea ni modificar este cierre.
+// ============================================================================
+})(window);
