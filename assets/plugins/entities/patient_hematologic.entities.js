@@ -49,8 +49,8 @@
   function attachRig(ent) {
     ent.puppetState = ent.puppetState || { anim: 'idle' };
     try {
-      ent.puppet = (W.Puppet?.bind?.(ent, 'patient_hematologic_lvl1'))
-        || W.PuppetAPI?.attach?.(ent, { rig: 'patient_hematologic_lvl1', z: 0, scale: 1 });
+      ent.puppet = (W.Puppet?.bind?.(ent, 'boss_hema'))
+        || W.PuppetAPI?.attach?.(ent, { rig: 'boss_hema', z: 0, scale: 1 });
     } catch (_) {
       ent.puppet = ent.puppet || null;
     }

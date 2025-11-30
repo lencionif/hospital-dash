@@ -313,8 +313,8 @@
     try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     cleaners.push(e);
     try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_chica_limpieza', { z: 0, scale: 1, data: { skin: e.skin } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_chica_limpieza', z: 0, scale: 1, data: { skin: e.skin } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_female_base', { z: 0, scale: 1, data: { skin: e.skin || 'cleaner' } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_female_base', z: 0, scale: 1, data: { skin: e.skin || 'cleaner' } });
       e.rigOk = e.rigOk === true || !!puppet;
     } catch (_) {
       e.rigOk = e.rigOk === true;

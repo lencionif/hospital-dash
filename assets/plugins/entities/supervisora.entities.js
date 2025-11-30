@@ -100,8 +100,8 @@
       try { window.EntityGroups?.register?.(e, g); } catch (_) {}
       try { window.AI?.attach?.(e, 'SUPERVISORA'); } catch (_) {}
       try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_supervisora', { z: 0, scale: 1, data: { skin: e.skin } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_supervisora', z: 0, scale: 1, data: { skin: e.skin } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_female_base', { z: 0, scale: 1, data: { skin: e.skin || 'supervisor' } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_female_base', z: 0, scale: 1, data: { skin: e.skin || 'supervisor' } });
       e.rigOk = e.rigOk === true || !!puppet;
     } catch (_) {
       e.rigOk = e.rigOk === true;
