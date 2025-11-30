@@ -201,7 +201,16 @@
       const chunk = ent._fireAccum;
       ent._fireAccum = 0;
 
-      const meta = { cause: 'fire', source: fire };
+      const meta = { cause: 'fire', source: 'fire', attacker: fire, x: ent.x, y: ent.y };
+      if (ent === G.player){
+        const applied = window.Damage?.applyToHero?.(chunk, 'fire', meta);
+        if (applied) return;
+      }
+      const wasDead = !!ent.dead;
+      const appliedEntity = window.Damage?.applyToEntity?.(ent, chunk, 'fire', meta);
+      if (appliedEntity) {
+        return;
+      }
       if (typeof ent.takeDamage === 'function'){
         try { ent.takeDamage(Math.max(1, Math.round(chunk * 2)), meta); return; } catch(_){}
       }
@@ -215,6 +224,9 @@
       }
       if (typeof ent.health === 'number'){
         ent.health = Math.max(0, ent.health - chunk);
+      }
+      if (!wasDead && ent.dead && ent !== G.player){
+        try { window.LOG?.event?.('FIRE_KILL', { id: ent.id || null, source: fire.id || 'fire' }); } catch (_) {}
       }
     },
 

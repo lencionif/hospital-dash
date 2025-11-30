@@ -1162,6 +1162,17 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   function damagePlayer(src, amount=1){
     const p = G.player;
     const isRatHit = !!src && (src.kind === ENT.RAT || src.kindName === 'rat');
+    const hearts = Math.max(0, (amount | 0) * 0.5);
+    const source = (src && (src.kindName || src.kind)) || 'damage';
+    const meta = {
+      attacker: src,
+      source,
+      knockbackFrom: src,
+      x: src?.x,
+      y: src?.y,
+      invuln: isRatHit ? 0.5 : 1.0
+    };
+    if (window.Damage?.applyToHero?.(hearts, source, meta)) return;
     if (!p) return;
     if (!isRatHit && p.invuln > 0) return;
     const halvesBefore = Math.max(0, ((G.player?.hp|0) * 2));

@@ -337,7 +337,7 @@
     if (!isDamageable) return;
 
     const dmg = lethal ? 3 : 1;
-    applyDamage(other, dmg);
+    applyDamage(other, dmg, cart);
 
     if (cart.canExplode) cart.integrity -= lethal ? 6 : 2;
 
@@ -362,9 +362,12 @@
     }
   }
 
-  function applyDamage(ent, dmg){
+  function applyDamage(ent, dmg, src=null){
     const G=getG();
     if (ent.kind===ENT.PLAYER){
+      if (window.Damage?.applyToHero){
+        if (window.Damage.applyToHero(dmg, 'cart', { attacker: src || ent, source: 'cart', speed: len(src?.vx||0, src?.vy||0), knockbackFrom: src || ent, x: ent.x, y: ent.y })) return;
+      }
       if (typeof G.damagePlayer === 'function'){ G.damagePlayer(dmg); return; }
       ent.hp = Math.max(0, (ent.hp||3)-dmg);
       if (ent.hp<=0){ ent.dead=true; if (typeof G.onPlayerDeath==='function') G.onPlayerDeath(); }
