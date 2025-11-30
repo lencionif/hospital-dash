@@ -341,4 +341,4 @@
 
   window.Narrator = Narrator;
   window.NarratorAPI = Narrator;
-})();
+})(window);
