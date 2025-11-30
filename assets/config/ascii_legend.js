@@ -219,8 +219,16 @@
     }
   }
 
+  function gridToWorld(tx, ty){
+    const tile = (typeof root.TILE_SIZE === 'number' && root.TILE_SIZE > 0)
+      ? root.TILE_SIZE
+      : ((typeof root.TILE === 'number' && root.TILE > 0) ? root.TILE : 32);
+    return { x: tx * tile, y: ty * tile, tile };
+  }
+
   PlacementAPI.spawnFallbackPlaceholder = function spawnFallbackPlaceholder(char, def, tx, ty, reason, context = {}) {
-    const tile = root.TILE_SIZE || root.TILE || 32;
+    const world = gridToWorld(tx, ty);
+    const tile = world.tile;
     const asciiChar = char || def?.char || def?.key || '?';
     ensureFloorAt(context.map || context.G, tx, ty);
     const color = resolvePlaceholderColor(def);
@@ -229,8 +237,8 @@
       kind: def?.kind || def?.key || 'PLACEHOLDER',
       type: def?.type,
       factoryKey: def?.factoryKey,
-      x: tx * tile,
-      y: ty * tile,
+      x: world.x,
+      y: world.y,
       w: tile,
       h: tile,
       blocking: false,
@@ -273,6 +281,15 @@
     if (!def || typeof tx !== 'number' || typeof ty !== 'number') {
       return PlacementAPI.spawnFallbackPlaceholder(asciiChar, null, tx, ty, 'AsciiLegend entry missing', context);
     }
+    const world = gridToWorld(tx, ty);
+    try {
+      console.log('[SPAWN_ASCII]', {
+        char: asciiChar,
+        kind: def?.kind || def?.key,
+        grid: { x: tx, y: ty },
+        world: { x: world.x, y: world.y }
+      });
+    } catch (_) {}
     const kind = def.kind || def.key;
     const factoryKey = def.factoryKey || kind;
     const opts = { _ascii: def, tx, ty, context };

@@ -1002,7 +1002,6 @@
   }
 
   function normalizePlacementToTile(p, cfg){
-    const tile = TILE_SIZE();
     if (typeof p.tx === 'number' && typeof p.ty === 'number') {
       return { tx: p.tx, ty: p.ty };
     }
@@ -1011,8 +1010,8 @@
     }
     if (typeof p.x === 'number' && typeof p.y === 'number') {
       return {
-        tx: Math.round(p.x / tile),
-        ty: Math.round(p.y / tile)
+        tx: Math.round(p.x),
+        ty: Math.round(p.y)
       };
     }
     if (Array.isArray(p.pos) && p.pos.length >= 2) {
