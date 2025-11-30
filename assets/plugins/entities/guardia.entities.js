@@ -219,8 +219,8 @@
     try { W.EntityGroups?.register?.(e, G); } catch (_) {}
     try { W.AI?.attach?.(e, 'GUARDIA'); } catch (_) {}
     try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_guardia', { z: 0, scale: 1, data: { skin: e.skin } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_guardia', z: 0, scale: 1, data: { skin: e.skin } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_male_base', { z: 0, scale: 1, data: { skin: e.skin || 'guard' } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_male_base', z: 0, scale: 1, data: { skin: e.skin || 'guard' } });
       e.rigOk = true;
     } catch (_) {
       e.rigOk = true;

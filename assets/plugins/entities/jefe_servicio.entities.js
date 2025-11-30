@@ -183,8 +183,8 @@
       try { W.EntityGroups?.register?.(e, G); } catch (_) {}
       try { W.AI?.attach?.(e, 'JEFESERVICIO'); } catch (_) {}
       try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_jefe_servicio', { z: 0, scale: 1, data: { skin: e.skin } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_jefe_servicio', z: 0, scale: 1, data: { skin: e.skin } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_male_base', { z: 0, scale: 1, data: { skin: e.skin || 'chief' } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_male_base', z: 0, scale: 1, data: { skin: e.skin || 'chief' } });
       e.rigOk = true;
     } catch (_) {
       e.rigOk = true;

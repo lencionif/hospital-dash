@@ -369,7 +369,7 @@
     if (!G.hostiles.includes(ent)) G.hostiles.push(ent);
     if (!G.patients.includes(ent)) G.patients.push(ent);
 
-    try { W.Puppet?.bind?.(ent, 'paciente_pyromana_lvl3'); } catch (_) { try { W.PuppetAPI?.attach?.(ent, { rig: 'paciente_pyromana_lvl3' }); } catch (_) {} }
+    try { W.Puppet?.bind?.(ent, 'boss_pyro'); } catch (_) { try { W.PuppetAPI?.attach?.(ent, { rig: 'boss_pyro' }); } catch (_) {} }
 
     setupPyroL3Environment(ent);
 

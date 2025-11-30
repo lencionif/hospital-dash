@@ -97,12 +97,10 @@
   }
 
   function bindRig(e) {
-    const rig = W.PuppetAPI?.attach?.(e, { rig: 'human', z: 5, scale: HERO_SCALE[e.heroId] || 1 });
+    const rigKey = `hero_${e.heroId || 'enrique'}`;
+    const rig = W.PuppetAPI?.attach?.(e, { rig: rigKey, z: 5, scale: HERO_SCALE[e.heroId] || 1 });
     e.rig = rig || null;
     e.rigOk = !!rig;
-    if (rig) {
-      W.PuppetAPI?.setHeroHead?.(rig, e.heroId);
-    }
   }
 
   function bindUpdate(e){
@@ -152,7 +150,7 @@
       turnSpeed: 6.0,
       _flashlightId: null,
       _destroyCbs: [],
-      puppet: { rig: 'human', z: 5, scale: HERO_SCALE[heroId] || 1 },
+      puppet: { rig: `hero_${heroId}`, z: 5, scale: HERO_SCALE[heroId] || 1 },
       takeDamage(amount = 1, meta = {}) {
         const invuln = Number.isFinite(meta?.invuln) ? meta.invuln : 0.6;
         this.invuln = Math.max(this.invuln || 0, invuln);

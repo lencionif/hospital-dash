@@ -229,8 +229,8 @@
     try { window.EntityGroups?.assign?.(e); } catch (_) {}
     try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_celador', { z: 0, scale: 1, data: { skin: e.skin } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_celador', z: 0, scale: 1, data: { skin: e.skin } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_male_base', { z: 0, scale: 1, data: { skin: e.skin || 'orderly' } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_male_base', z: 0, scale: 1, data: { skin: e.skin || 'orderly' } });
       e.rigOk = true;
     } catch (_) {
       e.rigOk = true;
