@@ -10,6 +10,17 @@
 
   const TILE_SIZE = () => root.TILE_SIZE || root.TILE || 32;
 
+  const GridMath = root.GridMath = root.GridMath || {};
+  function tileSize(){
+    const size = Number(TILE_SIZE() || 0);
+    return Number.isFinite(size) && size > 0 ? size : 32;
+  }
+  GridMath.tileSize = tileSize;
+  GridMath.gridToWorld = function gridToWorld(tx, ty){
+    const tile = tileSize();
+    return { x: tx * tile, y: ty * tile, tile };
+  };
+
   Placement.shouldRun = function shouldRun(cfg){
     const G = cfg?.G || root.G;
     if (!G || !cfg?.map || !cfg?.width || !cfg?.height) return false;
@@ -1024,20 +1035,11 @@
   }
 
   function toWorld(tx, ty){
-    const tile = TILE_SIZE();
-    return {
-      x: tx * tile,
-      y: ty * tile
-    };
+    return GridMath.gridToWorld(tx, ty);
   }
 
   function tileKey(tx, ty){
     return `${tx},${ty}`;
-  }
-
-  function tileSize(){
-    const size = Number(TILE_SIZE() || 0);
-    return Number.isFinite(size) && size > 0 ? size : 32;
   }
 
   function entityTile(entity){
