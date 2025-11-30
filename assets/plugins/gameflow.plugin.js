@@ -295,8 +295,8 @@
       if (W.FogAPI && typeof W.FogAPI.reset === 'function') W.FogAPI.reset();
       musicFade(levelTrackFor(S.level));
       try {
-        W.Narrator?.say?.('level_start', { level: S.level });
-        W.Narrator?.progress?.();
+        W.Narrator?.init?.({ level: S.level, levelId: S.level });
+        W.Narrator?.onEvent?.('LEVEL_START', { level: S.level, levelId: S.level });
       } catch (_) {}
     },
 
@@ -531,8 +531,7 @@
     } catch (_) {}
     try {
       const remaining = Math.max(0, (S.totalPatients || 0) - (S.deliveredPatients || 0));
-      W.Narrator?.say?.('door_open', { level: S.level, remaining });
-      W.Narrator?.progress?.();
+      W.Narrator?.onEvent?.('BOSS_DOOR_OPEN', { level: S.level, levelId: S.level, remaining });
     } catch (_) {}
     // Música según fase del nivel
     if (S.level === 1) musicFade('boss1');
@@ -643,7 +642,10 @@
   function triggerGameOver() {
     S.gameOver = true;
     S.running = false;
+    const reason = (S.G && S.G._gameOverReason) || 'health_depleted';
+    if (S.G) S.G._gameOverReason = reason;
     if (S.G) S.G.state = 'GAMEOVER';
+    try { W.Narrator?.onEvent?.('HERO_DIED', { reason }); } catch (_) {}
     showOverlay(DOM.gameover);
     // Pausa subsistemas tolerante
     if (S.G && typeof S.G.pauseAll === 'function') { try { S.G.pauseAll(true); } catch (e) {} }
@@ -735,8 +737,8 @@
     }
     musicFade('score');
     try {
-      W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 });
-      W.Narrator?.progress?.();
+      W.Narrator?.onEvent?.('OBJECTIVE_COMPLETED', { level: S.level, levelId: S.level, objective: 'nivel' });
+      W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 }, { priority: 'high' });
     } catch (_) {}
   }
 

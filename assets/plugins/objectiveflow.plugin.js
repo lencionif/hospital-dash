@@ -337,6 +337,7 @@
       targetType: 'boss',
       narratorText: 'Has completado el turno. ¡Nivel superado!'
     });
+    try { W.Narrator?.onEvent?.('OBJECTIVE_COMPLETED', { id: 'boss_cart', objective: 'paciente crítico' }); } catch (_) {}
   }
 
   function resetForLevel() {

@@ -4,7 +4,7 @@
 // - Permite habilitar/deshabilitar desde el menú de opciones.
 // - Se integra con eventos del juego (campanas, pacientes, carro, etc.).
 
-(function () {
+(function (W) {
   'use strict';
 
   const DEFAULT_DURATION = 2800; // ms
@@ -18,45 +18,31 @@
     _lastAt: 0,
     _lastProgressAt: 0,
     _lastIdleHintAt: 0,
-    _root: null,
-    _textNode: null,
-    _hideTimer: null,
+    _currentUntil: 0,
     _queue: [],
     _lastLineByKey: Object.create(null),
+    _lastEvent: null,
+    levelId: null,
 
     init(opts = {}) {
-      if (this._root) return this;
-      const container = resolveContainer(opts.container);
-      const root = document.createElement('div');
-      root.id = 'narrator-banner';
-      root.setAttribute('role', 'status');
-      root.setAttribute('aria-live', 'polite');
-      root.setAttribute('aria-atomic', 'true');
-      root.dataset.visible = 'false';
-      root.className = 'narrator-hidden';
-      root.style.pointerEvents = 'none';
-
-      const inner = document.createElement('span');
-      inner.className = 'narrator-line';
-      root.appendChild(inner);
-
-      (container || document.body).appendChild(root);
-
-      this._root = root;
-      this._textNode = inner;
       this.enabled = opts.enabled != null ? !!opts.enabled : this.enabled;
       this.cooldownMs = Number.isFinite(opts.cooldownMs) ? opts.cooldownMs : this.cooldownMs;
       this.durationMs = Number.isFinite(opts.durationMs) ? opts.durationMs : this.durationMs;
+      this.levelId = opts.levelId ?? opts.level ?? this.levelId;
+      this._queue.length = 0;
       this._lastAt = 0;
       this._lastProgressAt = this._now();
+      this._lastIdleHintAt = 0;
+      this._currentUntil = 0;
+      this._lastEvent = null;
       return this;
     },
 
     setEnabled(flag) {
       this.enabled = !!flag;
       if (!this.enabled) {
-        this._clearCurrent();
         this._queue.length = 0;
+        this._currentUntil = 0;
       }
       return this;
     },
@@ -65,7 +51,9 @@
       return this.setEnabled(!this.enabled);
     },
 
-    say(key, data = {}, opts = {}) {
+    say(key, dataOrOpts = {}, maybeOpts = {}) {
+      const opts = selectOpts(dataOrOpts, maybeOpts);
+      const data = opts === dataOrOpts ? {} : (dataOrOpts || {});
       const explicitText = (typeof key === 'string' && !LINES[key]) ? key : null;
       const lineKey = explicitText ? null : key;
       const line = explicitText || pickLine(lineKey, data);
@@ -80,7 +68,6 @@
 
       const payload = { text: line, key: lineKey, duration, progress: countsAsProgress };
       if (!this.enabled && !allowEvenIfDisabled) {
-        // Guarda como último progreso para evitar recordatorios constantes
         if (countsAsProgress) this._lastProgressAt = now;
         return false;
       }
@@ -94,17 +81,43 @@
         return false;
       }
 
-      this._display(payload);
+      this._display(payload, opts);
       return true;
     },
 
-    progress() {
-      this._lastProgressAt = this._now();
+    onEvent(eventName, payload = {}) {
+      this._lastEvent = { name: eventName, payload, at: this._now() };
+      switch (eventName) {
+        case 'LEVEL_START':
+          this.init({ levelId: payload.levelId ?? payload.level });
+          this.say('level_start', payload, { priority: 'high', minCooldownMs: 0 });
+          this.progress();
+          break;
+        case 'BOSS_DOOR_OPEN':
+          this.say('door_open', payload, { priority: 'high' });
+          this.progress();
+          break;
+        case 'OBJECTIVE_COMPLETED':
+          this.say('objective_completed', payload, { priority: 'high', minCooldownMs: 0 });
+          this.progress();
+          break;
+        case 'HERO_DIED':
+          this.say('hero_died', payload, { priority: 'high', minCooldownMs: 0, force: true, progress: false });
+          break;
+        default:
+          if (payload?.text) {
+            this.say(payload.text, payload, { priority: 'high' });
+          }
+      }
     },
 
-    tick(dt, G) {
-      if (!this.enabled) return;
+    update(dt, G) {
       const now = this._now();
+      this._consumeQueue(now);
+      if (!this.enabled) return;
+      if (this._currentUntil > 0 && now >= this._currentUntil) {
+        this._currentUntil = 0;
+      }
       if (G && G.state && G.state !== 'PLAYING') {
         this._lastIdleHintAt = now;
         return;
@@ -120,36 +133,41 @@
       }
     },
 
-    _display(msg) {
+    progress() {
+      this._lastProgressAt = this._now();
+    },
+
+    _consumeQueue(now) {
+      if (!this.enabled) return;
+      if (this._currentUntil > now) return;
+      if (now - this._lastAt < this.cooldownMs * 0.5) return;
+      if (!this._queue.length) return;
+      const next = this._queue.shift();
+      if (!next) return;
+      this._display(next, {});
+    },
+
+    _display(msg, opts = {}) {
       const now = this._now();
       this._lastAt = now;
+      this._currentUntil = now + msg.duration;
       if (msg.progress !== false) this._lastProgressAt = now;
-      if (!this._root) this.init();
-      if (!this._root || !this._textNode) return;
 
-      this._textNode.textContent = msg.text;
-      this._root.dataset.visible = 'true';
-      this._root.classList.remove('narrator-hidden');
-      this._root.classList.add('narrator-visible');
-      clearTimeout(this._hideTimer);
-      this._hideTimer = setTimeout(() => this._clearCurrent(), msg.duration);
+      try {
+        W.DialogAPI?.system?.(msg.text, { ms: msg.duration });
+      } catch (_) {
+        /* no-op */
+      }
+
+      if (opts.pauseGame === true && typeof W.GameFlowAPI?.pauseGame === 'function') {
+        try { W.GameFlowAPI.pauseGame(); } catch (_) {}
+      }
+      if (opts.pauseGame === false && typeof W.GameFlowAPI?.resumeGame === 'function') {
+        try { W.GameFlowAPI.resumeGame(); } catch (_) {}
+      }
 
       if (msg.key) {
         this._lastLineByKey[msg.key] = msg.text;
-      }
-    },
-
-    _clearCurrent() {
-      if (!this._root) return;
-      this._root.dataset.visible = 'false';
-      this._root.classList.remove('narrator-visible');
-      this._root.classList.add('narrator-hidden');
-      if (this._queue.length) {
-        const next = this._queue.shift();
-        if (next) {
-          const wait = Math.max(120, this.cooldownMs * 0.25);
-          setTimeout(() => this._display(next), wait);
-        }
       }
     },
 
@@ -161,13 +179,13 @@
     }
   };
 
-  function resolveContainer(candidate) {
-    if (candidate && candidate instanceof HTMLElement) return candidate;
-    const byId = (typeof candidate === 'string') ? document.getElementById(candidate) : null;
-    if (byId) return byId;
-    const gameContainer = document.getElementById('game-container');
-    if (gameContainer) return gameContainer;
-    return document.body;
+  function selectOpts(maybeData, maybeOpts) {
+    const looksLikeOpts = (obj) => obj && typeof obj === 'object' && (
+      'priority' in obj || 'durationMs' in obj || 'minCooldownMs' in obj || 'force' in obj || 'queue' in obj || 'progress' in obj || 'forceEnabled' in obj || 'pauseGame' in obj
+    );
+    if (arguments.length >= 2 && arguments[1] && Object.keys(maybeOpts || {}).length) return maybeOpts || {};
+    if (looksLikeOpts(maybeData) && Object.keys(maybeData).length && !looksLikeOpts(maybeOpts)) return maybeData || {};
+    return maybeOpts || {};
   }
 
   function pickLine(key, data) {
@@ -227,10 +245,14 @@
         return data.enemy || data.enemyName || data.displayName || 'ese enemigo';
       case 'level':
         return data.level != null ? data.level : '';
+      case 'objective':
+        return data.objective || data.id || 'objetivo principal';
       case 'remaining':
         return Number.isFinite(data.remaining) ? data.remaining : '???';
       case 'furious':
         return Number.isFinite(data.furious) ? data.furious : 0;
+      case 'reason':
+        return data.reason || 'un misterioso accidente';
       default:
         return data[key];
     }
@@ -295,10 +317,20 @@
       { text: 'Carro en posición: ¡heroísmo completado!', tone: 'bold' },
       { text: 'Misiones médicas: 100%. {patient} está a salvo.', tone: 'all' }
     ],
+    objective_completed: [
+      { text: 'Objetivo completado: {objective}. El camino sigue abierto.' },
+      { text: '¡Objetivo {objective} tachado! Sigamos salvando vidas.' },
+      { text: 'Marca de progreso desbloqueada. Objetivo {objective} listo.' }
+    ],
     level_complete: [
       { text: 'Misión cumplida: todos a salvo... por ahora. ¡Victoria épica!', tone: 'all' },
       { text: '¡Turno terminado con matrícula heroica! El hospital aplaude.', tone: 'bold' },
       { text: 'Narrador confirma: la leyenda continúa más allá de estas paredes.', tone: 'all' }
+    ],
+    hero_died: [
+      { text: 'El héroe ha caído ({reason}). El turno termina con sabor amargo.', tone: 'all' },
+      { text: 'Narrador en shock: derrota por {reason}. ¡Reorganiza y vuelve al quirófano!', tone: 'bold' },
+      { text: 'Fin del servicio por {reason}. Tocará pedir refuerzos.', tone: 'all' }
     ],
     idle_hint: [
       { text: 'El tiempo corre... quedan {remaining} pacientes y {furious} furiosas vigilando.', tone: 'all' },
