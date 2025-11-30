@@ -25,6 +25,10 @@
  *   - MusicManager.stop({ fadeTime }) apaga la música.
  *   - Invoca MusicManager.update(dt) una vez por frame para animar los fades.
  *
+ * Contrato BGM (nuevo): solo la start-screen inicia pagina_principal.mp3 mediante
+ *   MusicManager.playMenu(); los niveles llaman a MusicManager.playLevel(config)
+ *   y el manager hace stop/fade de la música previa antes de la del nivel.
+ *
  * Nota sobre nombres de archivos con espacios: el repositorio incluye
  *   "pantalla_de_puntuación .mp3" y "creditos_finales .mp3" (espacio antes de
  *   la extensión). El código mantiene los nombres exactos pero se recomienda
@@ -39,6 +43,8 @@
   const DEFAULT_VOLUME = 0.8;
 
   // Rutas centralizadas de música (mantener nombres exactos del repositorio)
+  const MENU_TRACK_ID = 'menu_theme';
+  const DEFAULT_LEVEL_TRACK = 'level_theme';
   const MUSIC_TRACKS = {
     intro: { url: 'assets/music/intro.mp3', loop: false },
     menu_theme: { url: 'assets/music/pagina_principal.mp3', loop: true },
@@ -80,6 +86,8 @@
     _tracks: { ...MUSIC_TRACKS },
     _usingMusicAPI: false,
     _musicApiReady: false,
+    _currentContext: null,     // 'menu' | 'level' | null
+    _currentLevelTrack: null,
 
     init(opts = {}) {
       if (this._initialized) return this;
@@ -166,6 +174,45 @@
       return this.fadeTo(trackId, Object.assign({ fadeTime: 0 }, opts));
     },
 
+    playMenu(opts = {}) {
+      if (!this._initialized) this.init(opts);
+      const alreadyMenu = this._currentTrackId === MENU_TRACK_ID && this._currentContext === 'menu';
+      if (alreadyMenu) return;
+      this._currentContext = 'menu';
+      this._currentLevelTrack = null;
+      this.fadeTo(MENU_TRACK_ID, Object.assign({ loop: true, fadeTime: this._fadeTime }, opts));
+    },
+
+    stopMenu(opts = {}) {
+      if (this._currentContext !== 'menu' && this._currentTrackId !== MENU_TRACK_ID) return;
+      this._currentContext = null;
+      this._currentLevelTrack = null;
+      this.stop(opts);
+    },
+
+    playLevel(levelConfig = {}, opts = {}) {
+      if (!this._initialized) this.init(opts);
+      const trackId = this._resolveLevelTrack(levelConfig) || DEFAULT_LEVEL_TRACK;
+      this.stopMenu({ fadeTime: opts.fadeTime });
+      if (this._currentContext === 'level' && this._currentTrackId === trackId && !opts.restart) return;
+      this._currentContext = 'level';
+      this._currentLevelTrack = trackId;
+      this.fadeTo(trackId, Object.assign({ loop: true, fadeTime: this._fadeTime }, opts));
+    },
+
+    stopLevel(opts = {}) {
+      if (this._currentContext !== 'level') return;
+      this._currentContext = null;
+      this._currentLevelTrack = null;
+      this.stop(opts);
+    },
+
+    stopAll(opts = {}) {
+      this._currentContext = null;
+      this._currentLevelTrack = null;
+      this.stop(opts);
+    },
+
     crossfade(trackId, duration) {
       const fade = duration != null ? duration : this._fadeTime;
       return this.fadeTo(trackId, { fadeTime: fade });
@@ -238,6 +285,18 @@
     _ensureDualChannels() {
       if (!this._currentAudio) this._currentAudio = this._channels[0];
       if (!this._nextAudio && this._channels.length > 1) this._nextAudio = this._channels[1];
+    },
+
+    _resolveLevelTrack(levelConfig = {}) {
+      const cfg = levelConfig || {};
+      const explicit = cfg.music || cfg.track || cfg.bgm || cfg.levelMusic || cfg?.level?.music;
+      if (explicit && this._getTrackMeta(explicit)) return explicit;
+
+      const levelId = Number(cfg.levelId ?? cfg.id ?? cfg.level) || Number(window?.G?.level) || 1;
+      if (levelId >= 3 && this._getTrackMeta('level3')) return 'level3';
+      if (levelId === 2 && this._getTrackMeta('level2')) return 'level2';
+      if (this._getTrackMeta('level1')) return 'level1';
+      return null;
     },
 
     _playViaMusicAPI(trackId, meta, { fadeTime, immediate, loop }) {

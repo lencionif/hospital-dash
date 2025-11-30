@@ -243,10 +243,13 @@
   const ensureMenuMusic = (() => {
     let started = false;
     return (opts = {}) => {
+      const mapParam = new URLSearchParams(location.search || '').get('map');
+      const isDebugMap = (mapParam || '').toLowerCase() === 'debug' || (window.__MAP_MODE || '').toLowerCase() === 'debug';
+      if (isDebugMap) return;
       if (started) return;
       started = true;
       try {
-        window.MusicManager?.play?.('menu_theme', Object.assign({ loop: true, fadeTime: 0.35 }, opts));
+        window.MusicManager?.playMenu?.(Object.assign({ loop: true, fadeTime: 0.35 }, opts));
       } catch (_) {}
     };
   })();

@@ -1858,6 +1858,10 @@ function drawEntities(c2){
     ASCII_MAP = ascii;
     parseMap(ASCII_MAP);
 
+    if (!G.levelConfig) {
+      G.levelConfig = levelRules || { level: levelId, id: levelId, mode };
+    }
+
     if (mode === 'normal') {
       const coolingValue = Number.isFinite(levelRules?.cooling) ? levelRules.cooling : 20;
       if (!Number.isFinite(G.cooling)) {
@@ -1902,6 +1906,7 @@ function drawEntities(c2){
   // ------------------------------------------------------------
   async function startGame(){
     G.state = 'PLAYING';
+    try { window.MusicManager?.stopMenu?.({ fadeTime: 0.25 }); } catch (_) {}
     // si hay minimapa de debug, muéstralo ahora (no en el menú)
     window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
     startScreen.classList.add('hidden');
@@ -1925,6 +1930,11 @@ function drawEntities(c2){
     G.flags.DEBUG_MINIMAP = DEBUG_MINIMAP;
 
     await buildLevelForCurrentMode();
+
+    try {
+      const levelCfg = window.G?.levelConfig || { level: G.level || 1, id: G.level || 1, mode: window.__MAP_MODE || 'normal' };
+      window.MusicManager?.playLevel?.(levelCfg);
+    } catch (_) {}
 
       // === Puppet rig (visual) para el jugador) — CREAR AL FINAL ===
       if (window.PuppetAPI && G.player){
