@@ -152,6 +152,13 @@
   }
 
   function applyDamageToHero(hero, amount, meta) {
+    if (window.Damage?.applyToHero) {
+      window.Damage.applyToHero(amount, meta?.source || 'patient_furiosa', Object.assign({
+        attacker: meta?.attacker || null,
+        source: meta?.source || 'patient_furiosa'
+      }, meta || {}));
+      return;
+    }
     const api = heroAPI();
     if (api && typeof api.applyDamage === 'function') {
       api.applyDamage(hero, amount, meta);

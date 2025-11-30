@@ -176,10 +176,12 @@
 
   function onPyroL3TouchHero(pyro, hero) {
     if (!pyro || pyro.cured || pyro.dead || !hero) return;
-    if (typeof hero.takeDamage === 'function') {
-      hero.takeDamage(pyro.damageOnTouch, { source: 'pyro_lvl3_touch', attacker: pyro, knockbackFrom: pyro });
-    } else {
-      try { hero.applyDamage?.(pyro.damageOnTouch, 'pyro_lvl3_touch'); } catch (_) { hero.hp = Math.max(0, (hero.hp || 0) - pyro.damageOnTouch); }
+    if (!window.Damage?.applyToHero?.(pyro.damageOnTouch, 'pyro_lvl3_touch', { attacker: pyro, source: 'pyro_lvl3_touch', knockbackFrom: pyro })) {
+      if (typeof hero.takeDamage === 'function') {
+        hero.takeDamage(pyro.damageOnTouch, { source: 'pyro_lvl3_touch', attacker: pyro, knockbackFrom: pyro });
+      } else {
+        try { hero.applyDamage?.(pyro.damageOnTouch, 'pyro_lvl3_touch'); } catch (_) { hero.hp = Math.max(0, (hero.hp || 0) - pyro.damageOnTouch); }
+      }
     }
     try { hero.applyStun?.(pyro.stunSecondsOnTouch); } catch (_) { hero.stunTimer = Math.max(hero.stunTimer || 0, pyro.stunSecondsOnTouch || 0); }
     try { console.debug('[PYRO_L3_HIT_HERO]', { pyroId: pyro.id, heroId: hero.id }); } catch (_) {}

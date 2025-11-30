@@ -199,9 +199,9 @@
       if (spdC <= 0.01 && rel <= 0.01 && !nearW) return;
       if (G && other === G.player){
         if (spdC > MIN_PLAYER_HURT_SPEED || rel > MIN_PLAYER_HURT_SPEED){
-          if (rel > 360) { window.damagePlayer?.(cart, 6); return; }
-          if (rel > 240) { window.damagePlayer?.(cart, 2); return; }
-          if (rel > 120) { window.damagePlayer?.(cart, 1); return; }
+          if (rel > 360) { window.Damage?.applyToHero?.(6, 'cart', { attacker: cart, source: 'cart', speed: rel, knockbackFrom: cart, x: cart.x, y: cart.y }); return; }
+          if (rel > 240) { window.Damage?.applyToHero?.(2, 'cart', { attacker: cart, source: 'cart', speed: rel, knockbackFrom: cart, x: cart.x, y: cart.y }); return; }
+          if (rel > 120) { window.Damage?.applyToHero?.(1, 'cart', { attacker: cart, source: 'cart', speed: rel, knockbackFrom: cart, x: cart.x, y: cart.y }); return; }
         }
         return;
       }
@@ -281,7 +281,8 @@
       if (!(speed >= threshold)) return;
       if (G.player && e === G.player){
         const src = { x: (contactX ?? (e.x + e.w * 0.5)) - 8, y: (contactY ?? (e.y + e.h * 0.5)) - 8, w: 16, h: 16 };
-        try { window.damagePlayer?.(src, 1); }
+        const meta = { source: 'slip', attacker: src, x: contactX ?? src.x, y: contactY ?? src.y, knockbackFrom: src };
+        try { window.Damage?.applyToHero?.(1, 'slip', meta); }
         catch (_) { window.damagePlayer?.(e, 1); }
       }
       try { window.AudioAPI?.play?.('slip_bump', { at: { x: contactX ?? (e.x + e.w * 0.5), y: contactY ?? (e.y + e.h * 0.5) }, volume: 0.6 }); }

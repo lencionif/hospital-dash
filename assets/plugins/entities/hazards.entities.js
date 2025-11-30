@@ -213,7 +213,7 @@
               if (!e || e.dead) continue;
               if (!this._isDamageable(e)) continue;
               if (AABB(hz, e)){
-                this._dealDamage(e, hz.dps * hz.tick, { source:'fire' });
+                this._dealDamage(e, hz.dps * hz.tick, { source:'fire', attacker: hz });
               }
             }
           }
@@ -319,26 +319,42 @@
     },
 
     _dealDamage(e, halves, meta){
-      const h = Math.max(1, Math.round(halves)); // mitades
+      const hHalves = Math.max(1, Math.round(halves));
+      const dmgHearts = hHalves * 0.5;
       if (e===this.G.player){
-        if (this.G.hurt) this.G.hurt(h, meta);
-        else this.G.hearts = clamp((this.G.hearts||0) - h, 0, this.G.heartsMaxHalves||14);
-      } else {
-        // enemigos/npc básicos
-        const wasDead = !!e.dead;
-        if (typeof e.takeDamage === 'function'){ e.takeDamage(h, meta); }
+        const applied = window.Damage?.applyToHero?.(dmgHearts, meta?.source || 'hazard', Object.assign({
+          attacker: meta?.attacker || null,
+          source: meta?.source || 'hazard',
+          x: e.x,
+          y: e.y,
+        }, meta || {}));
+        if (!applied){
+          if (this.G.hurt) this.G.hurt(hHalves, meta);
+          else this.G.hearts = clamp((this.G.hearts||0) - hHalves, 0, this.G.heartsMaxHalves||14);
+        }
+        return;
+      }
+
+      // enemigos/npc básicos
+      const wasDead = !!e.dead;
+      const appliedEntity = window.Damage?.applyToEntity?.(e, dmgHearts, meta?.source || 'hazard', Object.assign({
+        attacker: meta?.attacker || null,
+        source: meta?.source || 'hazard'
+      }, meta || {}));
+      if (!appliedEntity){
+        if (typeof e.takeDamage === 'function'){ e.takeDamage(hHalves, meta); }
         else {
           e.dead = true;
           this._detach(e);
           this.G.entities = this.G.entities.filter(x=>x!==e);
         }
-        if (!wasDead && e.dead && meta && meta.source === 'fire' && !e._narratorFireToast) {
-          e._narratorFireToast = true;
-          const name = e.displayName || e.name || e.label || e.kindName || 'enemigo';
-          try { window.Narrator?.say?.('enemy_fire', { enemyName: name }, { progress: false }); } catch (_) {}
-        }
-        if (this.G.addScore) this.G.addScore(10);
       }
+      if (!wasDead && e.dead && meta && meta.source === 'fire' && !e._narratorFireToast) {
+        e._narratorFireToast = true;
+        const name = e.displayName || e.name || e.label || e.kindName || 'enemigo';
+        try { window.Narrator?.say?.('enemy_fire', { enemyName: name }, { progress: false }); } catch (_) {}
+      }
+      if (this.G.addScore) this.G.addScore(10);
     },
 
     _affectEntitiesByExplosion(x,y,R,impulse,dmg){
