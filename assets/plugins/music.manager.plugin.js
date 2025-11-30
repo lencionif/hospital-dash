@@ -3,11 +3,11 @@
  * --------------------------------------------------------------------------
  * Sistema de música dinámica con cross-fade y un único canal lógico.
  * IDs de pista soportados (MUSIC_TRACKS):
- *   intro, main_menu, level1, level2, level3,
+ *   intro, menu_theme/main_menu, level_theme/level1/level2/level3,
  *   miniboss1, miniboss2, miniboss3,
- *   boss1, boss2,
+ *   boss_theme/boss1/boss2,
  *   pre_final_boss, boss_final_A, boss_final_B, fire_escape,
- *   score, credits.
+ *   score, credits, gameover_theme.
  * Mapeo de estados de juego → pistas (sugerido):
  *   - Intro/viñetas iniciales: intro
  *   - Menú principal: main_menu
@@ -40,41 +40,26 @@
 
   // Rutas centralizadas de música (mantener nombres exactos del repositorio)
   const MUSIC_TRACKS = {
-    intro: 'assets/music/intro.mp3',
-    main_menu: 'assets/music/pagina_principal.mp3',
-    level1: 'assets/music/nivel1.mp3',
-    level2: 'assets/music/nivel2.mp3',
-    level3: 'assets/music/nivel3.mp3',
-    miniboss1: 'assets/music/Mini_boss1.mp3',
-    miniboss2: 'assets/music/mini_boss2.mp3',
-    miniboss3: 'assets/music/mini_boss3.mp3',
-    boss1: 'assets/music/boss_nivel1.mp3',
-    boss2: 'assets/music/boss_nivel2.mp3',
-    pre_final_boss: 'assets/music/pre_final_boss.mp3',
-    boss_final_A: 'assets/music/boss_final_parteA.mp3',
-    boss_final_B: 'assets/music/boss_final_parteB.mp3',
-    fire_escape: 'assets/music/huida_del_fuego.mp3',
-    score: 'assets/music/pantalla_de_puntuación .mp3', // ← hay un espacio en el nombre del fichero
-    credits: 'assets/music/creditos_finales .mp3',     // ← hay un espacio en el nombre del fichero
-  };
-
-  const LOOP_CONFIG = {
-    intro: false,
-    main_menu: true,
-    level1: true,
-    level2: true,
-    level3: true,
-    miniboss1: true,
-    miniboss2: true,
-    miniboss3: true,
-    boss1: true,
-    boss2: true,
-    pre_final_boss: false,
-    boss_final_A: false,
-    boss_final_B: false,
-    fire_escape: false,
-    score: false,
-    credits: false,
+    intro: { url: 'assets/music/intro.mp3', loop: false },
+    menu_theme: { url: 'assets/music/pagina_principal.mp3', loop: true },
+    main_menu: { url: 'assets/music/pagina_principal.mp3', loop: true },
+    level_theme: { url: 'assets/music/nivel1.mp3', loop: true },
+    level1: { url: 'assets/music/nivel1.mp3', loop: true },
+    level2: { url: 'assets/music/nivel2.mp3', loop: true },
+    level3: { url: 'assets/music/nivel3.mp3', loop: true },
+    miniboss1: { url: 'assets/music/Mini_boss1.mp3', loop: true },
+    miniboss2: { url: 'assets/music/mini_boss2.mp3', loop: true },
+    miniboss3: { url: 'assets/music/mini_boss3.mp3', loop: true },
+    boss_theme: { url: 'assets/music/boss_nivel1.mp3', loop: true },
+    boss1: { url: 'assets/music/boss_nivel1.mp3', loop: true },
+    boss2: { url: 'assets/music/boss_nivel2.mp3', loop: true },
+    pre_final_boss: { url: 'assets/music/pre_final_boss.mp3', loop: false },
+    boss_final_A: { url: 'assets/music/boss_final_parteA.mp3', loop: false },
+    boss_final_B: { url: 'assets/music/boss_final_parteB.mp3', loop: false },
+    fire_escape: { url: 'assets/music/huida_del_fuego.mp3', loop: false },
+    score: { url: 'assets/music/pantalla_de_puntuación .mp3', loop: false }, // ← hay un espacio en el nombre del fichero
+    credits: { url: 'assets/music/creditos_finales .mp3', loop: false },     // ← hay un espacio en el nombre del fichero
+    gameover_theme: { url: 'assets/music/pantalla_de_puntuación .mp3', loop: false },
   };
 
   const MusicManager = {
@@ -92,6 +77,9 @@
     _nextAudio: null,
     _channels: [],
     _pendingPlay: null,
+    _tracks: { ...MUSIC_TRACKS },
+    _usingMusicAPI: false,
+    _musicApiReady: false,
 
     init(opts = {}) {
       if (this._initialized) return this;
@@ -99,11 +87,45 @@
       this._baseVolume = clamp01(opts.volume != null ? opts.volume : DEFAULT_VOLUME);
       this._masterVolume = this._baseVolume;
       this._fadeTime = Math.max(0.1, opts.fadeTime || DEFAULT_FADE_TIME);
+      this._tracks = Object.assign({}, MUSIC_TRACKS, opts.tracks || {});
       this._channels = [this._createAudio(), this._createAudio()];
       this._currentAudio = this._channels[0];
       this._bindUnlock();
+      this._ensureMusicAPI();
       if (DEBUG_MUSIC) console.log('[MUSIC] init');
       return this;
+    },
+
+    _ensureMusicAPI() {
+      if (this._musicApiReady) return true;
+      const api = global.MusicAPI;
+      if (!api || typeof api.init !== 'function') return false;
+      const urls = {};
+      for (const [key, meta] of Object.entries(this._tracks)) {
+        const info = this._normalizeTrack(meta);
+        if (info && info.url) urls[key] = info.url;
+      }
+      try {
+        api.init({ urls, preload: false });
+        api.fadeDefault = this._fadeTime;
+        this._musicApiReady = true;
+        this._usingMusicAPI = true;
+      } catch (_) {
+        this._musicApiReady = false;
+      }
+      return this._musicApiReady;
+    },
+
+    _normalizeTrack(trackDef) {
+      if (!trackDef) return null;
+      if (typeof trackDef === 'string') return { url: trackDef, loop: true };
+      return { url: trackDef.url || trackDef.src || trackDef.path, loop: trackDef.loop !== false };
+    },
+
+    _getTrackMeta(trackId) {
+      const meta = this._normalizeTrack(this._tracks[trackId]);
+      if (meta && meta.url) return meta;
+      return null;
     },
 
     _createAudio() {
@@ -144,8 +166,18 @@
       return this.fadeTo(trackId, Object.assign({ fadeTime: 0 }, opts));
     },
 
+    crossfade(trackId, duration) {
+      const fade = duration != null ? duration : this._fadeTime;
+      return this.fadeTo(trackId, { fadeTime: fade });
+    },
+
     stop(opts = {}) {
       const fadeTime = opts.fadeTime != null ? opts.fadeTime : this._fadeTime;
+      if (this._usingMusicAPI && this._ensureMusicAPI()) {
+        try { global.MusicAPI?.stopAll?.(fadeTime); } catch (_) {}
+        this._currentTrackId = null;
+        return;
+      }
       if (!this._currentAudio) return;
       this._fading = true;
       this._fadeTimer = 0;
@@ -163,11 +195,22 @@
       }
       if (this._currentTrackId === trackId && !opts.restart) return;
 
-      const nextAudio = this._getAudioFor(trackId);
-      if (!nextAudio) return;
+      const meta = this._getTrackMeta(trackId);
+      if (!meta) return;
 
       const fadeTime = opts.fadeTime != null ? opts.fadeTime : this._fadeTime;
       const immediate = fadeTime <= 0.01 || (opts.immediate === true);
+
+      // Ruta principal: usar MusicAPI (WebAudio + fallback HTMLAudio gestionado ahí)
+      if (this._ensureMusicAPI()) {
+        this._playViaMusicAPI(trackId, meta, { fadeTime, immediate, loop: opts.loop });
+        return;
+      }
+
+      const nextAudio = this._getAudioFor(trackId, meta);
+      if (!nextAudio) return;
+
+      const loop = opts.loop != null ? !!opts.loop : meta.loop !== false;
 
       if (DEBUG_MUSIC) console.log(`[MUSIC] fadeTo ${this._currentTrackId || 'none'} -> ${trackId}`);
 
@@ -178,9 +221,9 @@
       this._nextAudio = nextAudio;
 
       if (!this._nextAudio.src) {
-        this._nextAudio.src = MUSIC_TRACKS[trackId];
+        this._nextAudio.src = meta.url;
       }
-      this._nextAudio.loop = LOOP_CONFIG[trackId] !== false;
+      this._nextAudio.loop = loop;
       this._nextAudio.currentTime = 0;
       this._nextAudio.volume = immediate ? this._masterVolume : 0;
       this._nextAudio.play().catch(() => {});
@@ -197,12 +240,26 @@
       if (!this._nextAudio && this._channels.length > 1) this._nextAudio = this._channels[1];
     },
 
-    _getAudioFor(trackId) {
-      if (!MUSIC_TRACKS[trackId]) return null;
+    _playViaMusicAPI(trackId, meta, { fadeTime, immediate, loop }) {
+      const targetLoop = loop != null ? !!loop : meta.loop !== false;
+      const fade = immediate ? 0.01 : Math.max(0.05, fadeTime);
+      try {
+        global.MusicAPI?._crossfadeTo?.(trackId, { loop: targetLoop, fade });
+      } catch (_) {
+        // fallback silencioso
+      }
+      this._currentTrackId = trackId;
+      this._nextTrackId = null;
+      this._nextAudio = null;
+      this._fading = false;
+    },
+
+    _getAudioFor(trackId, meta) {
+      if (!meta || !meta.url) return null;
       if (!this._channels.length) this._channels = [this._createAudio(), this._createAudio()];
       // Alternate channels to avoid restarting same element mid-fade
       const next = this._channels.find((a) => a !== this._currentAudio) || this._channels[0];
-      next.src = MUSIC_TRACKS[trackId];
+      next.src = meta.url;
       return next;
     },
 
