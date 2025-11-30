@@ -1430,7 +1430,7 @@ function updateEntities(dt){
     }
 
     // Puppet: alimentar estado de animación
-    if (window.PuppetAPI) { PuppetAPI.update(dt); }  // alimenta rigs chibi (jugador y NPC)
+    if (G.player?.rig) { PuppetAPI.update(G.player.rig, dt); }  // el plugin deduce el estado del host
 
     // enemigos
     updateEntities(dt);

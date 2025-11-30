@@ -53,8 +53,8 @@
   function attachBossRig(ent) {
     ent.puppetState = ent.puppetState || { anim: 'unconscious' };
     try {
-      ent.puppet = (W.Puppet?.bind?.(ent, 'boss_cleaner'))
-        || W.PuppetAPI?.attach?.(ent, { rig: 'boss_cleaner', z: 0, scale: 1 });
+      ent.puppet = (W.Puppet?.bind?.(ent, 'jefa_limpiadoras_lvl2'))
+        || W.PuppetAPI?.attach?.(ent, { rig: 'jefa_limpiadoras_lvl2', z: 0, scale: 1 });
     } catch (_) {
       ent.puppet = ent.puppet || null;
     }
@@ -63,8 +63,8 @@
   function attachAggressiveRig(ent) {
     ent.puppetState = ent.puppetState || { anim: 'idle' };
     try {
-      ent.puppet = (W.Puppet?.bind?.(ent, 'patient_furious'))
-        || W.PuppetAPI?.attach?.(ent, { rig: 'patient_furious', z: 0, scale: 1 });
+      ent.puppet = (W.Puppet?.bind?.(ent, 'cleaner_agresiva'))
+        || W.PuppetAPI?.attach?.(ent, { rig: 'cleaner_agresiva', z: 0, scale: 1 });
     } catch (_) {
       ent.puppet = ent.puppet || null;
     }

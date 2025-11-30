@@ -108,8 +108,8 @@
     try { window.EntityGroups?.assign?.(e); } catch (_) {}
     try { window.EntityGroups?.register?.(e, G); } catch (_) {}
     try {
-      const puppet = window.Puppet?.bind?.(e, 'npc_female_base', { z: 0, scale: 1, data: { skin: e.skin || 'visitor' } })
-        || window.PuppetAPI?.attach?.(e, { rig: 'npc_female_base', z: 0, scale: 1, data: { skin: e.skin || 'visitor' } });
+      const puppet = window.Puppet?.bind?.(e, 'npc_familiar_molesto', { z: 0, scale: 1, data: { skin: e.skin } })
+        || window.PuppetAPI?.attach?.(e, { rig: 'npc_familiar_molesto', z: 0, scale: 1, data: { skin: e.skin } });
       e.rigOk = true;
     } catch (_) {
       e.rigOk = true;

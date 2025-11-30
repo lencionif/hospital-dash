@@ -260,8 +260,8 @@
     try { W.EntityGroups?.register?.(t, G); } catch (_) {}
     try { W.AI?.attach?.(t, 'TCAE'); } catch (_) {}
     try {
-      const puppet = window.Puppet?.bind?.(t, 'npc_female_base', { z: 0, scale: 1, data: { skin: t.skin || 'tcae' } })
-        || window.PuppetAPI?.attach?.(t, { rig: 'npc_female_base', z: 0, scale: 1, data: { skin: t.skin || 'tcae' } });
+      const puppet = window.Puppet?.bind?.(t, 'npc_tcae', { z: 0, scale: 1, data: { skin: t.skin } })
+        || window.PuppetAPI?.attach?.(t, { rig: 'npc_tcae', z: 0, scale: 1, data: { skin: t.skin } });
       t.rigOk = t.rigOk === true || !!puppet;
     } catch (_) {
       t.rigOk = t.rigOk === true;

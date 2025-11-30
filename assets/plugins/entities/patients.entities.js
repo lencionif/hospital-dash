@@ -506,8 +506,8 @@
       addEntity(furiosa);
     }
     try {
-      const puppet = window.Puppet?.bind?.(furiosa, 'patient_furious', { z: 0, scale: 1, data: { skin: furiosa.skin } })
-        || W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furious', z: 0, scale: 1, data: { skin: furiosa.skin } });
+      const puppet = window.Puppet?.bind?.(furiosa, 'patient_furiosa', { z: 0, scale: 1, data: { skin: furiosa.skin } })
+        || W.PuppetAPI?.attach?.(furiosa, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: furiosa.skin } });
       furiosa.rigOk = furiosa.rigOk === true || !!puppet;
     } catch (_) {
       furiosa.rigOk = furiosa.rigOk === true;

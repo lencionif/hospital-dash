@@ -53,8 +53,8 @@
 
   function attachRig(ent) {
     try {
-      const puppet = W.Puppet?.bind?.(ent, 'patient_furious', { z: 0, scale: 1, data: { skin: ent.skin } })
-        || W.PuppetAPI?.attach?.(ent, { rig: 'patient_furious', z: 0, scale: 1, data: { skin: ent.skin } });
+      const puppet = W.Puppet?.bind?.(ent, 'patient_furiosa', { z: 0, scale: 1, data: { skin: ent.skin } })
+        || W.PuppetAPI?.attach?.(ent, { rig: 'patient_furiosa', z: 0, scale: 1, data: { skin: ent.skin } });
       if (puppet) {
         ent.puppet = puppet;
         ent.puppetState = puppet.state || ent.puppetState || { anim: 'idle' };
