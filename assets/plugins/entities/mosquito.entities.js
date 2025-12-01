@@ -1,685 +1,215 @@
-/* ============================================================================
- * PLANTILLA BASE PROFESIONAL PARA TODAS LAS ENTIDADES DEL JUEGO
- * ---------------------------------------------------------------------------
- * Válida para:
- *  - Héroes (si quieres unificarlos)
- *  - NPC humanos
- *  - Animales (ratas, mosquitos…)
- *  - Carros (comida, medicinas, urgencias…)
- *  - Puertas
- *  - Ascensores
- *  - Hazards de suelo (fuego, charcos, trampas…)
- *
- * Contrato común + hooks de IA, físicas, diálogo, daño, audio y Puppet/rig.
- * Solo hay que ajustar por entidad:
- *   - kind (ENT.XXX)
- *   - flags (solid, isFloorTile, isTriggerOnly, isHazard…)
- *   - parámetros de IA
- *   - callbacks específicos (onInteract, onCrush, onUseElevator, etc.)
- *   - rig / skin
- * ==========================================================================*/
+// assets/plugins/entities/mosquito.entities.js
+// Entidad "mosquito" volador chibi con IA y rig Puppet.
+(function (W) {
+  'use strict';
 
-// ---------------------------------------------------------------------------
-// 1. Constantes de apoyo
-// ---------------------------------------------------------------------------
+  const root = W || window;
+  const G = root.G || (root.G = {});
+  const ENT = (function ensureEnt(ns) {
+    const e = ns || {};
+    if (typeof e.MOSQUITO === 'undefined') e.MOSQUITO = 7;
+    return e;
+  })(root.ENT || (root.ENT = {}));
 
-const TILE_SIZE  = 32;
-const ENTITY_W   = 24;   // caja de colisión compacta dentro del tile
-const ENTITY_H   = 24;
+  const TILE = root.TILE_SIZE || root.TILE || 32;
+  const HERO_Z = typeof root.HERO_Z === 'number' ? root.HERO_Z : 5;
+  const HP_PER_HEART = root.HP_PER_HEART || 1;
+  const DEBUG_MOSQUITO = !!root.DEBUG_MOSQUITO;
 
-const DIR_UP     = 0;
-const DIR_RIGHT  = 1;
-const DIR_DOWN   = 2;
-const DIR_LEFT   = 3;
+  const MOSQUITO_MAX_SPEED = 140;
+  const MOSQUITO_ACCEL = 420;
+  const DETECT_RADIUS = TILE * 8;
+  const ORBIT_RADIUS = TILE * 1.5;
+  const ATTACK_RANGE = TILE * 0.7;
+  const WANDER_INTERVAL = 0.7;
 
-// z del héroe (mismo plano visual que héroes, NPC y enemigos)
-const HERO_Z = window.HERO_Z || 10;
+  function gridToWorldCenter(tx, ty) {
+    const size = typeof root.GridMath?.tileSize === 'function' ? root.GridMath.tileSize() : TILE;
+    return { x: tx * size + size * 0.5, y: ty * size + size * 0.5 };
+  }
 
-// Vida interna en “corazones” (1.0 = 1 corazón)
-const HP_PER_HEART = window.HP_PER_HEART || 1;
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function rngAngleNoise() { return (Math.random() - 0.5) * Math.PI * 0.35; }
 
-// ---------------------------------------------------------------------------
-// 2. Fábrica genérica de entidades
-// ---------------------------------------------------------------------------
-/**
- * Crea una entidad de juego (física, pisable, interactiva o hazard).
- *
- * @param {Object} cfg
- *  Obligatorio:
- *    kind    : ENT.X (tipo lógico)
- *    x, y    : posición en píxeles (centro del tile)
- *    rig     : nombre del rig de PuppetAPI
- *
- *  Recomendado:
- *    role            : etiqueta de rol (“hero”, “npc”, “animal”, “cart”,
- *                      “door”, “elevator”, “hazard_fire”, “hazard_water”…)
- *    populationType  : etiqueta para SpawnerAPI (“animals”, “humans”,
- *                      “carts”, “hazards”, “none”)
- *    group           : grupo de EntityGroupsAPI (“players”, “npcs”,
- *                      “animals”, “carts”, “doors”, “hazards”…)
- *
- *  Flags típicos:
- *    solid        : true = bloquea movimiento (puertas, carros, paredes
- *                   con colisión propia). false = pisable (hazards suelo).
- *    isFloorTile  : true => se dibuja/considera como casilla de suelo
- *                   con efecto (charcos, fuego).
- *    isTriggerOnly: true => no tiene colisión física, sirve solo de trigger
- *                   (spawners, triggers de boss, timbres fantasma…).
- *
- *  Vida y daño:
- *    hearts       : vida inicial en corazones (float). Equivalente a hp.
- *    maxHearts    : máximo de corazones (si falta, = hearts).
- *    health       : si prefieres en “hp” explícitos (interno a DamageAPI).
- *    maxHealth    : idem.
- *    touchDamage  : daño de contacto en corazones.
- *    fireImmune   : inmune a daño de fuego.
- *
- *  IA:
- *    ai.enabled       : true/false (por defecto true)
- *    ai.mode          : 'idle' | 'patrol' | 'chase' | 'staticDoor' | ...
- *    ai.speed         : px/s
- *    ai.sightRadius   : radio detección héroe
- *    ai.patrolPoints  : array [{x,y}, ...]
- *    aiUpdate         : función custom si quieres sobreescribir la base.
- *
- *  Interacción:
- *    onInteract   : callback cuando el héroe pulsa acción sobre e
- *    onUse        : alias genérico (puertas, ascensores)
- *    onCrush      : cuando esta entidad aplasta a otra o es aplastada
- *    onEnterTile  : cuando el jugador entra en su tile (hazards, triggers)
- *    onLeaveTile  : cuando el jugador sale de su tile
- *
- *  Audio:
- *    audioProfile : { hit, death, step, talk, eat, attack, use, open, close }
- *
- *  Render:
- *    puppet.z     : capa visual (por defecto HERO_Z)
- *    puppet.skin  : spriteKey / variante si el rig la usa
- */
-function createGameEntity(cfg) {
-  const hearts      = cfg.hearts ?? (cfg.health !== undefined
-                        ? cfg.health / HP_PER_HEART
-                        : 1);
-  const maxHearts   = cfg.maxHearts ?? hearts;
-  const maxHealth   = cfg.maxHealth ?? (maxHearts * HP_PER_HEART);
-  const health      = cfg.health    ?? (hearts * HP_PER_HEART);
+  function ensureCollections() {
+    if (!Array.isArray(G.entities)) G.entities = [];
+    if (!Array.isArray(G.enemies)) G.enemies = [];
+    if (!Array.isArray(G.movers)) G.movers = [];
+  }
 
-  const e = {
-    // Identidad
-    id: genId(),
-    kind: cfg.kind,
-    role: cfg.role || 'generic',            // p.ej. 'cart', 'door', 'npc'
-    populationType: cfg.populationType || 'none',
-
-    // Transformación y física
-    x: cfg.x,
-    y: cfg.y,
-    w: cfg.w || ENTITY_W,
-    h: cfg.h || ENTITY_H,
-    vx: 0,
-    vy: 0,
-    dir: cfg.dir ?? DIR_DOWN,
-
-    // Colisión / flags
-    solid: cfg.solid !== undefined ? cfg.solid : true,
-    isFloorTile: !!cfg.isFloorTile,
-    isTriggerOnly: !!cfg.isTriggerOnly,
-    isHazard: !!cfg.isHazard,              // fuego, charco, trampa…
-    collisionLayer: cfg.collisionLayer || 'default',
-    collisionMask: cfg.collisionMask || 'default',
-
-    // Vida y daño (unificados en “health” interno)
-    maxHealth,
-    health,
-    hearts:  health / HP_PER_HEART,
-    maxHearts: maxHealth / HP_PER_HEART,
-    dead: false,
-    deathCause: null,                       // 'damage' | 'fire' | 'crush' | 'script'
-
-    touchDamage: cfg.touchDamage || 0,
-    touchCooldown: cfg.touchCooldown ?? 0.9,
-    _touchCD: 0,
-    fireImmune: !!cfg.fireImmune,
-
-    // Estado de animación
-    state: 'idle',      // idle | walk_h | walk_v | attack | eat | talk | push | dead | custom
-    facing: 'down',     // up | down | left | right
-    isMoving: false,
-    isAttacking: false,
-    isEating: false,
-    isTalking: false,
-    isPushing: false,
-
-    // IA genérica (se puede desactivar totally)
-    ai: {
-      enabled: cfg.ai?.enabled !== false,
-      mode: cfg.ai?.mode || 'idle',
-      patrolPoints: cfg.ai?.patrolPoints || null,
-      patrolIndex: 0,
-      patrolWait: cfg.ai?.patrolWait ?? 0.5,
-      _patrolTimer: 0,
-      sightRadius: cfg.ai?.sightRadius ?? 160,
-      loseSightTime: cfg.ai?.loseSightTime ?? 2,
-      _loseSightTimer: 0,
-      speed: cfg.ai?.speed ?? 40,
-      // Extra hooks para puertas/ascensores/hazards:
-      data: cfg.ai?.data || null,
-    },
-
-    // Diálogo
-    dialog: {
-      enabled: !!cfg.dialog?.enabled,
-      autoChatter: cfg.dialog?.autoChatter || false,
-      autoChatterCooldown: cfg.dialog?.autoChatterCooldown || 4,
-      _autoChatterTimer: 0,
-      lines: cfg.dialog?.lines || [],
-      currentLineIndex: 0,
-    },
-
-    // Integración con otros sistemas
-    scoreOnDeath: cfg.scoreOnDeath || 0,
-    scoreOnUse: cfg.scoreOnUse || 0,      // puertas, ascensores, curas, etc.
-    audioProfile: {
-      hit:    cfg.audioProfile?.hit    || 'sfx_hit',
-      death:  cfg.audioProfile?.death  || 'sfx_death',
-      step:   cfg.audioProfile?.step   || 'sfx_step',
-      talk:   cfg.audioProfile?.talk   || 'sfx_talk',
-      eat:    cfg.audioProfile?.eat    || 'sfx_eat',
-      attack: cfg.audioProfile?.attack || 'sfx_attack',
-      use:    cfg.audioProfile?.use    || 'sfx_use',
-      open:   cfg.audioProfile?.open   || 'door_open',
-      close:  cfg.audioProfile?.close  || 'door_close',
-    },
-
-    // Puppet / rig
-    puppet: {
-      rig: cfg.rig,                            // OBLIGATORIO
-      z: cfg.z !== undefined ? cfg.z : HERO_Z, // mismo plano que héroe
-      skin: cfg.skin || 'default',
-    },
-
-    // Sprites opcionales (si algún rig los usa)
-    spriteId: cfg.spriteId || null,
-    spriteKey: cfg.spriteKey || null,
-
-    // Hooks genéricos de lógica
-    aiUpdate: cfg.aiUpdate || baseAiUpdate,
-    physicsUpdate: cfg.physicsUpdate || basePhysicsUpdate,
-    onDamage: cfg.onDamage || baseOnDamage,
-    onDeath: cfg.onDeath || baseOnDeath,
-    onAttackHit: cfg.onAttackHit || baseOnAttackHit,
-    onEat: cfg.onEat || baseOnEat,
-    onTalk: cfg.onTalk || baseOnTalk,
-    onInteract: cfg.onInteract || null,          // acción del héroe (puertas, ascensor…)
-    onUse: cfg.onUse || null,                    // alias genérico
-    onCrush: cfg.onCrush || null,                // carros aplastando
-    onEnterTile: cfg.onEnterTile || null,        // hazards/trigger
-    onLeaveTile: cfg.onLeaveTile || null,
-
-    // Gestión de borrado / culling
-    removeMe: false,
-    _culled: false,
-    rigOk: true,                                 // Puppet audit
-
-    // Campo de usuario extra para lógicas específicas
-    data: cfg.data || {},
-  };
-
-  // Adjuntar Puppet
-  if (window.PuppetAPI && e.puppet && e.puppet.rig) {
-    try {
-      PuppetAPI.attach(e, e.puppet);
-    } catch (err) {
-      e.rigOk = false;
-      if (window.DEBUG_RIGS) {
-        console.error('[RigError] Fallo al adjuntar rig a entidad', e.kind, err);
+  function attachRig(e) {
+    if (root.PuppetAPI?.attach) {
+      try {
+        const rig = root.PuppetAPI.attach(e, { rig: 'enemy_mosquito', z: HERO_Z, data: { skin: 'mosquito_default' } });
+        if (rig) e.rigOk = true;
+      } catch (err) {
+        if (DEBUG_MOSQUITO) console.warn('[mosquito] rig attach error', err);
+        e.rigOk = false;
       }
     }
-  } else {
-    e.rigOk = false;
-    if (window.DEBUG_RIGS) {
-      console.warn('[RigWarn] Entidad sin rig adjunto', e.kind, e);
-    }
   }
 
-  // Registrar grupo lógico
-  if (window.EntityGroupsAPI && EntityGroupsAPI.add) {
-    EntityGroupsAPI.add(e, cfg.group || 'generic');
-  }
+  function spawnMosquito(x, y, opts = {}) {
+    ensureCollections();
+    const e = {
+      id: root.genId ? root.genId() : `mosq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: ENT.MOSQUITO,
+      kindName: 'mosquito',
+      populationType: 'animals',
+      x,
+      y,
+      w: 22,
+      h: 22,
+      vx: 0,
+      vy: 0,
+      dir: 0,
+      solid: true,
+      maxSpeed: MOSQUITO_MAX_SPEED,
+      acceleration: MOSQUITO_ACCEL,
+      detectRadius: DETECT_RADIUS,
+      orbitRadius: ORBIT_RADIUS,
+      wanderChangeInterval: WANDER_INTERVAL,
+      attackRange: ATTACK_RANGE,
+      health: opts.health ?? HP_PER_HEART,
+      maxHealth: opts.maxHealth ?? HP_PER_HEART,
+      touchDamage: opts.touchDamage ?? 0.5,
+      touchCooldown: opts.touchCooldown ?? 0.9,
+      _touchCD: 0,
+      fireImmune: false,
+      dead: false,
+      deathCause: null,
+      isAttacking: false,
+      isEating: false,
+      aiMode: 'wander',
+      _wanderDir: Math.random() * Math.PI * 2,
+      _wanderTimer: 0,
+      _orbitClockwise: Math.random() > 0.5,
+      update(dt) { mosquitoAiUpdate(this, dt); },
+    };
 
-  // Insertar en la lista global
-  if (window.G && G.entities) {
+    attachRig(e);
+
     G.entities.push(e);
+    G.enemies.push(e);
+    G.movers.push(e);
+    if (DEBUG_MOSQUITO) console.log('[mosquito] creado', { x, y });
+    return e;
   }
 
-  return e;
-}
-
-// Alias para compatibilidad con plantillas anteriores
-const createPhysicalEntity = createGameEntity;
-
-// ---------------------------------------------------------------------------
-// 3. IA genérica: idle / patrulla / persecución
-// ---------------------------------------------------------------------------
-
-/**
- * IA genérica que sirve para:
- *  - Humanos hostiles / neutrales
- *  - Animales (con pequeños ajustes en speed y sightRadius)
- *  - Algunos carros con “vida propia”, si se quisiera
- *
- * Puertas, ascensores y hazards normalmente usarán una aiUpdate custom,
- * pero pueden seguir reutilizando partes de esta lógica si interesa.
- */
-function baseAiUpdate(e, dt) {
-  if (e.dead || !e.ai?.enabled) {
-    if (e.dead) e.state = 'dead';
-    return;
+  function spawnMosquitoAtTile(tx, ty, opts = {}) {
+    const pos = gridToWorldCenter(tx, ty);
+    return spawnMosquito(pos.x, pos.y, opts);
   }
 
-  const player = G && G.player;
-  if (!player) {
-    aiIdle(e, dt);
-    return;
-  }
-
-  const dx = player.x - e.x;
-  const dy = player.y - e.y;
-  const distSq = dx * dx + dy * dy;
-  const sightSq = e.ai.sightRadius * e.ai.sightRadius;
-
-  const seesPlayer = distSq <= sightSq;
-
-  // Cambio de modo
-  if (seesPlayer) {
-    e.ai.mode = 'chase';
-    e.ai._loseSightTimer = 0;
-  } else if (e.ai.mode === 'chase') {
-    e.ai._loseSightTimer += dt;
-    if (e.ai._loseSightTimer >= e.ai.loseSightTime) {
-      e.ai.mode = e.ai.patrolPoints ? 'patrol' : 'idle';
-    }
-  } else if (e.ai.mode === 'idle' && e.ai.patrolPoints) {
-    e.ai.mode = 'patrol';
-  }
-
-  switch (e.ai.mode) {
-    case 'chase':
-      aiChasePlayer(e, dt, dx, dy, Math.sqrt(distSq));
-      break;
-    case 'patrol':
-      aiPatrol(e, dt);
-      break;
-    case 'idle':
-    default:
-      aiIdle(e, dt);
-      break;
-  }
-
-  // Diálogo automático
-  if (e.dialog.enabled && e.dialog.autoChatter) {
-    e.dialog._autoChatterTimer -= dt;
-    if (e.dialog._autoChatterTimer <= 0) {
-      e.dialog._autoChatterTimer = e.dialog.autoChatterCooldown;
-      triggerDialog(e);
-    }
-  }
-
-  // Ataque por contacto (enemigos / carros hostiles / hazards densos)
-  handleTouchAttack(e, player, dt);
-}
-
-// --- Subrutinas IA base -----------------------------------------------------
-
-function aiIdle(e, dt) {
-  e.vx = 0;
-  e.vy = 0;
-  e.isMoving = false;
-  if (e.state !== 'idle' && e.state !== 'talk') {
-    e.state = 'idle';
-  }
-}
-
-function aiPatrol(e, dt) {
-  const pts = e.ai.patrolPoints;
-  if (!pts || !pts.length) {
-    aiIdle(e, dt);
-    return;
-  }
-
-  const target = pts[e.ai.patrolIndex];
-  const dx = target.x - e.x;
-  const dy = target.y - e.y;
-  const dist = Math.hypot(dx, dy);
-
-  if (dist < 4) {
-    e.ai._patrolTimer += dt;
-    e.vx = 0;
-    e.vy = 0;
-    e.isMoving = false;
-    e.state = 'idle';
-    if (e.ai._patrolTimer >= e.ai.patrolWait) {
-      e.ai._patrolTimer = 0;
-      e.ai.patrolIndex = (e.ai.patrolIndex + 1) % pts.length;
-    }
-    return;
-  }
-
-  const speed = e.ai.speed;
-  e.vx = (dx / dist) * speed;
-  e.vy = (dy / dist) * speed;
-  e.isMoving = true;
-
-  updateWalkStateFromVelocity(e);
-}
-
-function aiChasePlayer(e, dt, dx, dy, dist) {
-  const speed = e.ai.speed;
-
-  if (dist > 0) {
-    e.vx = (dx / dist) * speed;
-    e.vy = (dy / dist) * speed;
-    e.isMoving = true;
-  } else {
-    e.vx = 0;
-    e.vy = 0;
-    e.isMoving = false;
-  }
-
-  // Si estamos muy cerca, ralentizar para golpear
-  if (dist < 20) {
-    e.vx *= 0.3;
-    e.vy *= 0.3;
+  function handleAttack(e, target, dt) {
+    if (!target || e._touchCD > 0) return;
+    const overlap = !(e.x + e.w * 0.5 <= target.x - target.w * 0.5
+      || e.x - e.w * 0.5 >= target.x + target.w * 0.5
+      || e.y + e.h * 0.5 <= target.y - target.h * 0.5
+      || e.y - e.h * 0.5 >= target.y + target.h * 0.5);
+    if (!overlap) return;
     e.isAttacking = true;
-    e.state = 'attack';
-  } else {
-    e.isAttacking = false;
-    updateWalkStateFromVelocity(e);
-  }
-}
-
-/**
- * Determina animación de paseo (horizontal/vertical) + facing.
- * Es común para héroes, NPC, animales, carros con rig propio, etc.
- */
-function updateWalkStateFromVelocity(e) {
-  if (Math.abs(e.vx) < 0.01 && Math.abs(e.vy) < 0.01) {
-    e.isMoving = false;
-    if (!e.isAttacking && !e.isTalking && !e.isEating && !e.dead) {
-      e.state = 'idle';
+    e._touchCD = e.touchCooldown;
+    if (root.DamageAPI?.applyTouch) {
+      root.DamageAPI.applyTouch(e, target);
+    } else if (typeof root.damagePlayer === 'function') {
+      root.damagePlayer(e, e.touchDamage * 2);
     }
-    return;
   }
 
-  e.isMoving = true;
-
-  if (Math.abs(e.vx) > Math.abs(e.vy)) {
-    e.state = 'walk_h';
-    e.facing = e.vx >= 0 ? 'right' : 'left';
-  } else {
-    e.state = 'walk_v';
-    e.facing = e.vy >= 0 ? 'down' : 'up';
+  function updateCooldowns(e, dt) {
+    if (e._touchCD > 0) e._touchCD = Math.max(0, e._touchCD - dt);
   }
-}
 
-// ---------------------------------------------------------------------------
-// 4. Física base: integración con PhysicsAPI
-// ---------------------------------------------------------------------------
-
-/**
- * Física por defecto: delega en PhysicsAPI.moveEntity(e, dt)
- * que es quien resuelve colisiones y rebotes (carros tipo pinball).
- * Si no existe PhysicsAPI, hace un fallback simple x += vx*dt, y += vy*dt.
- */
-function basePhysicsUpdate(e, dt) {
-  if (e.dead || e.isTriggerOnly) return;
-
-  if (window.PhysicsAPI && PhysicsAPI.moveEntity) {
-    PhysicsAPI.moveEntity(e, dt);
-  } else {
+  function applyMovement(e, ax, ay, dt) {
+    e.vx += ax * dt;
+    e.vy += ay * dt;
+    const speed = Math.hypot(e.vx, e.vy);
+    const max = e.maxSpeed || MOSQUITO_MAX_SPEED;
+    if (speed > max) {
+      const s = max / speed;
+      e.vx *= s;
+      e.vy *= s;
+    }
     e.x += e.vx * dt;
     e.y += e.vy * dt;
   }
-}
 
-// ---------------------------------------------------------------------------
-// 5. Ataque por contacto + DamageAPI
-// ---------------------------------------------------------------------------
-
-/**
- * Comprueba solapamiento AABB contra el jugador y aplica daño de contacto
- * usando DamageAPI.applyTouch cuando corresponde.
- */
-function handleTouchAttack(e, player, dt) {
-  if (!e.touchDamage || e.dead || !player || player.dead) return;
-
-  if (e._touchCD > 0) {
-    e._touchCD -= dt;
-    return;
+  function wanderBehavior(e, dt) {
+    e._wanderTimer -= dt;
+    if (e._wanderTimer <= 0) {
+      e._wanderTimer = e.wanderChangeInterval;
+      e._wanderDir += rngAngleNoise();
+    }
+    const ax = Math.cos(e._wanderDir) * e.acceleration * 0.4;
+    const ay = Math.sin(e._wanderDir) * e.acceleration * 0.4;
+    applyMovement(e, ax, ay, dt);
+    e.isAttacking = false;
+    e.isEating = false;
   }
 
-  if (overlap(e, player)) {
-    e._touchCD = e.touchCooldown;
+  function orbitBehavior(e, player, dt) {
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const tangent = e._orbitClockwise ? { x: dirY, y: -dirX } : { x: -dirY, y: dirX };
+    const targetX = player.x + tangent.x * e.orbitRadius;
+    const targetY = player.y + tangent.y * e.orbitRadius;
+    const toTargetX = targetX - e.x;
+    const toTargetY = targetY - e.y;
+    const toTargetDist = Math.hypot(toTargetX, toTargetY) || 1;
+    const ax = (toTargetX / toTargetDist) * e.acceleration;
+    const ay = (toTargetY / toTargetDist) * e.acceleration;
+    applyMovement(e, ax, ay, dt);
+    e.isAttacking = false;
+    e.isEating = false;
+  }
 
-    if (window.DamageAPI && DamageAPI.applyTouch) {
-      DamageAPI.applyTouch(e, player);
+  function mosquitoAiUpdate(e, dt = 0) {
+    if (!e || e.dead) return;
+    if (e._culled) return;
+
+    e.isAttacking = false;
+    e.isEating = false;
+    updateCooldowns(e, dt);
+
+    const player = G.player;
+    const dx = player ? player.x - e.x : 0;
+    const dy = player ? player.y - e.y : 0;
+    const dist = player ? Math.hypot(dx, dy) : Infinity;
+
+    if (!player || dist > e.detectRadius) {
+      e.aiMode = 'wander';
+      wanderBehavior(e, dt);
     } else {
-      // Fallback mínimo (no recomendado, pero evita crasheos)
-      player.health = Math.max(0, player.health - e.touchDamage * HP_PER_HEART);
+      e.aiMode = 'orbit';
+      orbitBehavior(e, player, dt);
+      if (dist < e.attackRange) {
+        handleAttack(e, player, dt);
+      }
     }
 
-    playEntityAudio(e, 'attack');
-    if (e.onAttackHit) e.onAttackHit(e, player);
-  }
-}
+    if (player && e.isAttacking && dist < e.attackRange * 0.8) {
+      e.isEating = true;
+    }
 
-// ---------------------------------------------------------------------------
-// 6. Daño y muertes (daño directo, fuego, aplastamiento…)
-// ---------------------------------------------------------------------------
-
-/**
- * Llamada desde DamageAPI o lógica de hazards cuando esta entidad recibe daño.
- *
- * @param {Object} e      Entidad
- * @param {Number} amount Daño en “hp” internos (no en corazones)
- * @param {String} cause  'damage' | 'fire' | 'crush' | 'script'
- */
-function baseOnDamage(e, amount, cause) {
-  if (e.dead) return;
-
-  if (cause === 'fire' && e.fireImmune) {
-    return;
+    if (root.PuppetAPI?.update && e.rig) {
+      root.PuppetAPI.update(e.rig, dt);
+    }
   }
 
-  e.health -= amount;
-  e.hearts = e.health / HP_PER_HEART;
+  const MosquitoAPI = {
+    spawn: (x, y, opts = {}) => spawnMosquito(x, y, opts),
+    spawnAtTile: (tx, ty, opts = {}) => spawnMosquitoAtTile(tx, ty, opts),
+    ai: mosquitoAiUpdate,
+  };
 
-  if (e.health <= 0) {
-    e.health = 0;
-    e.hearts = 0;
-    e.deathCause = cause || 'damage';
-    baseOnDeath(e);
-  } else {
-    playEntityAudio(e, 'hit');
-    // Podríamos añadir animación de “hit flash” via rig
-  }
-}
+  root.MosquitoAPI = MosquitoAPI;
+  root.Mosquitos = MosquitoAPI;
 
-/**
- * Muerte unificada para cualquier entidad: humanos, animales, carros,
- * puertas quemadas, etc. Respeta deathCause.
- */
-function baseOnDeath(e) {
-  if (e.dead) return;
-
-  e.dead = true;
-  e.vx = 0;
-  e.vy = 0;
-  e.isMoving = false;
-  e.state = 'dead';
-
-  // Score
-  if (e.scoreOnDeath && window.ScoreAPI && ScoreAPI.add) {
-    ScoreAPI.add(e.scoreOnDeath, 'kill', e);
-  }
-
-  playEntityAudio(e, 'death');
-
-  // Si hay lógica específica (carro que explota, puerta quemada, boss curado...)
-  if (typeof e.onDeath === 'function' && e.onDeath !== baseOnDeath) {
-    // Evitar recursión si se ha sobrescrito
-    e.onDeath(e);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 7. Comer / drenar vida (mosquitos, ratas, pacientes furiosos…)
-// ---------------------------------------------------------------------------
-
-function baseOnEat(e, target) {
-  if (e.dead) return;
-  e.isEating = true;
-  e.state = 'eat';
-
-  if (target && !target.dead && window.DamageAPI && DamageAPI.applySpecial) {
-    DamageAPI.applySpecial(e, target, { type: 'eat' });
-  }
-
-  // Curación ligera opcional
-  e.health = Math.min(e.maxHealth, e.health + 0.2 * HP_PER_HEART);
-  e.hearts = e.health / HP_PER_HEART;
-
-  playEntityAudio(e, 'eat');
-}
-
-// ---------------------------------------------------------------------------
-// 8. Ataque cuerpo a cuerpo con éxito (hook para FX)
-// ---------------------------------------------------------------------------
-
-function baseOnAttackHit(e, target) {
-  // Aquí se pueden lanzar partículas, chispas, etc.
-  // target ya ha recibido daño por DamageAPI.
-}
-
-// ---------------------------------------------------------------------------
-// 9. Diálogo genérico
-// ---------------------------------------------------------------------------
-
-function baseOnTalk(e) {
-  if (!e.dialog.enabled || !e.dialog.lines.length) return;
-  triggerDialog(e);
-}
-
-function triggerDialog(e) {
-  const lineId = e.dialog.lines[e.dialog.currentLineIndex % e.dialog.lines.length];
-  e.dialog.currentLineIndex++;
-
-  e.state = 'talk';
-  e.isTalking = true;
-
-  if (window.DialogAPI && DialogAPI.showForEntity) {
-    DialogAPI.showForEntity(e, lineId);
-  }
-
-  playEntityAudio(e, 'talk');
-}
-
-// ---------------------------------------------------------------------------
-// 10. Audio utilitario
-// ---------------------------------------------------------------------------
-
-function playEntityAudio(e, key) {
-  const id = e.audioProfile?.[key];
-  if (!id || !window.AudioAPI || !AudioAPI.play) return;
-  AudioAPI.play(id, { x: e.x, y: e.y });
-}
-
-/* ============================================================================
- * NOTAS DE USO
- * ----------------------------------------------------------------------------
- * 1) Carros tipo pinball (comida, medicinas, urgencias):
- *
- *    function createCartFood(x, y) {
- *      return createGameEntity({
- *        kind: ENT.CART_FOOD,
- *        role: 'cart',
- *        populationType: 'carts',
- *        group: 'carts',
- *        x, y,
- *        rig: 'cart_food_pinball',
- *        solid: true,
- *        touchDamage: 1.0,   // 1 corazón
- *        hearts: 4,
- *        data: {
- *          cartType: 'medium',
- *          bounceMax: 4,
- *        },
- *        ai: { enabled: false }, // se mueven solo por física
- *      });
- *    }
- *
- * 2) Puertas:
- *
- *    function createDoorNormal(x, y) {
- *      return createGameEntity({
- *        kind: ENT.DOOR_NORMAL,
- *        role: 'door',
- *        populationType: 'none',
- *        group: 'doors',
- *        x, y,
- *        rig: 'door_hospital',
- *        solid: true,
- *        hearts: 3,
- *        audioProfile: { open: 'door_open', close: 'door_close' },
- *        ai: { enabled: false },
- *        onInteract(e, hero) { openDoorNormal(e, hero); },
- *      });
- *    }
- *
- * 3) Hazards de suelo (fuego, charco):
- *
- *    function createWaterPuddle(x, y) {
- *      return createGameEntity({
- *        kind: ENT.WATER_PUDDLE,
- *        role: 'hazard_water',
- *        populationType: 'hazards',
- *        group: 'hazards',
- *        x, y,
- *        rig: 'puddle_wet',
- *        solid: false,
- *        isFloorTile: true,
- *        isHazard: true,
- *        touchDamage: 0,      // daño 0, pero resbalón en physics.plugin.js
- *        ai: { enabled: false },
- *      });
- *    }
- *
- * 4) Humanos / animales:
- *
- *    function createRat(x, y) {
- *      return createGameEntity({
- *        kind: ENT.RAT,
- *        role: 'animal',
- *        populationType: 'animals',
- *        group: 'animals',
- *        x, y,
- *        rig: 'enemy_rat',
- *        solid: true,
- *        hearts: 1,
- *        touchDamage: 0.5,
- *        ai: {
- *          enabled: true,
- *          speed: 80,
- *          sightRadius: 200,
- *        },
- *      });
- *    }
- *
- * 5) Loop principal (pseudo):
- *      for (const e of G.entitiesActivas) {
- *        e.aiUpdate(e, dt);
- *        e.physicsUpdate(e, dt);
- *      }
- *      PuppetAPI.update(dt);
- *      PuppetAPI.draw(ctx, cam);
- * ==========================================================================*/
+  root.Entities = root.Entities || {};
+  root.Entities.spawnMosquitoAtTile = spawnMosquitoAtTile;
+  root.Entities.spawnMosquitoFromAscii = (tx, ty, def) => spawnMosquitoAtTile(tx, ty, def || {});
+})(window);
