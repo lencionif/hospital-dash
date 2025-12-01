@@ -1294,3 +1294,199 @@
   });
 })();
 // Comentario: rigs actualizados para jefe de servicio y proyectil.
+
+  // Rig chibi para "visitante molesto" (estética chibi 24x24 px aprox.)
+  PuppetAPI.registerRig('npc_visitor_annoying', {
+    create(host) {
+      return { rigName: 'npc_visitor_annoying', host, walkT: 0, idleT: 0, gumT: 0, gumScale: 0.6, anim: 'idle', deathT: 0 };
+    },
+    update(state, host, dt = 0) {
+      if (!state || !host) return;
+      state.walkT += dt;
+      state.idleT += dt;
+      state.gumT += dt;
+      state.gumScale = 0.55 + Math.max(0, Math.sin(state.gumT * 2.4)) * 0.22;
+      let anim = 'idle';
+      if (host.dead) {
+        anim = `death_${host.deathCause || 'damage'}`;
+        state.deathT += dt;
+      } else if (host.state === 'talk') {
+        anim = 'talk';
+      } else if (host.state === 'attack') {
+        anim = 'attack';
+      } else if (host.state === 'eat') {
+        anim = 'eat';
+      } else {
+        const mvx = Math.abs(host.vx || 0);
+        const mvy = Math.abs(host.vy || 0);
+        if (mvx > mvy && (mvx > 1 || host.state === 'walk_h')) anim = 'walk_h';
+        else if (mvy >= mvx && (mvy > 1 || host.state === 'walk_v')) anim = 'walk_v';
+      }
+      state.anim = anim;
+    },
+    draw(ctx, camera, host, state) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || host.rig?.scale || 1);
+      const flip = (host.vx || host.dir || 0) < 0 ? -1 : 1;
+      const bob = state.anim === 'idle' ? Math.sin(state.idleT * 2) * 1 : 0;
+      const sway = Math.sin(state.walkT * 8) * (state.anim.startsWith('walk') ? 2 : 0);
+
+      ctx.save();
+      ctx.translate(x, y + bob);
+      if (state.anim === 'death_crush') ctx.scale(1.05, 0.35);
+      ctx.scale(zoom * flip, zoom);
+
+      // Sombra
+      ctx.save();
+      ctx.translate(0, 12);
+      drawEllipse(ctx, 8, 3.5, 'rgba(0,0,0,0.25)');
+      ctx.restore();
+
+      // Piernas y tacones
+      ctx.save();
+      ctx.translate(0, 6 + sway * 0.15);
+      const step = Math.sin(state.walkT * 10) * (state.anim.startsWith('walk') ? 3 : 0);
+      ctx.fillStyle = '#1c1c1c';
+      ctx.beginPath();
+      ctx.roundRect(-6 + step, -2, 6, 10, 3);
+      ctx.roundRect(0 - step, -2, 6, 10, 3);
+      ctx.fill();
+      ctx.fillStyle = '#e53935';
+      ctx.beginPath();
+      ctx.roundRect(-6 + step, 6, 6, 3, 1.5);
+      ctx.roundRect(0 - step, 6, 6, 3, 1.5);
+      ctx.fill();
+      ctx.restore();
+
+      // Cuerpo y chaqueta
+      ctx.save();
+      const lean = state.anim === 'attack' ? -0.18 : state.anim === 'talk' ? -0.06 : -0.02;
+      ctx.translate(0, -2 + sway * 0.1);
+      ctx.rotate(lean);
+      ctx.fillStyle = '#c62828';
+      ctx.beginPath();
+      ctx.roundRect(-8, -8, 16, 16, 5);
+      ctx.fill();
+      ctx.fillStyle = '#1e88e5';
+      ctx.beginPath();
+      ctx.roundRect(-6, -6, 12, 12, 4);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos (izquierdo cruzado, derecho con móvil)
+      ctx.save();
+      ctx.translate(0, -2 + sway * 0.1);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#f6c9a5';
+      ctx.beginPath();
+      ctx.moveTo(-6, -2);
+      ctx.lineTo(-10, 2);
+      ctx.moveTo(7, -3);
+      ctx.lineTo(12 + (state.anim === 'attack' ? 4 : 0), -6);
+      ctx.stroke();
+      // Móvil
+      ctx.save();
+      ctx.translate(12 + (state.anim === 'attack' ? 4 : 0), -8);
+      ctx.rotate(-0.15);
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.roundRect(-2, -4, 6, 10, 1.5);
+      ctx.fill();
+      ctx.restore();
+      ctx.restore();
+
+      // Cabeza y pelo
+      ctx.save();
+      ctx.translate(0, -14 + sway * 0.05 + (state.anim === 'talk' ? Math.sin(state.idleT * 6) : 0));
+      ctx.fillStyle = '#6b3a1f';
+      drawEllipse(ctx, 9, 8, '#6b3a1f');
+      ctx.save();
+      ctx.translate(0, -2);
+      drawEllipse(ctx, 8, 7, '#7a4a2d');
+      ctx.restore();
+      // Gafas en la frente
+      ctx.save();
+      ctx.translate(-2, -7);
+      ctx.fillStyle = '#2b2b2b';
+      ctx.beginPath();
+      ctx.roundRect(-5, -2, 6, 4, 1.5);
+      ctx.roundRect(2, -2, 6, 4, 1.5);
+      ctx.fill();
+      ctx.strokeStyle = '#4a4a4a';
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(-5, 0); ctx.lineTo(8, 0);
+      ctx.stroke();
+      ctx.restore();
+      // Pendiente
+      ctx.fillStyle = '#f9c22c';
+      ctx.beginPath();
+      ctx.arc(8, 0, 1.2, 0, TAU);
+      ctx.fill();
+      // Cara
+      ctx.fillStyle = '#f7c9a8';
+      drawEllipse(ctx, 8, 7.5, '#f7c9a8');
+      ctx.fillStyle = '#2c2c2c';
+      ctx.beginPath();
+      ctx.arc(-2.5, -1.5, 1.1, 0, TAU);
+      ctx.arc(2.5, -1.5, 1.1, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#5a3b2a';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(-4, -4); ctx.lineTo(-1, -5.5);
+      ctx.moveTo(1, -5.5); ctx.lineTo(4, -4.5);
+      ctx.stroke();
+      // Boca / chicle
+      ctx.save();
+      ctx.translate(0, 3.5);
+      ctx.strokeStyle = '#b23c17';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      if (state.anim === 'talk') {
+        ctx.moveTo(-2, 0); ctx.lineTo(2, 0);
+      } else {
+        ctx.arc(0, 0, 2, 0, Math.PI);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#ff7eb6';
+      const gum = state.anim === 'attack' ? state.gumScale * 10 : state.gumScale * 8;
+      drawEllipse(ctx, gum * 0.6, gum * 0.55, '#ff7eb6', state.anim === 'talk' ? 0.9 : 1);
+      ctx.restore();
+      ctx.restore();
+
+      // Bandolera
+      ctx.save();
+      ctx.translate(0, -2 + sway * 0.1);
+      ctx.strokeStyle = '#2b2b2b';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-6, -10); ctx.lineTo(6, 10);
+      ctx.stroke();
+      ctx.restore();
+
+      // Muertes especiales
+      if (host.dead) {
+        if (host.deathCause === 'fire') {
+          ctx.save();
+          ctx.globalAlpha = 0.85;
+          drawEllipse(ctx, 11, 7, '#2c2c2c');
+          ctx.strokeStyle = '#ff9800';
+          ctx.beginPath();
+          ctx.moveTo(-4, -10); ctx.lineTo(-1, -4); ctx.lineTo(2, -9); ctx.lineTo(5, -3);
+          ctx.stroke();
+          ctx.restore();
+        } else if (host.deathCause === 'crush') {
+          ctx.save();
+          ctx.globalAlpha = 0.8;
+          ctx.scale(1.2, 0.45);
+          drawEllipse(ctx, 12, 8, '#c0392b');
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    },
+  });

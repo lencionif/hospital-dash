@@ -89,7 +89,7 @@
     'n': { key: 'npc_nurse_sexy',  kind: 'enfermera_sexy',factoryKey: 'npc_enfermera_sexy', isNPC: true, isEnemy: true },
     'h': { key: 'npc_cleaner',     kind: 'cleaner',       factoryKey: 'npc_cleaner',     isNPC: true },
     'g': { key: 'npc_guard',       kind: 'guardia',       factoryKey: 'npc_guardia',     isNPC: true },
-    'v': { key: 'npc_familiar',    kind: 'familiar',      factoryKey: 'npc_familiar_molesto', isNPC: true },
+    'v': { key: 'npc_visitor_annoying', kind: 'visitor_annoying', factoryKey: 'npc_visitor_annoying', isNPC: true },
 
     // Ascensor
     'E': { key: 'elevator',       kind: 'elevator',       factoryKey: 'elevator_tile' },
