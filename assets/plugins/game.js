@@ -736,6 +736,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (window.Entities?.spawnSupervisorFromAscii) return window.Entities.spawnSupervisorFromAscii(tx, ty, def || {});
         return null;
       },
+      npc_jefe_servicio(tx, ty, def) {
+        if (window.Entities?.JefeServicio?.spawnFromAscii) return window.Entities.JefeServicio.spawnFromAscii(tx, ty, def || {});
+        if (window.Entities?.spawnJefeServicioFromAscii) return window.Entities.spawnJefeServicioFromAscii(tx, ty, def || {});
+        return null;
+      },
+      jefe(tx, ty, def) { return ENTITY_FACTORIES.npc_jefe_servicio(tx, ty, def); },
       npc_enfermera_sexy(tx, ty, def) {
         if (window.Entities?.NurseSexy?.spawnFromAscii) return window.Entities.NurseSexy.spawnFromAscii(tx, ty, def || {});
         return null;
@@ -2204,4 +2210,5 @@ function drawEntities(c2){
   }
   drawMinimap();
 })();
+// Comentario: añadido spawn ASCII del jefe de servicio en ENTITY_FACTORIES.
 // ==== /DEBUG MINI-MAP OVERLAY ================================================

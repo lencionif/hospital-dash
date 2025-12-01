@@ -1,685 +1,381 @@
-/* ============================================================================
- * PLANTILLA BASE PROFESIONAL PARA TODAS LAS ENTIDADES DEL JUEGO
- * ---------------------------------------------------------------------------
- * Válida para:
- *  - Héroes (si quieres unificarlos)
- *  - NPC humanos
- *  - Animales (ratas, mosquitos…)
- *  - Carros (comida, medicinas, urgencias…)
- *  - Puertas
- *  - Ascensores
- *  - Hazards de suelo (fuego, charcos, trampas…)
- *
- * Contrato común + hooks de IA, físicas, diálogo, daño, audio y Puppet/rig.
- * Solo hay que ajustar por entidad:
- *   - kind (ENT.XXX)
- *   - flags (solid, isFloorTile, isTriggerOnly, isHazard…)
- *   - parámetros de IA
- *   - callbacks específicos (onInteract, onCrush, onUseElevator, etc.)
- *   - rig / skin
- * ==========================================================================*/
+// assets/plugins/entities/jefe_servicio.entities.js
+// Entidad hostil "jefe de servicio" con IA avanzada, trampas y proyectiles de yogur.
+(function (W) {
+  'use strict';
 
-// ---------------------------------------------------------------------------
-// 1. Constantes de apoyo
-// ---------------------------------------------------------------------------
+  const root = W || window;
+  const G = root.G || (root.G = {});
+  const ENT = (function ensureEnt(ns) {
+    const e = ns || {};
+    if (typeof e.JEFE_SERVICIO === 'undefined') e.JEFE_SERVICIO = 60;
+    if (typeof e.YOGURT_BOMB === 'undefined') e.YOGURT_BOMB = 61;
+    if (typeof e.JEFE_TRAP === 'undefined') e.JEFE_TRAP = 62;
+    return e;
+  })(root.ENT || (root.ENT = {}));
 
-const TILE_SIZE  = 32;
-const ENTITY_W   = 24;   // caja de colisión compacta dentro del tile
-const ENTITY_H   = 24;
+  const TILE = root.TILE_SIZE || root.TILE || 32;
+  const HERO_Z = typeof root.HERO_Z === 'number' ? root.HERO_Z : 5;
+  const HP_PER_HEART = root.HP_PER_HEART || 1;
+  const DEBUG_NPC = !!root.DEBUG_NPC;
 
-const DIR_UP     = 0;
-const DIR_RIGHT  = 1;
-const DIR_DOWN   = 2;
-const DIR_LEFT   = 3;
+  const jefeList = [];
 
-// z del héroe (mismo plano visual que héroes, NPC y enemigos)
-const HERO_Z = window.HERO_Z || 10;
+  function gridToWorldCenter(tx, ty) {
+    const size = typeof root.GridMath?.tileSize === 'function' ? root.GridMath.tileSize() : TILE;
+    return { x: tx * size + size * 0.5, y: ty * size + size * 0.5 };
+  }
 
-// Vida interna en “corazones” (1.0 = 1 corazón)
-const HP_PER_HEART = window.HP_PER_HEART || 1;
+  function ensureCollections() {
+    if (!Array.isArray(G.entities)) G.entities = [];
+    if (!Array.isArray(G.movers)) G.movers = [];
+    if (!Array.isArray(G.npcs)) G.npcs = [];
+  }
 
-// ---------------------------------------------------------------------------
-// 2. Fábrica genérica de entidades
-// ---------------------------------------------------------------------------
-/**
- * Crea una entidad de juego (física, pisable, interactiva o hazard).
- *
- * @param {Object} cfg
- *  Obligatorio:
- *    kind    : ENT.X (tipo lógico)
- *    x, y    : posición en píxeles (centro del tile)
- *    rig     : nombre del rig de PuppetAPI
- *
- *  Recomendado:
- *    role            : etiqueta de rol (“hero”, “npc”, “animal”, “cart”,
- *                      “door”, “elevator”, “hazard_fire”, “hazard_water”…)
- *    populationType  : etiqueta para SpawnerAPI (“animals”, “humans”,
- *                      “carts”, “hazards”, “none”)
- *    group           : grupo de EntityGroupsAPI (“players”, “npcs”,
- *                      “animals”, “carts”, “doors”, “hazards”…)
- *
- *  Flags típicos:
- *    solid        : true = bloquea movimiento (puertas, carros, paredes
- *                   con colisión propia). false = pisable (hazards suelo).
- *    isFloorTile  : true => se dibuja/considera como casilla de suelo
- *                   con efecto (charcos, fuego).
- *    isTriggerOnly: true => no tiene colisión física, sirve solo de trigger
- *                   (spawners, triggers de boss, timbres fantasma…).
- *
- *  Vida y daño:
- *    hearts       : vida inicial en corazones (float). Equivalente a hp.
- *    maxHearts    : máximo de corazones (si falta, = hearts).
- *    health       : si prefieres en “hp” explícitos (interno a DamageAPI).
- *    maxHealth    : idem.
- *    touchDamage  : daño de contacto en corazones.
- *    fireImmune   : inmune a daño de fuego.
- *
- *  IA:
- *    ai.enabled       : true/false (por defecto true)
- *    ai.mode          : 'idle' | 'patrol' | 'chase' | 'staticDoor' | ...
- *    ai.speed         : px/s
- *    ai.sightRadius   : radio detección héroe
- *    ai.patrolPoints  : array [{x,y}, ...]
- *    aiUpdate         : función custom si quieres sobreescribir la base.
- *
- *  Interacción:
- *    onInteract   : callback cuando el héroe pulsa acción sobre e
- *    onUse        : alias genérico (puertas, ascensores)
- *    onCrush      : cuando esta entidad aplasta a otra o es aplastada
- *    onEnterTile  : cuando el jugador entra en su tile (hazards, triggers)
- *    onLeaveTile  : cuando el jugador sale de su tile
- *
- *  Audio:
- *    audioProfile : { hit, death, step, talk, eat, attack, use, open, close }
- *
- *  Render:
- *    puppet.z     : capa visual (por defecto HERO_Z)
- *    puppet.skin  : spriteKey / variante si el rig la usa
- */
-function createGameEntity(cfg) {
-  const hearts      = cfg.hearts ?? (cfg.health !== undefined
-                        ? cfg.health / HP_PER_HEART
-                        : 1);
-  const maxHearts   = cfg.maxHearts ?? hearts;
-  const maxHealth   = cfg.maxHealth ?? (maxHearts * HP_PER_HEART);
-  const health      = cfg.health    ?? (hearts * HP_PER_HEART);
-
-  const e = {
-    // Identidad
-    id: genId(),
-    kind: cfg.kind,
-    role: cfg.role || 'generic',            // p.ej. 'cart', 'door', 'npc'
-    populationType: cfg.populationType || 'none',
-
-    // Transformación y física
-    x: cfg.x,
-    y: cfg.y,
-    w: cfg.w || ENTITY_W,
-    h: cfg.h || ENTITY_H,
-    vx: 0,
-    vy: 0,
-    dir: cfg.dir ?? DIR_DOWN,
-
-    // Colisión / flags
-    solid: cfg.solid !== undefined ? cfg.solid : true,
-    isFloorTile: !!cfg.isFloorTile,
-    isTriggerOnly: !!cfg.isTriggerOnly,
-    isHazard: !!cfg.isHazard,              // fuego, charco, trampa…
-    collisionLayer: cfg.collisionLayer || 'default',
-    collisionMask: cfg.collisionMask || 'default',
-
-    // Vida y daño (unificados en “health” interno)
-    maxHealth,
-    health,
-    hearts:  health / HP_PER_HEART,
-    maxHearts: maxHealth / HP_PER_HEART,
-    dead: false,
-    deathCause: null,                       // 'damage' | 'fire' | 'crush' | 'script'
-
-    touchDamage: cfg.touchDamage || 0,
-    touchCooldown: cfg.touchCooldown ?? 0.9,
-    _touchCD: 0,
-    fireImmune: !!cfg.fireImmune,
-
-    // Estado de animación
-    state: 'idle',      // idle | walk_h | walk_v | attack | eat | talk | push | dead | custom
-    facing: 'down',     // up | down | left | right
-    isMoving: false,
-    isAttacking: false,
-    isEating: false,
-    isTalking: false,
-    isPushing: false,
-
-    // IA genérica (se puede desactivar totally)
-    ai: {
-      enabled: cfg.ai?.enabled !== false,
-      mode: cfg.ai?.mode || 'idle',
-      patrolPoints: cfg.ai?.patrolPoints || null,
-      patrolIndex: 0,
-      patrolWait: cfg.ai?.patrolWait ?? 0.5,
-      _patrolTimer: 0,
-      sightRadius: cfg.ai?.sightRadius ?? 160,
-      loseSightTime: cfg.ai?.loseSightTime ?? 2,
-      _loseSightTimer: 0,
-      speed: cfg.ai?.speed ?? 40,
-      // Extra hooks para puertas/ascensores/hazards:
-      data: cfg.ai?.data || null,
-    },
-
-    // Diálogo
-    dialog: {
-      enabled: !!cfg.dialog?.enabled,
-      autoChatter: cfg.dialog?.autoChatter || false,
-      autoChatterCooldown: cfg.dialog?.autoChatterCooldown || 4,
-      _autoChatterTimer: 0,
-      lines: cfg.dialog?.lines || [],
-      currentLineIndex: 0,
-    },
-
-    // Integración con otros sistemas
-    scoreOnDeath: cfg.scoreOnDeath || 0,
-    scoreOnUse: cfg.scoreOnUse || 0,      // puertas, ascensores, curas, etc.
-    audioProfile: {
-      hit:    cfg.audioProfile?.hit    || 'sfx_hit',
-      death:  cfg.audioProfile?.death  || 'sfx_death',
-      step:   cfg.audioProfile?.step   || 'sfx_step',
-      talk:   cfg.audioProfile?.talk   || 'sfx_talk',
-      eat:    cfg.audioProfile?.eat    || 'sfx_eat',
-      attack: cfg.audioProfile?.attack || 'sfx_attack',
-      use:    cfg.audioProfile?.use    || 'sfx_use',
-      open:   cfg.audioProfile?.open   || 'door_open',
-      close:  cfg.audioProfile?.close  || 'door_close',
-    },
-
-    // Puppet / rig
-    puppet: {
-      rig: cfg.rig,                            // OBLIGATORIO
-      z: cfg.z !== undefined ? cfg.z : HERO_Z, // mismo plano que héroe
-      skin: cfg.skin || 'default',
-    },
-
-    // Sprites opcionales (si algún rig los usa)
-    spriteId: cfg.spriteId || null,
-    spriteKey: cfg.spriteKey || null,
-
-    // Hooks genéricos de lógica
-    aiUpdate: cfg.aiUpdate || baseAiUpdate,
-    physicsUpdate: cfg.physicsUpdate || basePhysicsUpdate,
-    onDamage: cfg.onDamage || baseOnDamage,
-    onDeath: cfg.onDeath || baseOnDeath,
-    onAttackHit: cfg.onAttackHit || baseOnAttackHit,
-    onEat: cfg.onEat || baseOnEat,
-    onTalk: cfg.onTalk || baseOnTalk,
-    onInteract: cfg.onInteract || null,          // acción del héroe (puertas, ascensor…)
-    onUse: cfg.onUse || null,                    // alias genérico
-    onCrush: cfg.onCrush || null,                // carros aplastando
-    onEnterTile: cfg.onEnterTile || null,        // hazards/trigger
-    onLeaveTile: cfg.onLeaveTile || null,
-
-    // Gestión de borrado / culling
-    removeMe: false,
-    _culled: false,
-    rigOk: true,                                 // Puppet audit
-
-    // Campo de usuario extra para lógicas específicas
-    data: cfg.data || {},
-  };
-
-  // Adjuntar Puppet
-  if (window.PuppetAPI && e.puppet && e.puppet.rig) {
-    try {
-      PuppetAPI.attach(e, e.puppet);
-    } catch (err) {
-      e.rigOk = false;
-      if (window.DEBUG_RIGS) {
-        console.error('[RigError] Fallo al adjuntar rig a entidad', e.kind, err);
+  function attachRig(e) {
+    if (root.PuppetAPI?.attach) {
+      try {
+        const rig = root.PuppetAPI.attach(e, e.puppet || { rig: 'npc_jefe_servicio', z: HERO_Z, skin: 'default' });
+        if (rig) e.rigOk = true;
+      } catch (err) {
+        e.rigOk = false;
+        if (root.DEBUG_RIGS) console.error('[RigError] No rig for kind=JEFE_SERVICIO', err);
       }
     }
-  } else {
-    e.rigOk = false;
-    if (window.DEBUG_RIGS) {
-      console.warn('[RigWarn] Entidad sin rig adjunto', e.kind, e);
+  }
+
+  function overlap(a, b) {
+    if (!a || !b) return false;
+    return Math.abs((a.x || 0) - (b.x || 0)) * 2 < (a.w || 0) + (b.w || 0)
+      && Math.abs((a.y || 0) - (b.y || 0)) * 2 < (a.h || 0) + (b.h || 0);
+  }
+
+  function spawnTrap(x, y, opts = {}) {
+    const trap = {
+      id: root.genId ? root.genId() : `trap-${Date.now().toString(36)}`,
+      kind: ENT.JEFE_TRAP,
+      role: 'hazard',
+      populationType: 'hazards',
+      x,
+      y,
+      w: 24,
+      h: 24,
+      vx: 0,
+      vy: 0,
+      solid: false,
+      isFloorTile: true,
+      isHazard: true,
+      dead: false,
+      touchDamage: opts.touchDamage ?? 0.25,
+      slow: 0.45,
+      ttl: opts.ttl ?? 12,
+      puppet: { rig: 'puddle_wet', z: HERO_Z - 1, skin: 'default' },
+      update(dt) {
+        if (this.dead) return;
+        this.ttl -= dt;
+        if (this.ttl <= 0) { this.dead = true; this._remove = true; return; }
+        const player = G.player;
+        if (!player || player.dead) return;
+        if (!overlap(this, player)) return;
+        if (root.DamageAPI?.applyTouch) {
+          root.DamageAPI.applyTouch(this, player);
+        }
+        if (typeof player.slowTimer === 'number') {
+          player.slowTimer = Math.max(player.slowTimer, 1.2);
+        } else {
+          player.slowTimer = 1.2;
+        }
+      }
+    };
+    attachRig(trap);
+    ensureCollections();
+    G.entities.push(trap);
+    return trap;
+  }
+
+  function spawnYogurtBomb(owner, target) {
+    if (!owner) return null;
+    const angle = target ? Math.atan2((target.y || 0) - owner.y, (target.x || 0) - owner.x) : owner.dir || 0;
+    const speed = 140;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+    const proj = {
+      id: root.genId ? root.genId() : `yog-${Date.now().toString(36)}`,
+      kind: ENT.YOGURT_BOMB,
+      role: 'projectile',
+      populationType: 'hazards',
+      x: owner.x,
+      y: owner.y,
+      w: 12,
+      h: 12,
+      vx,
+      vy,
+      dir: angle,
+      solid: false,
+      dead: false,
+      ttl: 2.2,
+      touchDamage: 0.75,
+      puppet: { rig: 'projectile_yogurt', z: HERO_Z + 1, skin: 'default' },
+      update(dt) {
+        if (this.dead) return;
+        this.ttl -= dt;
+        if (this.ttl <= 0) { this.dead = true; this._remove = true; return; }
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        const player = G.player;
+        if (player && !player.dead && overlap(this, player)) {
+          if (root.DamageAPI?.applyTouch) root.DamageAPI.applyTouch(this, player);
+          spawnTrap(this.x, this.y, { ttl: 6, touchDamage: 0.25 });
+          this.dead = true;
+          this._remove = true;
+        }
+      }
+    };
+    attachRig(proj);
+    ensureCollections();
+    G.entities.push(proj);
+    G.movers.push(proj);
+    return proj;
+  }
+
+  function findEntitiesBy(fn) {
+    const list = G.entities || [];
+    const out = [];
+    for (const e of list) {
+      if (!e || e.dead) continue;
+      if (fn(e)) out.push(e);
     }
+    return out;
   }
 
-  // Registrar grupo lógico
-  if (window.EntityGroupsAPI && EntityGroupsAPI.add) {
-    EntityGroupsAPI.add(e, cfg.group || 'generic');
-  }
-
-  // Insertar en la lista global
-  if (window.G && G.entities) {
-    G.entities.push(e);
-  }
-
-  return e;
-}
-
-// Alias para compatibilidad con plantillas anteriores
-const createPhysicalEntity = createGameEntity;
-
-// ---------------------------------------------------------------------------
-// 3. IA genérica: idle / patrulla / persecución
-// ---------------------------------------------------------------------------
-
-/**
- * IA genérica que sirve para:
- *  - Humanos hostiles / neutrales
- *  - Animales (con pequeños ajustes en speed y sightRadius)
- *  - Algunos carros con “vida propia”, si se quisiera
- *
- * Puertas, ascensores y hazards normalmente usarán una aiUpdate custom,
- * pero pueden seguir reutilizando partes de esta lógica si interesa.
- */
-function baseAiUpdate(e, dt) {
-  if (e.dead || !e.ai?.enabled) {
-    if (e.dead) e.state = 'dead';
-    return;
-  }
-
-  const player = G && G.player;
-  if (!player) {
-    aiIdle(e, dt);
-    return;
-  }
-
-  const dx = player.x - e.x;
-  const dy = player.y - e.y;
-  const distSq = dx * dx + dy * dy;
-  const sightSq = e.ai.sightRadius * e.ai.sightRadius;
-
-  const seesPlayer = distSq <= sightSq;
-
-  // Cambio de modo
-  if (seesPlayer) {
-    e.ai.mode = 'chase';
-    e.ai._loseSightTimer = 0;
-  } else if (e.ai.mode === 'chase') {
-    e.ai._loseSightTimer += dt;
-    if (e.ai._loseSightTimer >= e.ai.loseSightTime) {
-      e.ai.mode = e.ai.patrolPoints ? 'patrol' : 'idle';
+  function findCartTarget(e, player) {
+    if (!player) return null;
+    const carts = findEntitiesBy(ent => (ent._tag === 'cart' || String(ent.kind || '').toLowerCase().includes('cart')) && !ent.dead);
+    let best = null;
+    let bestScore = Infinity;
+    for (const cart of carts) {
+      const dx = player.x - cart.x;
+      const dy = player.y - cart.y;
+      const aligned = Math.abs(dx) < TILE * 0.6 || Math.abs(dy) < TILE * 0.6;
+      if (!aligned) continue;
+      const distCart = Math.hypot(cart.x - e.x, cart.y - e.y);
+      if (distCart < bestScore) { bestScore = distCart; best = cart; }
     }
-  } else if (e.ai.mode === 'idle' && e.ai.patrolPoints) {
-    e.ai.mode = 'patrol';
+    return best;
   }
 
-  switch (e.ai.mode) {
-    case 'chase':
-      aiChasePlayer(e, dt, dx, dy, Math.sqrt(distSq));
-      break;
-    case 'patrol':
-      aiPatrol(e, dt);
-      break;
-    case 'idle':
-    default:
-      aiIdle(e, dt);
-      break;
+  function findLootTarget(e) {
+    return findEntitiesBy(ent => {
+      const kind = String(ent.kind || '').toLowerCase();
+      if (kind.includes('coin') || kind.includes('money') || kind.includes('loot') || kind.includes('food')) return true;
+      return ent.role === 'loot';
+    }).sort((a, b) => (Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y)))[0] || null;
   }
 
-  // Diálogo automático
-  if (e.dialog.enabled && e.dialog.autoChatter) {
-    e.dialog._autoChatterTimer -= dt;
-    if (e.dialog._autoChatterTimer <= 0) {
-      e.dialog._autoChatterTimer = e.dialog.autoChatterCooldown;
-      triggerDialog(e);
-    }
-  }
-
-  // Ataque por contacto (enemigos / carros hostiles / hazards densos)
-  handleTouchAttack(e, player, dt);
-}
-
-// --- Subrutinas IA base -----------------------------------------------------
-
-function aiIdle(e, dt) {
-  e.vx = 0;
-  e.vy = 0;
-  e.isMoving = false;
-  if (e.state !== 'idle' && e.state !== 'talk') {
-    e.state = 'idle';
-  }
-}
-
-function aiPatrol(e, dt) {
-  const pts = e.ai.patrolPoints;
-  if (!pts || !pts.length) {
-    aiIdle(e, dt);
-    return;
-  }
-
-  const target = pts[e.ai.patrolIndex];
-  const dx = target.x - e.x;
-  const dy = target.y - e.y;
-  const dist = Math.hypot(dx, dy);
-
-  if (dist < 4) {
-    e.ai._patrolTimer += dt;
-    e.vx = 0;
-    e.vy = 0;
-    e.isMoving = false;
-    e.state = 'idle';
-    if (e.ai._patrolTimer >= e.ai.patrolWait) {
-      e.ai._patrolTimer = 0;
-      e.ai.patrolIndex = (e.ai.patrolIndex + 1) % pts.length;
-    }
-    return;
-  }
-
-  const speed = e.ai.speed;
-  e.vx = (dx / dist) * speed;
-  e.vy = (dy / dist) * speed;
-  e.isMoving = true;
-
-  updateWalkStateFromVelocity(e);
-}
-
-function aiChasePlayer(e, dt, dx, dy, dist) {
-  const speed = e.ai.speed;
-
-  if (dist > 0) {
+  function stepToward(e, target, speedMul = 1) {
+    if (!target) { e.vx = 0; e.vy = 0; return; }
+    const dx = target.x - e.x;
+    const dy = target.y - e.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const speed = (e.maxSpeed || 90) * speedMul;
     e.vx = (dx / dist) * speed;
     e.vy = (dy / dist) * speed;
-    e.isMoving = true;
-  } else {
-    e.vx = 0;
-    e.vy = 0;
-    e.isMoving = false;
+    e.dir = Math.atan2(dy, dx);
   }
 
-  // Si estamos muy cerca, ralentizar para golpear
-  if (dist < 20) {
-    e.vx *= 0.3;
-    e.vy *= 0.3;
-    e.isAttacking = true;
-    e.state = 'attack';
-  } else {
-    e.isAttacking = false;
-    updateWalkStateFromVelocity(e);
+  function idleState(e) {
+    e.vx = 0; e.vy = 0; e.state = 'idle'; e.isMoving = false;
+    e.isAttacking = false; e.isPushing = false; e.isEating = false;
   }
-}
 
-/**
- * Determina animación de paseo (horizontal/vertical) + facing.
- * Es común para héroes, NPC, animales, carros con rig propio, etc.
- */
-function updateWalkStateFromVelocity(e) {
-  if (Math.abs(e.vx) < 0.01 && Math.abs(e.vy) < 0.01) {
-    e.isMoving = false;
-    if (!e.isAttacking && !e.isTalking && !e.isEating && !e.dead) {
-      e.state = 'idle';
+  function handleTouchDamage(e, player, dt) {
+    if (!player || e._touchCD > 0 || e.dead) return;
+    if (!overlap(e, player)) return;
+    e._touchCD = e.touchCooldown || 0.9;
+    if (root.DamageAPI?.applyTouch) root.DamageAPI.applyTouch(e, player);
+  }
+
+  function useNearestElevator(e, player) {
+    const elevators = Array.isArray(G.elevators) ? G.elevators : findEntitiesBy(ent => String(ent.kind || '').toLowerCase().includes('elevator'));
+    if (!elevators.length || !player) return false;
+    const far = Math.hypot(player.x - e.x, player.y - e.y) > TILE * 10;
+    if (!far) return false;
+    let best = null;
+    let bestDist = Infinity;
+    for (const el of elevators) {
+      const d = Math.hypot(el.x - e.x, el.y - e.y);
+      if (d < bestDist) { bestDist = d; best = el; }
     }
-    return;
-  }
-
-  e.isMoving = true;
-
-  if (Math.abs(e.vx) > Math.abs(e.vy)) {
-    e.state = 'walk_h';
-    e.facing = e.vx >= 0 ? 'right' : 'left';
-  } else {
+    if (!best) return false;
+    stepToward(e, best, 0.85);
     e.state = 'walk_v';
-    e.facing = e.vy >= 0 ? 'down' : 'up';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 4. Física base: integración con PhysicsAPI
-// ---------------------------------------------------------------------------
-
-/**
- * Física por defecto: delega en PhysicsAPI.moveEntity(e, dt)
- * que es quien resuelve colisiones y rebotes (carros tipo pinball).
- * Si no existe PhysicsAPI, hace un fallback simple x += vx*dt, y += vy*dt.
- */
-function basePhysicsUpdate(e, dt) {
-  if (e.dead || e.isTriggerOnly) return;
-
-  if (window.PhysicsAPI && PhysicsAPI.moveEntity) {
-    PhysicsAPI.moveEntity(e, dt);
-  } else {
-    e.x += e.vx * dt;
-    e.y += e.vy * dt;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 5. Ataque por contacto + DamageAPI
-// ---------------------------------------------------------------------------
-
-/**
- * Comprueba solapamiento AABB contra el jugador y aplica daño de contacto
- * usando DamageAPI.applyTouch cuando corresponde.
- */
-function handleTouchAttack(e, player, dt) {
-  if (!e.touchDamage || e.dead || !player || player.dead) return;
-
-  if (e._touchCD > 0) {
-    e._touchCD -= dt;
-    return;
+    if (bestDist < TILE * 0.6 && typeof best.onUse === 'function') {
+      best.onUse(best, e);
+      e.useCooldown = 3;
+    }
+    return true;
   }
 
-  if (overlap(e, player)) {
-    e._touchCD = e.touchCooldown;
+  function jefeServicioAiUpdate(e, dt = 0) {
+    if (!e || e.dead) { return; }
+    if (e._culled) return;
 
-    if (window.DamageAPI && DamageAPI.applyTouch) {
-      DamageAPI.applyTouch(e, player);
-    } else {
-      // Fallback mínimo (no recomendado, pero evita crasheos)
-      player.health = Math.max(0, player.health - e.touchDamage * HP_PER_HEART);
+    e.trapCD = Math.max(0, (e.trapCD || 0) - dt);
+    e.yogurtCD = Math.max(0, (e.yogurtCD || 0) - dt);
+    e.lootCD = Math.max(0, (e.lootCD || 0) - dt);
+    e.cartCD = Math.max(0, (e.cartCD || 0) - dt);
+    e._touchCD = Math.max(0, (e._touchCD || 0) - dt);
+    e.stateTimer = (e.stateTimer || 0) + dt;
+
+    const player = G.player;
+    const dist = player ? Math.hypot(player.x - e.x, player.y - e.y) : Infinity;
+
+    if (useNearestElevator(e, player)) { e.aiState = 'use_elevator'; handleTouchDamage(e, player, dt); return; }
+
+    if (player && !player.dead) {
+      const cart = e.cartCD <= 0 ? findCartTarget(e, player) : null;
+      if (cart) {
+        e.aiState = 'use_cart';
+        e.isPushing = true;
+        e.isAttacking = false;
+        const pushPoint = { x: cart.x - Math.cos(Math.atan2(player.y - cart.y, player.x - cart.x)) * 12, y: cart.y - Math.sin(Math.atan2(player.y - cart.y, player.x - cart.x)) * 12 };
+        stepToward(e, pushPoint, 0.9);
+        e.state = 'push';
+        if (Math.hypot(pushPoint.x - e.x, pushPoint.y - e.y) < 10) {
+          cart.vx = (player.x - cart.x) * 0.6;
+          cart.vy = (player.y - cart.y) * 0.6;
+          cart._tag = cart._tag || 'cart';
+          e.cartCD = 6;
+        }
+        handleTouchDamage(e, player, dt);
+        return;
+      }
+
+      if (dist > TILE * 4 && dist < TILE * 7 && e.yogurtCD <= 0) {
+        e.aiState = 'throw_yogurt';
+        e.vx = 0; e.vy = 0; e.isAttacking = true; e.state = 'attack';
+        spawnYogurtBomb(e, player);
+        e.yogurtCD = 3.5;
+        handleTouchDamage(e, player, dt);
+        return;
+      }
+
+      if (dist <= TILE * 3) {
+        e.aiState = 'chase';
+        e.isPushing = false; e.isAttacking = false;
+        stepToward(e, player, 0.9);
+        e.state = Math.abs(e.vx) > Math.abs(e.vy) ? 'walk_h' : 'walk_v';
+        handleTouchDamage(e, player, dt);
+        return;
+      }
     }
 
-    playEntityAudio(e, 'attack');
-    if (e.onAttackHit) e.onAttackHit(e, player);
-  }
-}
+    if (e.trapCD <= 0 && (!player || dist > TILE * 2.5)) {
+      e.aiState = 'set_trap';
+      e.vx = 0; e.vy = 0; e.state = 'push';
+      spawnTrap(e.x, e.y, { ttl: 10 });
+      e.trapCD = 8;
+      return;
+    }
 
-// ---------------------------------------------------------------------------
-// 6. Daño y muertes (daño directo, fuego, aplastamiento…)
-// ---------------------------------------------------------------------------
+    if (e.lootCD <= 0) {
+      const loot = findLootTarget(e);
+      if (loot) {
+        e.aiState = 'loot';
+        stepToward(e, loot, 0.7);
+        e.state = Math.abs(e.vx) > Math.abs(e.vy) ? 'walk_h' : 'walk_v';
+        if (Math.hypot(loot.x - e.x, loot.y - e.y) < TILE * 0.6) {
+          e.isEating = true;
+          e.state = 'eat';
+          e.health = Math.min(e.maxHealth || e.health, (e.health || 0) + HP_PER_HEART * 0.5);
+          loot._remove = true; loot.dead = true;
+          e.lootCD = 6;
+        }
+        handleTouchDamage(e, player, dt);
+        return;
+      }
+    }
 
-/**
- * Llamada desde DamageAPI o lógica de hazards cuando esta entidad recibe daño.
- *
- * @param {Object} e      Entidad
- * @param {Number} amount Daño en “hp” internos (no en corazones)
- * @param {String} cause  'damage' | 'fire' | 'crush' | 'script'
- */
-function baseOnDamage(e, amount, cause) {
-  if (e.dead) return;
-
-  if (cause === 'fire' && e.fireImmune) {
-    return;
-  }
-
-  e.health -= amount;
-  e.hearts = e.health / HP_PER_HEART;
-
-  if (e.health <= 0) {
-    e.health = 0;
-    e.hearts = 0;
-    e.deathCause = cause || 'damage';
-    baseOnDeath(e);
-  } else {
-    playEntityAudio(e, 'hit');
-    // Podríamos añadir animación de “hit flash” via rig
-  }
-}
-
-/**
- * Muerte unificada para cualquier entidad: humanos, animales, carros,
- * puertas quemadas, etc. Respeta deathCause.
- */
-function baseOnDeath(e) {
-  if (e.dead) return;
-
-  e.dead = true;
-  e.vx = 0;
-  e.vy = 0;
-  e.isMoving = false;
-  e.state = 'dead';
-
-  // Score
-  if (e.scoreOnDeath && window.ScoreAPI && ScoreAPI.add) {
-    ScoreAPI.add(e.scoreOnDeath, 'kill', e);
+    e.aiState = 'patrol';
+    const patrolRadius = TILE * 2;
+    if (!e.patrolTarget || Math.hypot(e.patrolTarget.x - e.x, e.patrolTarget.y - e.y) < 6) {
+      e.patrolTarget = { x: e.spawnX + (Math.random() - 0.5) * patrolRadius, y: e.spawnY + (Math.random() - 0.5) * patrolRadius };
+    }
+    stepToward(e, e.patrolTarget, 0.4);
+    e.state = Math.abs(e.vx) > Math.abs(e.vy) ? 'walk_h' : 'walk_v';
+    e.isPushing = false; e.isAttacking = false; e.isEating = false;
+    handleTouchDamage(e, player, dt);
   }
 
-  playEntityAudio(e, 'death');
+  function spawnJefeServicio(x, y, opts = {}) {
+    ensureCollections();
+    const e = {
+      id: root.genId ? root.genId() : `jefe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: ENT.JEFE_SERVICIO,
+      kindName: 'jefe_servicio',
+      populationType: 'humans',
+      role: 'npc',
+      x,
+      y,
+      spawnX: x,
+      spawnY: y,
+      w: 24,
+      h: 24,
+      vx: 0,
+      vy: 0,
+      dir: 0,
+      solid: true,
+      health: opts.health ?? 7 * HP_PER_HEART,
+      maxHealth: opts.maxHealth ?? 7 * HP_PER_HEART,
+      touchDamage: opts.touchDamage ?? 1,
+      touchCooldown: opts.touchCooldown ?? 0.9,
+      _touchCD: 0,
+      fireImmune: false,
+      dead: false,
+      deathCause: null,
+      state: 'idle',
+      aiState: 'idle',
+      maxSpeed: 95,
+      trapCD: 2.5,
+      yogurtCD: 1.2,
+      lootCD: 1.5,
+      cartCD: 0,
+      puppet: { rig: 'npc_jefe_servicio', z: HERO_Z, skin: 'default' },
+      aiUpdate: jefeServicioAiUpdate,
+      update(dt) { jefeServicioAiUpdate(this, dt); },
+      onDeath() {
+        this.dead = true;
+        try { root.SpawnerAPI?.notifyDeath?.(this, { populationType: this.populationType || 'humans', kind: ENT.JEFE_SERVICIO }); } catch (_) {}
+      }
+    };
 
-  // Si hay lógica específica (carro que explota, puerta quemada, boss curado...)
-  if (typeof e.onDeath === 'function' && e.onDeath !== baseOnDeath) {
-    // Evitar recursión si se ha sobrescrito
-    e.onDeath(e);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 7. Comer / drenar vida (mosquitos, ratas, pacientes furiosos…)
-// ---------------------------------------------------------------------------
-
-function baseOnEat(e, target) {
-  if (e.dead) return;
-  e.isEating = true;
-  e.state = 'eat';
-
-  if (target && !target.dead && window.DamageAPI && DamageAPI.applySpecial) {
-    DamageAPI.applySpecial(e, target, { type: 'eat' });
-  }
-
-  // Curación ligera opcional
-  e.health = Math.min(e.maxHealth, e.health + 0.2 * HP_PER_HEART);
-  e.hearts = e.health / HP_PER_HEART;
-
-  playEntityAudio(e, 'eat');
-}
-
-// ---------------------------------------------------------------------------
-// 8. Ataque cuerpo a cuerpo con éxito (hook para FX)
-// ---------------------------------------------------------------------------
-
-function baseOnAttackHit(e, target) {
-  // Aquí se pueden lanzar partículas, chispas, etc.
-  // target ya ha recibido daño por DamageAPI.
-}
-
-// ---------------------------------------------------------------------------
-// 9. Diálogo genérico
-// ---------------------------------------------------------------------------
-
-function baseOnTalk(e) {
-  if (!e.dialog.enabled || !e.dialog.lines.length) return;
-  triggerDialog(e);
-}
-
-function triggerDialog(e) {
-  const lineId = e.dialog.lines[e.dialog.currentLineIndex % e.dialog.lines.length];
-  e.dialog.currentLineIndex++;
-
-  e.state = 'talk';
-  e.isTalking = true;
-
-  if (window.DialogAPI && DialogAPI.showForEntity) {
-    DialogAPI.showForEntity(e, lineId);
+    attachRig(e);
+    G.entities.push(e);
+    G.npcs.push(e);
+    G.movers.push(e);
+    jefeList.push(e);
+    if (DEBUG_NPC) console.log('[JefeServicio] creado en', x, y, 'state', e.state);
+    return e;
   }
 
-  playEntityAudio(e, 'talk');
-}
+  function spawnJefeServicioAt(tx, ty, opts = {}) {
+    const pos = gridToWorldCenter(tx, ty);
+    return spawnJefeServicio(pos.x, pos.y, opts);
+  }
 
-// ---------------------------------------------------------------------------
-// 10. Audio utilitario
-// ---------------------------------------------------------------------------
+  const JefeServicioAPI = {
+    spawn: (x, y, opts = {}) => spawnJefeServicio(x, y, opts),
+    spawnAt: (tx, ty, opts = {}) => spawnJefeServicioAt(tx, ty, opts),
+    spawnFromAscii: (tx, ty, def) => spawnJefeServicioAt(tx, ty, def || {}),
+    aiUpdate: jefeServicioAiUpdate,
+    update(dt = 0) {
+      for (const j of jefeList) jefeServicioAiUpdate(j, dt);
+    }
+  };
 
-function playEntityAudio(e, key) {
-  const id = e.audioProfile?.[key];
-  if (!id || !window.AudioAPI || !AudioAPI.play) return;
-  AudioAPI.play(id, { x: e.x, y: e.y });
-}
+  root.JefeServicioAPI = JefeServicioAPI;
+  root.Entities = root.Entities || {};
+  root.Entities.JefeServicio = JefeServicioAPI;
+  root.Entities.spawnJefeServicioFromAscii = (tx, ty, def) => spawnJefeServicioAt(tx, ty, def || {});
+})(window);
 
-/* ============================================================================
- * NOTAS DE USO
- * ----------------------------------------------------------------------------
- * 1) Carros tipo pinball (comida, medicinas, urgencias):
- *
- *    function createCartFood(x, y) {
- *      return createGameEntity({
- *        kind: ENT.CART_FOOD,
- *        role: 'cart',
- *        populationType: 'carts',
- *        group: 'carts',
- *        x, y,
- *        rig: 'cart_food_pinball',
- *        solid: true,
- *        touchDamage: 1.0,   // 1 corazón
- *        hearts: 4,
- *        data: {
- *          cartType: 'medium',
- *          bounceMax: 4,
- *        },
- *        ai: { enabled: false }, // se mueven solo por física
- *      });
- *    }
- *
- * 2) Puertas:
- *
- *    function createDoorNormal(x, y) {
- *      return createGameEntity({
- *        kind: ENT.DOOR_NORMAL,
- *        role: 'door',
- *        populationType: 'none',
- *        group: 'doors',
- *        x, y,
- *        rig: 'door_hospital',
- *        solid: true,
- *        hearts: 3,
- *        audioProfile: { open: 'door_open', close: 'door_close' },
- *        ai: { enabled: false },
- *        onInteract(e, hero) { openDoorNormal(e, hero); },
- *      });
- *    }
- *
- * 3) Hazards de suelo (fuego, charco):
- *
- *    function createWaterPuddle(x, y) {
- *      return createGameEntity({
- *        kind: ENT.WATER_PUDDLE,
- *        role: 'hazard_water',
- *        populationType: 'hazards',
- *        group: 'hazards',
- *        x, y,
- *        rig: 'puddle_wet',
- *        solid: false,
- *        isFloorTile: true,
- *        isHazard: true,
- *        touchDamage: 0,      // daño 0, pero resbalón en physics.plugin.js
- *        ai: { enabled: false },
- *      });
- *    }
- *
- * 4) Humanos / animales:
- *
- *    function createRat(x, y) {
- *      return createGameEntity({
- *        kind: ENT.RAT,
- *        role: 'animal',
- *        populationType: 'animals',
- *        group: 'animals',
- *        x, y,
- *        rig: 'enemy_rat',
- *        solid: true,
- *        hearts: 1,
- *        touchDamage: 0.5,
- *        ai: {
- *          enabled: true,
- *          speed: 80,
- *          sightRadius: 200,
- *        },
- *      });
- *    }
- *
- * 5) Loop principal (pseudo):
- *      for (const e of G.entitiesActivas) {
- *        e.aiUpdate(e, dt);
- *        e.physicsUpdate(e, dt);
- *      }
- *      PuppetAPI.update(dt);
- *      PuppetAPI.draw(ctx, cam);
- * ==========================================================================*/
+// Implementación del jefe de servicio: IA, trampas, yogures y wiring ASCII.
