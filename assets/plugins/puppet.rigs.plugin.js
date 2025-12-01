@@ -355,4 +355,180 @@
       ctx.restore();
     }
   });
+
+  // Rig chibi enfermera sexy (idle/walk/talk/attack/deaths)
+  PuppetAPI.registerRig('npc_nurse_sexy', {
+    create(host) {
+      return {
+        rigName: 'npc_nurse_sexy',
+        t: 0,
+        anim: 'idle',
+        phaseWalk: 0,
+        bounceIdle: 0,
+        mouthOpen: 0,
+        talkT: 0,
+        deathProgress: 0,
+        flipX: false,
+      };
+    },
+    update(st, e, dt = 0) {
+      if (!st || !e) return;
+      st.t += dt;
+      const moving = Math.hypot(e.vx || 0, e.vy || 0) > 4;
+      st.flipX = (e.vx || 0) < 0;
+      let anim = e.state || 'idle';
+      if (e.dead) {
+        anim = `death_${e.deathCause || 'damage'}`;
+        st.deathProgress = Math.min(1, st.deathProgress + dt * 0.8);
+      } else if (anim === 'idle' && moving) {
+        anim = Math.abs(e.vx) > Math.abs(e.vy) ? 'walk_h' : 'walk_v';
+      }
+      st.anim = anim;
+      st.phaseWalk += dt * 7 * (moving ? 1 : 0);
+      st.bounceIdle = Math.sin(st.t * 3) * 0.8;
+      st.mouthOpen = anim === 'talk' ? 0.4 + 0.2 * Math.sin(st.t * 6) : 0.12;
+      st.talkT = anim === 'talk' ? (st.talkT + dt) : Math.max(0, st.talkT - dt);
+    },
+    draw(ctx, cam, e, st) {
+      if (!ctx || !e || e._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, e, cam);
+      const zoom = (camera.zoom || 1) * (e.puppet?.scale || e.rig?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y + (st?.bounceIdle || 0));
+      ctx.scale(zoom, zoom);
+      if (st?.flipX) ctx.scale(-1, 1);
+      if (st?.anim?.startsWith('death_damage')) ctx.rotate(0.6);
+      if (st?.anim?.startsWith('death_crush')) ctx.scale(1.1, 0.45);
+
+      const walkSwing = Math.sin(st?.phaseWalk || 0);
+      const attackKick = st?.anim === 'attack' ? 1.5 : 0;
+      const darken = st?.anim === 'death_fire';
+      const baseColor = darken ? '#b3b3b3' : '#ffffff';
+
+      // Piernas (zuecos rojos)
+      ctx.save();
+      ctx.translate(0, 10);
+      ctx.fillStyle = '#f44336';
+      ctx.beginPath();
+      ctx.ellipse(-5 + walkSwing * 1.5, 2, 4, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(5 - walkSwing * 1.5, 2, 4, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Bata / cuerpo
+      ctx.save();
+      ctx.translate(0, 2 - (st?.anim === 'attack' ? 1.5 : 0));
+      ctx.scale(1 + attackKick * 0.02, 1);
+      ctx.fillStyle = baseColor;
+      ctx.beginPath();
+      ctx.ellipse(0, 2, 10, 10, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = darken ? '#9e9e9e' : '#ffd1dc';
+      ctx.beginPath();
+      ctx.ellipse(0, -2, 8, 6, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos
+      ctx.save();
+      ctx.strokeStyle = darken ? '#777' : '#ffb3c1';
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-8, -2 + walkSwing * 1.2);
+      ctx.lineTo(-12, 2 + walkSwing * 1.2);
+      ctx.moveTo(8, -2 - walkSwing * 1.2);
+      ctx.lineTo(12 + attackKick * 1.5, -6 - attackKick * 0.5);
+      ctx.stroke();
+      ctx.restore();
+
+      // Cabeza
+      ctx.save();
+      ctx.translate(0, -10);
+      ctx.fillStyle = darken ? '#b0a79f' : '#ffdec2';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 11, 10, 0, 0, TAU);
+      ctx.fill();
+
+      // Pelo
+      ctx.fillStyle = darken ? '#6d5f54' : '#6b4b33';
+      ctx.beginPath();
+      ctx.ellipse(-6, 4, 9, 10, 0.5, 0, TAU);
+      ctx.fill();
+
+      // Ojos
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(-4, -2, 3.5, 4, 0, 0, TAU);
+      ctx.ellipse(4, -2, 3.5, 4, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#3c2f2f';
+      ctx.beginPath();
+      ctx.ellipse(-4 + walkSwing * 0.4, -2, 1.5, 2.2, 0, 0, TAU);
+      ctx.ellipse(4 + walkSwing * -0.4, -2, 1.5, 2.2, 0, 0, TAU);
+      ctx.fill();
+
+      // Boca
+      ctx.strokeStyle = '#a23c3c';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      const mouth = st?.mouthOpen || 0.12;
+      ctx.arc(0, 3, 2 + mouth * 3, 0, Math.PI, false);
+      ctx.stroke();
+      ctx.restore();
+
+      // Gorro con cruz roja
+      ctx.save();
+      ctx.translate(0, -20);
+      ctx.fillStyle = darken ? '#8a8a8a' : '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(-8, -4, 16, 8, 3);
+      ctx.fill();
+      ctx.fillStyle = '#e53935';
+      ctx.fillRect(-2, -3, 4, 6);
+      ctx.fillRect(-5, -1, 10, 2);
+      ctx.restore();
+
+      // Humo muerte fuego
+      if (st?.anim === 'death_fire') {
+        ctx.save();
+        ctx.translate(0, -26);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#5d5d5d';
+        ctx.beginPath();
+        ctx.moveTo(-2, 0); ctx.lineTo(0, -6); ctx.lineTo(2, 0);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+  });
+
+  // Rig simple para jeringa disparada por enfermera sexy
+  PuppetAPI.registerRig('proj_nurse_syringe', {
+    create() { return { t: 0 }; },
+    update(st, e, dt = 0) { st.t += dt; },
+    draw(ctx, cam, e, st) {
+      if (!ctx || !e || e._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, e, cam);
+      const zoom = (camera.zoom || 1) * (e.puppet?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+      ctx.rotate(e.dir || 0);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#e53935';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(-5, -2, 10, 4, 1.5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(5, 0); ctx.lineTo(9, 0); ctx.lineTo(7, -2); ctx.closePath();
+      ctx.fillStyle = '#c62828';
+      ctx.fill();
+      ctx.restore();
+    }
+  });
 })();
