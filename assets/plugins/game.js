@@ -728,6 +728,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       },
       npc_rat(tx, ty, def) { return ENTITY_FACTORIES.rat(tx, ty, def); },
       npc_mosquito(tx, ty, def) { return ENTITY_FACTORIES.mosquito(tx, ty, def); },
+      npc_enfermera_sexy(tx, ty, def) {
+        if (window.Entities?.NurseSexy?.spawnFromAscii) return window.Entities.NurseSexy.spawnFromAscii(tx, ty, def || {});
+        return null;
+      },
+      enfermera_sexy(tx, ty, def) { return ENTITY_FACTORIES.npc_enfermera_sexy(tx, ty, def); },
     };
 
     const spawnFromKind = (def, tx, ty, ch) => {
