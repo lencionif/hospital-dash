@@ -713,7 +713,21 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
           G.roomLights.push({ x: (p.x || wx) + TILE / 2, y: (p.y || wy) + TILE / 2, r: 5.5 * TILE, baseA: 0.28 });
         }
         return p;
-      }
+      },
+      mosquito(tx, ty, def) {
+        // ASCII 'm' -> spawn de mosquitos
+        if (window.Entities?.spawnMosquitoFromAscii) return window.Entities.spawnMosquitoFromAscii(tx, ty, def || {});
+        if (window.Entities?.spawnMosquitoAtTile) return window.Entities.spawnMosquitoAtTile(tx, ty, def || {});
+        return null;
+      },
+      rat(tx, ty, def) {
+        // ASCII 'r' -> spawn de ratas
+        if (window.Entities?.spawnRatFromAscii) return window.Entities.spawnRatFromAscii(tx, ty, def || {});
+        if (window.Entities?.spawnRatAtTile) return window.Entities.spawnRatAtTile(tx, ty, def || {});
+        return null;
+      },
+      npc_rat(tx, ty, def) { return ENTITY_FACTORIES.rat(tx, ty, def); },
+      npc_mosquito(tx, ty, def) { return ENTITY_FACTORIES.mosquito(tx, ty, def); },
     };
 
     const spawnFromKind = (def, tx, ty, ch) => {
