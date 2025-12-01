@@ -347,6 +347,114 @@
     },
   });
 
+  // Rig específico para la TCAE despistada (no comparte implementación con otros NPC humanos).
+  PuppetAPI.registerRig('npc_tcae', {
+    create(host) {
+      return { t: 0, walkPhase: 0, bob: 0, mouthPhase: 0, pushPhase: 0, deathT: 0, host };
+    },
+    update(st, e, dt) {
+      if (!st || !e || e._culled) return;
+      st.t += dt;
+      const mvx = Math.abs(e.vx || 0);
+      const mvy = Math.abs(e.vy || 0);
+      const movingH = mvx > mvy && mvx > 0.01;
+      const movingV = mvy > mvx && mvy > 0.01;
+
+      if (e.dead) {
+        st.deathT += dt;
+        return;
+      }
+      if (e.state === 'talk') st.mouthPhase += dt * 8;
+      if (e.state === 'push') st.pushPhase += dt * 10;
+
+      if (movingH || movingV) {
+        st.walkPhase += dt * 10;
+        st.bob = Math.sin(st.walkPhase) * 1.5;
+      } else {
+        st.walkPhase = 0;
+        st.bob = Math.sin(st.t * 2) * 0.5;
+      }
+    },
+    draw(ctx, cam, e, st) {
+      if (!ctx || !e || e._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, e, cam);
+      const scale = (camera?.zoom || 1) * (e.puppet?.scale || 1);
+
+      ctx.save();
+      ctx.translate(x, y + (st?.bob || 0));
+      ctx.scale(scale, scale);
+
+      const bodyW = 18;
+      const bodyH = 18;
+
+      // Piernas
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-bodyW * 0.35, 2, bodyW * 0.3, bodyH * 0.6);
+      ctx.fillRect(bodyW * 0.05, 2, bodyW * 0.3, bodyH * 0.6);
+
+      // Zuecos rosas
+      ctx.fillStyle = '#f26ba8';
+      ctx.beginPath();
+      ctx.roundRect(-bodyW * 0.4, bodyH * 0.6, bodyW * 0.35, 5, 2);
+      ctx.roundRect(bodyW * 0.05, bodyH * 0.6, bodyW * 0.35, 5, 2);
+      ctx.fill();
+
+      // Torso
+      ctx.fillStyle = '#f5f5f5';
+      ctx.beginPath();
+      ctx.roundRect(-bodyW * 0.5, -bodyH * 0.1, bodyW, bodyH * 0.8, 6);
+      ctx.fill();
+
+      // Cabeza
+      ctx.fillStyle = '#f2b48f';
+      ctx.beginPath();
+      ctx.arc(0, -bodyH * 0.4, bodyW * 0.55, 0, TAU);
+      ctx.fill();
+
+      // Pelo rizado
+      ctx.fillStyle = '#3a2618';
+      ctx.beginPath();
+      ctx.arc(-6, -bodyH * 0.5, 8, 0, TAU);
+      ctx.arc(6, -bodyH * 0.55, 8, 0, TAU);
+      ctx.arc(0, -bodyH * 0.65, 9, 0, TAU);
+      ctx.fill();
+
+      // Ojos
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-4, -bodyH * 0.45, 3, 0, TAU);
+      ctx.arc(4, -bodyH * 0.45, 3, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#3b2a20';
+      ctx.beginPath();
+      ctx.arc(-4, -bodyH * 0.45, 1.6, 0, TAU);
+      ctx.arc(4, -bodyH * 0.45, 1.6, 0, TAU);
+      ctx.fill();
+
+      // Boca
+      ctx.fillStyle = '#d46b5b';
+      const mouthOpen = e.state === 'talk' ? (Math.sin(st?.mouthPhase || 0) * 0.5 + 0.5) : 0.4;
+      ctx.beginPath();
+      ctx.ellipse(0, -bodyH * 0.35, 3.5, 2 * mouthOpen, 0, 0, TAU);
+      ctx.fill();
+
+      // Efectos de muerte
+      if (e.dead) {
+        ctx.globalAlpha = 0.8;
+        if (e.deathCause === 'crush') {
+          ctx.rotate(0.1);
+          ctx.scale(1.2, 0.3);
+        } else if (e.deathCause === 'fire') {
+          ctx.globalAlpha = 0.6;
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillRect(-bodyW * 0.6, -bodyH * 0.6, bodyW * 1.2, bodyH * 1.2);
+        }
+      }
+
+      ctx.restore();
+    },
+  });
+
   // Pequeño proyectil de yogur bomba.
   PuppetAPI.registerRig('projectile_yogurt', {
     create(host) {

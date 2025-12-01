@@ -753,6 +753,13 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         return null;
       },
       celador(tx, ty, def) { return ENTITY_FACTORIES.npc_celador(tx, ty, def); },
+      npc_tcae(tx, ty, def) {
+        if (window.Entities?.TCAE?.spawnFromAscii) return window.Entities.TCAE.spawnFromAscii(tx, ty, def || {});
+        if (window.TCAEAPI?.spawn) return window.TCAEAPI.spawn(tx, ty);
+        if (window.Entities?.spawnTcaeAtTile) return window.Entities.spawnTcaeAtTile(tx, ty, def || {});
+        return null;
+      },
+      tcae(tx, ty, def) { return ENTITY_FACTORIES.npc_tcae(tx, ty, def); },
     };
 
     const spawnFromKind = (def, tx, ty, ch) => {
