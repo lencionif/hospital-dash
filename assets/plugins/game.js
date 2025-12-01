@@ -25,6 +25,9 @@
     MOSQUITO: 7,
     DOOR: 8,
     BOSS: 9,
+    SUPERVISOR: 10,
+    PAPER_PLANE: 11,
+    PAPER_NOTE: 12,
   };
 
   const COLORS = {
@@ -728,6 +731,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       },
       npc_rat(tx, ty, def) { return ENTITY_FACTORIES.rat(tx, ty, def); },
       npc_mosquito(tx, ty, def) { return ENTITY_FACTORIES.mosquito(tx, ty, def); },
+      npc_supervisora(tx, ty, def) {
+        if (window.Entities?.Supervisor?.spawnFromAscii) return window.Entities.Supervisor.spawnFromAscii(tx, ty, def || {});
+        if (window.Entities?.spawnSupervisorFromAscii) return window.Entities.spawnSupervisorFromAscii(tx, ty, def || {});
+        return null;
+      },
       npc_enfermera_sexy(tx, ty, def) {
         if (window.Entities?.NurseSexy?.spawnFromAscii) return window.Entities.NurseSexy.spawnFromAscii(tx, ty, def || {});
         return null;

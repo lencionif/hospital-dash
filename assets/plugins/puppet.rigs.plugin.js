@@ -532,3 +532,189 @@
     }
   });
 })();
+
+  // Rig chibi para la supervisora (caricaturesca, 1 tile aprox)
+  PuppetAPI.registerRig('npc_supervisora', {
+    create(host) {
+      return { t: 0, walkPhase: 0, bob: 0, mouthPhase: 0, visualState: 'idle' };
+    },
+    update(st, e, dt = 0) {
+      if (!st || !e || e._culled) return;
+      st.t += dt;
+      let visualState = 'idle';
+      if (e.dead) visualState = `death_${e.deathCause || 'damage'}`;
+      else {
+        const movingH = Math.abs(e.vx || 0) > Math.abs(e.vy || 0) && Math.abs(e.vx || 0) > 1;
+        const movingV = Math.abs(e.vy || 0) >= Math.abs(e.vx || 0) && Math.abs(e.vy || 0) > 1;
+        if (e.state === 'attack') visualState = 'attack';
+        else if (e.state === 'eat') visualState = 'eat';
+        else if (e.state === 'talk') visualState = movingH || movingV ? (movingH ? 'walk_h' : 'walk_v') : 'talk';
+        else if (movingH) visualState = 'walk_h';
+        else if (movingV) visualState = 'walk_v';
+      }
+      st.visualState = visualState;
+      st.walkPhase += dt * ((visualState === 'walk_h' || visualState === 'walk_v') ? 10 : 4);
+      st.bob = Math.sin(st.walkPhase) * (visualState.startsWith('walk') ? 2 : 1);
+      st.mouthPhase += dt * (e.state === 'talk' ? 12 : 4);
+    },
+    draw(ctx, cam, e, st) {
+      if (!ctx || !st || !e || e._culled) return;
+      const toScreen = (camera, host) => {
+        const camUse = camera || { x: 0, y: 0, zoom: 1 };
+        const canvas = ctx.canvas || { width: 0, height: 0 };
+        return {
+          x: (host.x - camUse.x) * camUse.zoom + canvas.width * 0.5,
+          y: (host.y - camUse.y) * camUse.zoom + canvas.height * 0.5,
+          zoom: camUse.zoom || 1,
+        };
+      };
+      const screen = toScreen(cam, e);
+      const size = 24 * screen.zoom;
+      const half = size / 2;
+      const bobY = (st.bob || 0) * screen.zoom;
+      ctx.save();
+      ctx.translate(screen.x, screen.y + bobY);
+
+      // sombra
+      ctx.globalAlpha = 0.18;
+      ctx.beginPath();
+      ctx.ellipse(0, half * 0.7, half * 0.8, half * 0.4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // cuerpo bata
+      ctx.fillStyle = '#f5f5ff';
+      ctx.beginPath();
+      ctx.roundRect(-half * 0.6, -half * 0.3, half * 1.2, half * 1.1, half * 0.3);
+      ctx.fill();
+
+      // cabeza
+      ctx.fillStyle = '#ffd9a3';
+      ctx.beginPath();
+      ctx.roundRect(-half * 0.7, -half * 1.2, half * 1.4, half * 1.0, half * 0.6);
+      ctx.fill();
+
+      // pelo
+      ctx.fillStyle = '#f5c84d';
+      ctx.beginPath();
+      ctx.roundRect(-half * 0.8, -half * 1.3, half * 1.6, half * 0.7, half * 0.5);
+      ctx.fill();
+
+      // ojos
+      ctx.fillStyle = '#3b2a2a';
+      const eyeOffsetX = half * 0.25;
+      const eyeOffsetY = -half * 0.9;
+      ctx.beginPath();
+      ctx.arc(-eyeOffsetX, eyeOffsetY, half * 0.12, 0, Math.PI * 2);
+      ctx.arc(eyeOffsetX, eyeOffsetY, half * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+
+      // boca
+      const mouthOpen = (e.state === 'talk') ? (0.1 + 0.05 * Math.sin(st.mouthPhase || 0)) : 0.05;
+      ctx.fillStyle = '#b55555';
+      ctx.beginPath();
+      ctx.ellipse(0, -half * 0.6, half * 0.25, half * mouthOpen, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // brazos
+      ctx.lineWidth = 2 * screen.zoom;
+      ctx.strokeStyle = '#ffd9a3';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      if (st.visualState === 'attack') {
+        ctx.moveTo(half * 0.3, -half * 0.2);
+        ctx.lineTo(half * 0.9, -half * 0.4);
+        ctx.moveTo(-half * 0.3, -half * 0.2);
+        ctx.lineTo(-half * 0.7, -half * 0.1);
+      } else {
+        ctx.moveTo(half * 0.4, -half * 0.1);
+        ctx.lineTo(half * 0.2, half * 0.3);
+        ctx.moveTo(-half * 0.4, -half * 0.1);
+        ctx.lineTo(-half * 0.2, half * 0.3);
+      }
+      ctx.stroke();
+
+      // piernas
+      ctx.strokeStyle = '#f5f5ff';
+      ctx.beginPath();
+      const legStep = Math.sin(st.walkPhase || 0) * (st.visualState?.startsWith('walk') ? half * 0.2 : 0);
+      ctx.moveTo(-half * 0.2, half * 0.4);
+      ctx.lineTo(-half * 0.2 + legStep, half * 0.9);
+      ctx.moveTo(half * 0.2, half * 0.4);
+      ctx.lineTo(half * 0.2 - legStep, half * 0.9);
+      ctx.stroke();
+
+      // zapatos
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath();
+      ctx.roundRect(-half * 0.45, half * 0.8, half * 0.4, half * 0.25, half * 0.1);
+      ctx.roundRect(half * 0.05, half * 0.8, half * 0.4, half * 0.25, half * 0.1);
+      ctx.fill();
+
+      // overlay muerte
+      if (st.visualState && st.visualState.startsWith('death_')) {
+        ctx.globalAlpha = 0.5;
+        if (st.visualState === 'death_fire') ctx.fillStyle = 'rgba(255,80,0,0.6)';
+        else if (st.visualState === 'death_crush') { ctx.fillStyle = 'rgba(200,200,200,0.7)'; ctx.scale(1.1, 0.3); }
+        else ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.roundRect(-half, -half * 1.4, half * 2, half * 2.4, half * 0.4);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  });
+
+  // Rig simple para avión de papel
+  PuppetAPI.registerRig('hazard_paper_plane', {
+    create(host) { return { t: 0 }; },
+    update(st, host, dt = 0) { if (!st || !host || host._culled) return; st.t += dt; },
+    draw(ctx, cam, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const camUse = cam || { x: 0, y: 0, zoom: 1 };
+      const canvas = ctx.canvas || { width: 0, height: 0 };
+      const x = (host.x - camUse.x) * camUse.zoom + canvas.width * 0.5;
+      const y = (host.y - camUse.y) * camUse.zoom + canvas.height * 0.5;
+      const size = 14 * (camUse.zoom || 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(host.dir || Math.sin(st.t * 2) * 0.05);
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.4, size * 0.2);
+      ctx.lineTo(size * 0.6, 0);
+      ctx.lineTo(-size * 0.4, -size * 0.2);
+      ctx.closePath();
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#7fb3ff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+
+  // Rig plano para la nota en el suelo
+  PuppetAPI.registerRig('hazard_paper_note', {
+    create(host) { return { t: 0 }; },
+    update(st, host, dt = 0) { if (!st || !host || host._culled) return; st.t += dt; },
+    draw(ctx, cam, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const camUse = cam || { x: 0, y: 0, zoom: 1 };
+      const canvas = ctx.canvas || { width: 0, height: 0 };
+      const x = (host.x - camUse.x) * camUse.zoom + canvas.width * 0.5;
+      const y = (host.y - camUse.y) * camUse.zoom + canvas.height * 0.5;
+      const size = 12 * (camUse.zoom || 1);
+      ctx.save();
+      ctx.translate(x, y + Math.sin(st.t * 2) * 1.5);
+      ctx.rotate(Math.sin(st.t * 1.5) * 0.1);
+      ctx.fillStyle = '#f7f3e9';
+      ctx.strokeStyle = '#c1b8a1';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(-size * 0.5, -size * 0.3, size, size * 0.6, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
