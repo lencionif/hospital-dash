@@ -70,7 +70,8 @@
     'B': { key: 'bed',            kind: 'bed',            factoryKey: 'bed_empty' },
 
     // Enemigos animales
-    'm': { key: 'mosquito',       kind: 'mosquito',       factoryKey: 'npc_mosquito', isEnemy: true },
+    // ASCII 'm' -> spawn de mosquitos voladores
+    'm': { key: 'mosquito',       kind: 'mosquito',       factoryKey: 'npc_mosquito', isEnemy: true, spawn: 'spawnMosquitoFromAscii' },
     'r': { key: 'rat',            kind: 'rat',            factoryKey: 'npc_rat',      isEnemy: true },
 
     // Paciente furioso colocado directamente
