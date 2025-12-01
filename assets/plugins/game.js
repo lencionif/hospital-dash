@@ -747,6 +747,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         return null;
       },
       enfermera_sexy(tx, ty, def) { return ENTITY_FACTORIES.npc_enfermera_sexy(tx, ty, def); },
+      npc_visitor_annoying(tx, ty, def) {
+        if (window.Entities?.spawnVisitorAnnoyingFromAscii) return window.Entities.spawnVisitorAnnoyingFromAscii(tx, ty, def || {});
+        if (window.Entities?.VisitorAnnoying?.spawnFromAscii) return window.Entities.VisitorAnnoying.spawnFromAscii(tx, ty, def || {});
+        return null;
+      },
       npc_celador(tx, ty, def) {
         if (window.Entities?.spawnCeladorFromAscii) return window.Entities.spawnCeladorFromAscii(tx, ty, def || {});
         if (window.Entities?.Celador?.spawn) return window.Entities.Celador.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
