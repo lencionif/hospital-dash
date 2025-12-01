@@ -189,6 +189,140 @@
     },
   });
 
+  // Rig chibi para el guardia de seguridad hostil.
+  PuppetAPI.registerRig('npc_guard', {
+    create(e) {
+      return { t: 0, walkPhase: 0, bob: 0, flip: 1 };
+    },
+    update(st, e, dt) {
+      st.t += dt;
+      if (e.dead) {
+        e.state = 'dead';
+      } else if (Math.abs(e.vx) > Math.abs(e.vy) && Math.abs(e.vx) > 1) {
+        e.state = 'walk_h';
+        st.flip = e.vx >= 0 ? 1 : -1;
+      } else if (Math.abs(e.vy) > 1) {
+        e.state = 'walk_v';
+      } else if (e.isAttacking) {
+        e.state = 'attack';
+      } else if (e.isEating) {
+        e.state = 'eat';
+      } else if (e.isPushing) {
+        e.state = 'push';
+      } else if (e.isTalking) {
+        e.state = 'talk';
+      } else {
+        e.state = 'idle';
+      }
+      st.walkPhase += dt * (e.state === 'walk_h' || e.state === 'walk_v' ? 8 : 0);
+      st.bob = Math.sin(st.t * 4) * (e.state === 'idle' ? 1.5 : 0.5);
+    },
+    draw(ctx, cam, e, st) {
+      if (e._culled) return;
+      const toScreen = (camera, host) => {
+        const camUse = camera || { x: 0, y: 0, zoom: 1, scale: camera?.zoom };
+        const canvas = ctx?.canvas || { width: 0, height: 0 };
+        return {
+          x: (host.x - camUse.x) * (camUse.zoom || camUse.scale || 1) + canvas.width * 0.5,
+          y: (host.y - camUse.y) * (camUse.zoom || camUse.scale || 1) + canvas.height * 0.5,
+          scale: camUse.zoom || camUse.scale || 1,
+        };
+      };
+      const s = cam?.scale || cam?.zoom || 1;
+      const screen = toScreen(cam, e);
+      const cx = screen.x;
+      const cy = screen.y + st.bob;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(st.flip * s, s);
+
+      const bodyW = 18;
+      const bodyH = 22;
+      const headR = 9;
+
+      ctx.globalAlpha = 0.2;
+      ctx.beginPath();
+      ctx.ellipse(0, bodyH * 0.6, bodyW * 0.7, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      const legOffset = Math.sin(st.walkPhase) * 2;
+      ctx.fillStyle = '#222';
+      ctx.fillRect(-6 + legOffset, 6, 5, 10);
+      ctx.fillRect(1 - legOffset, 6, 5, 10);
+
+      ctx.fillStyle = '#333';
+      ctx.fillRect(-bodyW / 2, -2, bodyW, bodyH);
+
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-bodyW / 2, 5, bodyW, 3);
+
+      ctx.fillStyle = '#f4d03f';
+      ctx.fillRect(-bodyW / 2 + 2, -1, 10, 4);
+
+      ctx.save();
+      let armAngle = 0;
+      if (e.state === 'attack') armAngle = -0.7;
+      ctx.translate(bodyW / 2 - 2, 0);
+      ctx.rotate(armAngle);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(0, -2, 7, 4);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(6, -1, 6, 2);
+      ctx.restore();
+
+      ctx.save();
+      let armAngleL = 0;
+      if (e.isPushing) armAngleL = 0.6;
+      ctx.translate(-bodyW / 2 + 2, 0);
+      ctx.rotate(armAngleL);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(-7, -2, 7, 4);
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(0, -headR - 4, headR, 0, Math.PI * 2);
+      ctx.fillStyle = '#f5c08a';
+      ctx.fill();
+
+      ctx.fillStyle = '#000';
+      ctx.fillRect(-4, -headR - 4, 3, 2);
+      ctx.fillRect(1, -headR - 4, 3, 2);
+      ctx.beginPath();
+      ctx.moveTo(-4, -headR + 1);
+      ctx.lineTo(4, -headR + 1);
+      ctx.strokeStyle = '#a45';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.beginPath();
+      if (e.state === 'talk') {
+        ctx.ellipse(0, -headR + 4, 2.5, 3, 0, 0, Math.PI * 2);
+      } else if (e.state === 'attack') {
+        ctx.moveTo(-3, -headR + 4);
+        ctx.lineTo(3, -headR + 5);
+      } else {
+        ctx.moveTo(-3, -headR + 4);
+        ctx.quadraticCurveTo(0, -headR + 6, 3, -headR + 4);
+      }
+      ctx.strokeStyle = '#733';
+      ctx.stroke();
+
+      if (e.dead) {
+        ctx.globalAlpha = 0.8;
+        if (e.deathCause === 'crush') {
+          ctx.setTransform(1, 0, 0, 0.3, cx, cy + 6);
+        } else if (e.deathCause === 'fire') {
+          ctx.globalCompositeOperation = 'multiply';
+        } else {
+          ctx.rotate(-0.2);
+        }
+      }
+      ctx.restore();
+    },
+  });
+
   // Rig chibi para el jefe de servicio: barriga prominente y bata blanca.
   PuppetAPI.registerRig('npc_jefe_servicio', {
     create(host) {

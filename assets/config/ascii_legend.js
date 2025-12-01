@@ -13,7 +13,7 @@
   //   Enemigos/otros: 'm' mosquito, 'r' rata, 'x' fuego, '~' agua, 'e' extintor
   //   Recompensas: '$' moneda, '%' bolsa, '1/2/3' jeringas, '4/5/6' goteros, 'y/Y' comida
   //   NPC manuales: 'J' jefe, 'H' supervisora, 'k' médico, 't' TCAE, 'c' celador,
-  //     'n' enfermera sexy, 'h' limpieza, 'g' guardia, 'v' familiar
+  //     'n' enfermera sexy, 'h' limpieza, 'g' guardia de seguridad (hostil), 'v' familiar
   //   Extras: 'B' cama vacía, 'P' paciente furioso (debug), 'L/l' luces
   // Caracteres descartados: 'D' (puerta antigua), variaciones de pacientes/loot sin
   // normalizar. Los mapas debug y generador usan únicamente los símbolos oficiales.

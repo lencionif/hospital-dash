@@ -757,6 +757,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (window.Entities?.Celador?.spawn) return window.Entities.Celador.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
         return null;
       },
+      npc_guardia(tx, ty, def) {
+        if (window.Entities?.Guardia?.spawnFromAscii) return window.Entities.Guardia.spawnFromAscii(tx, ty, def || {});
+        if (window.Entities?.Guardia?.spawn) return window.Entities.Guardia.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
+        return null;
+      },
       celador(tx, ty, def) { return ENTITY_FACTORIES.npc_celador(tx, ty, def); },
       npc_tcae(tx, ty, def) {
         if (window.Entities?.TCAE?.spawnFromAscii) return window.Entities.TCAE.spawnFromAscii(tx, ty, def || {});
