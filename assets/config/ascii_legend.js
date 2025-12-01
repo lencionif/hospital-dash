@@ -72,7 +72,8 @@
     // Enemigos animales
     // ASCII 'm' -> spawn de mosquitos voladores
     'm': { key: 'mosquito',       kind: 'mosquito',       factoryKey: 'npc_mosquito', isEnemy: true, spawn: 'spawnMosquitoFromAscii' },
-    'r': { key: 'rat',            kind: 'rat',            factoryKey: 'npc_rat',      isEnemy: true },
+    // ASCII 'r' -> spawn de ratas terrestres
+    'r': { key: 'rat',            kind: 'rat',            factoryKey: 'npc_rat',      isEnemy: true, spawn: 'spawnRatFromAscii' },
 
     // Paciente furioso colocado directamente
     'P': { key: 'furious_patient',kind: 'furious_patient',factoryKey: 'npc_furious_patient', isEnemy: true },
