@@ -33,6 +33,162 @@
     ctx.restore();
   }
 
+  // Rig chibi para el celador barrigón (canvas shapes, sin sprites externos).
+  PuppetAPI.registerRig('npc_celador', {
+    create(host) {
+      return { rigName: 'npc_celador', host, t: 0, step: 0, idleBob: 0, pushSquash: 1, deathTimer: 0 };
+    },
+    update(state, host, dt = 0) {
+      if (!state || !host) return;
+      state.t += dt;
+      const mvx = Math.abs(host.vx || 0);
+      const mvy = Math.abs(host.vy || 0);
+      let anim = 'idle';
+      if (host.dead) {
+        anim = `death_${host.deathCause || 'damage'}`;
+        state.deathTimer += dt;
+      } else if (host.isPushing || host.state === 'push') {
+        anim = 'push';
+      } else if (host.state === 'attack') {
+        anim = 'attack';
+      } else if (host.state === 'eat') {
+        anim = 'eat';
+      } else if (mvx > mvy && (mvx > 1 || host.state === 'walk_h')) {
+        anim = 'walk_h';
+      } else if (mvy >= mvx && (mvy > 1 || host.state === 'walk_v')) {
+        anim = 'walk_v';
+      }
+      state.anim = anim;
+      state.step += dt * (anim.startsWith('walk') ? 9 : 6);
+      state.idleBob = Math.sin(state.t * 2.2) * 0.8;
+      state.pushSquash = anim === 'push' ? 1 + Math.sin(state.t * 10) * 0.08 : 1;
+    },
+    draw(ctx, camera, host, state) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || host.rig?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y + (state?.idleBob || 0) * zoom * 0.6);
+      if (state?.anim === 'death_crush') ctx.scale(1.05, 0.35);
+      if (state?.anim === 'death_damage') ctx.rotate(-0.18);
+      const flip = (host.vx || host.dir || 0) < 0 ? -1 : 1;
+      ctx.scale(zoom * flip, zoom);
+
+      // Sombra
+      ctx.save();
+      ctx.translate(0, 12);
+      drawEllipse(ctx, 9, 4, 'rgba(0,0,0,0.25)');
+      ctx.restore();
+
+      // Cuerpo y barriga
+      ctx.save();
+      const lean = state?.anim === 'push' ? -0.15 : state?.anim === 'attack' ? -0.08 : -0.02;
+      ctx.rotate(lean);
+      ctx.scale(1, state?.pushSquash || 1);
+      ctx.fillStyle = '#f3f6ff';
+      ctx.beginPath();
+      ctx.roundRect(-11, -4, 22, 18, 7);
+      ctx.fill();
+      ctx.fillStyle = '#dfe6ff';
+      ctx.beginPath();
+      ctx.roundRect(-10, 4, 20, 8, 4);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos sencillos
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#f3c4a1';
+      const armSwing = Math.sin(state?.step || 0) * 4;
+      const pushReach = state?.anim === 'push' ? 6 : 0;
+      ctx.beginPath();
+      ctx.moveTo(-10, -2);
+      ctx.lineTo(-14 - pushReach, 6 + armSwing * 0.3);
+      ctx.moveTo(10, -2);
+      ctx.lineTo(14 + pushReach, 6 - armSwing * 0.5 - (state?.anim === 'eat' ? 6 : 0));
+      ctx.stroke();
+      ctx.restore();
+
+      // Piernas
+      ctx.save();
+      ctx.translate(0, 8);
+      const step = Math.sin(state?.step || 0) * 3;
+      ctx.fillStyle = '#e7ecff';
+      ctx.beginPath();
+      ctx.roundRect(-9 + step, -1, 7, 10, 3);
+      ctx.roundRect(2 - step, -1, 7, 10, 3);
+      ctx.fill();
+      ctx.fillStyle = '#cfd7ff';
+      ctx.roundRect(-9 + step, 6, 8, 3, 2);
+      ctx.roundRect(2 - step, 6, 8, 3, 2);
+      ctx.restore();
+
+      // Cabeza grande
+      ctx.save();
+      ctx.translate(0, -11 + (state?.anim === 'talk' ? Math.sin(state.t * 6) : 0));
+      drawEllipse(ctx, 9.5, 8.5, '#f7c9a8');
+      ctx.fillStyle = '#d8a077';
+      ctx.fillRect(-5, -3, 10, 2);
+      ctx.fillStyle = '#2b2b2b';
+      ctx.beginPath();
+      ctx.arc(-3, -2.5, 1.4, 0, TAU);
+      ctx.arc(3, -2.5, 1.4, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#5a4634';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-5, -5); ctx.lineTo(0, -7);
+      ctx.moveTo(2, -6); ctx.lineTo(5, -7.5);
+      ctx.stroke();
+      ctx.strokeStyle = '#a33';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      const mouth = state?.anim === 'eat' ? 2.4 : state?.anim === 'attack' ? 2.0 : 1.6;
+      ctx.arc(0, 2, mouth, 0, Math.PI);
+      ctx.stroke();
+      ctx.restore();
+
+      // Bocadillo/vaso fantasma al comer
+      if (state?.anim === 'eat') {
+        ctx.save();
+        ctx.translate(12, -8);
+        ctx.fillStyle = '#f8f8f8';
+        ctx.beginPath();
+        ctx.roundRect(-3, -3, 6, 6, 2);
+        ctx.fill();
+        ctx.fillStyle = '#d0d7ff';
+        drawEllipse(ctx, 3, 1.3, '#d0d7ff');
+        ctx.restore();
+      }
+
+      // Poses de muerte
+      if (host.dead) {
+        if (host.deathCause === 'fire') {
+          ctx.save();
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = '#2c2c2c';
+          ctx.beginPath();
+          ctx.roundRect(-11, -14, 22, 26, 6);
+          ctx.fill();
+          ctx.fillStyle = '#ff9800';
+          ctx.beginPath();
+          ctx.moveTo(0, -16); ctx.lineTo(-3, -8); ctx.lineTo(3, -8);
+          ctx.fill();
+          ctx.restore();
+        } else if (host.deathCause === 'crush') {
+          ctx.save();
+          ctx.globalAlpha = 0.8;
+          ctx.scale(1.1, 0.4);
+          drawEllipse(ctx, 11, 9, '#f0f2f5');
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    },
+  });
+
   // Rig chibi para el jefe de servicio: barriga prominente y bata blanca.
   PuppetAPI.registerRig('npc_jefe_servicio', {
     create(host) {
