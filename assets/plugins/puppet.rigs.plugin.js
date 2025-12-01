@@ -718,3 +718,128 @@
       ctx.restore();
     }
   });
+
+  // Rig 'npc_medica': chibi doctor hostile, animaciones completas.
+  PuppetAPI.registerRig('npc_medica', {
+    create(e) {
+      return { t: 0, walkPhase: 0, talkPhase: 0, squash: 0, flicker: 0 };
+    },
+    update(st, e, dt) {
+      if (e?._culled) return;
+      st.t += dt;
+      if (e.dead) {
+        st.squash = Math.min(1, st.squash + dt * 3);
+        return;
+      }
+      const moving = Math.abs(e.vx) + Math.abs(e.vy) > 1;
+      if (moving) {
+        st.walkPhase += dt * 8;
+      } else {
+        st.walkPhase = 0;
+      }
+      if (e.state === 'talk') {
+        st.talkPhase += dt * 10;
+      } else {
+        st.talkPhase = 0;
+      }
+      st.squash = 0.05 * Math.sin(st.t * 2);
+    },
+    draw(ctx, cam, e, st) {
+      if (!ctx || !cam || !e || e._culled) return;
+      const { x, y } = toScreen(cam, e);
+      const z = cam.zoom || 1;
+      ctx.save();
+      ctx.translate(x, y);
+      const baseScale = 0.75 * z;
+      const scaleY = baseScale * (1 - st.squash);
+      const scaleX = baseScale * (1 + st.squash * 0.5);
+      ctx.scale(scaleX, scaleY);
+      const bodyW = 18;
+      const bodyH = 18;
+      ctx.globalAlpha = 0.25;
+      ctx.beginPath();
+      ctx.ellipse(0, bodyH * 0.6, bodyW * 0.8, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      const legOffset = Math.sin(st.walkPhase) * 2;
+      ctx.fillStyle = '#f2a66a';
+      ctx.beginPath();
+      ctx.roundRect(-7 + legOffset, 6, 6, 10, 3);
+      ctx.roundRect(1 - legOffset, 6, 6, 10, 3);
+      ctx.fill();
+      ctx.fillStyle = '#ff4f9a';
+      ctx.beginPath();
+      ctx.roundRect(-8 + legOffset, 14, 8, 4, 2);
+      ctx.roundRect(0 - legOffset, 14, 8, 4, 2);
+      ctx.fill();
+      ctx.fillStyle = '#f9f9ff';
+      ctx.beginPath();
+      ctx.roundRect(-9, -4, 18, 14, 6);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.fillStyle = '#f6b27c';
+      ctx.arc(0, -9, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#7a4b2d';
+      ctx.beginPath();
+      ctx.arc(-2, -11, 11, Math.PI * 0.1, Math.PI * 1.1);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(8, -5, 6, 8, Math.PI / 6, 0, Math.PI * 2);
+      ctx.fill();
+      const eyeBlink = (Math.sin(st.t * 4) > 0.9) ? 0.2 : 1;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(-4, -9, 3, 3 * eyeBlink, 0, 0, Math.PI * 2);
+      ctx.ellipse(4, -9, 3, 3 * eyeBlink, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2b1b17';
+      ctx.beginPath();
+      ctx.arc(-4, -9, 1.5, 0, Math.PI * 2);
+      ctx.arc(4, -9, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#c45a3b';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (e.state === 'talk' || e.state === 'attack') {
+        const open = 1 + 1.5 * Math.abs(Math.sin(st.talkPhase));
+        ctx.arc(0, -4, open, 0, Math.PI);
+      } else {
+        ctx.arc(0, -5, 2.5, 0, Math.PI);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-4, -2);
+      ctx.lineTo(-6, 2);
+      ctx.moveTo(4, -2);
+      ctx.lineTo(6, 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ff5aa5';
+      ctx.beginPath();
+      ctx.arc(0, 1, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      if (e.dead) {
+        if (e.deathCause === 'crush') {
+          ctx.restore();
+          ctx.save();
+          ctx.translate(x, y + 6 * z);
+          ctx.scale(z, z * 0.3);
+          ctx.fillStyle = '#f6b27c';
+          ctx.beginPath();
+          ctx.roundRect(-10, -4, 20, 8, 4);
+          ctx.fill();
+        } else if (e.deathCause === 'fire') {
+          ctx.globalAlpha = 0.7;
+          ctx.fillStyle = '#333';
+          ctx.beginPath();
+          ctx.arc(0, -6, 8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    },
+  });
+})();

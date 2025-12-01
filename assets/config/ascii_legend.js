@@ -81,7 +81,7 @@
     // NPC humanos concretos (colocados manualmente)
     'J': { key: 'npc_jefe',        kind: 'jefe',          factoryKey: 'npc_jefe_servicio', isNPC: true },
     'H': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
-    'k': { key: 'npc_medico',      kind: 'medico',        factoryKey: 'npc_medico',      isNPC: true },
+    'k': { key: 'npc_medico',      kind: (root.ENT && root.ENT.MEDIC) || 'medico', factoryKey: 'npc_medico',      isNPC: true }, // 'k' -> Medica (NPC hostil que deja pastillas envenenadas).
     't': { key: 'npc_tcae',        kind: 'tcae',          factoryKey: 'npc_tcae',        isNPC: true },
     'c': { key: 'npc_celador',     kind: 'celador',       factoryKey: 'npc_celador',     isNPC: true },
     // Enfermera sexy: NPC humano mixto/hostil
