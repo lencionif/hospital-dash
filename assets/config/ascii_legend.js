@@ -82,7 +82,7 @@
     'J': { key: 'npc_jefe',        kind: 'jefe',          factoryKey: 'npc_jefe_servicio', isNPC: true },
     'H': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
     'k': { key: 'npc_medico',      kind: (root.ENT && root.ENT.MEDIC) || 'medico', factoryKey: 'npc_medico',      isNPC: true }, // 'k' -> Medica (NPC hostil que deja pastillas envenenadas).
-    't': { key: 'npc_tcae',        kind: 'tcae',          factoryKey: 'npc_tcae',        isNPC: true },
+    't': { key: 'npc_tcae',        kind: (root.ENT && root.ENT.TCAE) || 'tcae', factoryKey: 'npc_tcae',        isNPC: true },
     // Celador: NPC fuerte que prioriza empujar carros contra el jugador y hace 0.5 corazones de daño por contacto.
     'c': { key: 'npc_celador',     kind: (root.ENT && root.ENT.CELADOR) || 'celador', factoryKey: 'npc_celador',     isNPC: true },
     // Enfermera sexy: NPC humano mixto/hostil
