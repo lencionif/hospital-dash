@@ -33,6 +33,182 @@
     ctx.restore();
   }
 
+  // [HospitalDash] Chibi rig for furious patient (biped aggressive).
+  PuppetAPI.registerRig('patient_furious', {
+    create(host) {
+      return { t: 0, step: 0, anim: 'idle', phase: 0, eatTimer: 0, animDone: false, flip: 1 };
+    },
+    update(st, host, dt = 0) {
+      if (!st || !host) return;
+      st.t += dt;
+      const dead = host.dead;
+      st.anim = dead ? `death_${host.deathCause || 'damage'}` : (host.state || 'idle');
+      if (st.anim === 'attack') st.attackPush = Math.min(1, (st.attackPush || 0) + dt * 4);
+      else st.attackPush = Math.max(0, (st.attackPush || 0) - dt * 6);
+      const moving = st.anim.startsWith('walk');
+      st.step += dt * (moving ? 8 : 4.5);
+      if (st.anim === 'eat') {
+        st.eatTimer += dt;
+        if (st.eatTimer > 1.0) { st.animDone = true; host._eatDone = true; }
+      } else { st.eatTimer = 0; }
+      if (dead) {
+        st.phase = Math.min(1, (st.phase || 0) + dt * 6);
+        return;
+      }
+      const faceAxis = Math.abs(host.vx || 0) >= Math.abs(host.vy || 0)
+        ? (Math.sign(host.vx || st.flip || 1) || 1)
+        : (host.vy < 0 ? -2 : 2);
+      st.flip = Math.sign(faceAxis === 0 ? (st.flip || 1) : (faceAxis === -2 ? st.flip || -1 : faceAxis)) || 1;
+    },
+    draw(ctx, camera, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || host.rig?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+
+      const anim = st?.anim || 'idle';
+      const dead = anim.startsWith('death_');
+      const flip = st?.flip || 1;
+      const bob = Math.sin((st?.step || 0) * 0.8) * (anim.startsWith('walk') ? 0.8 : 0.4);
+      const squash = dead && anim === 'death_crush' ? 0.4 : 1;
+
+      // Sombra
+      ctx.save();
+      ctx.scale(1, squash);
+      drawEllipse(ctx, 8.5, 3.2, 'rgba(0,0,0,0.25)');
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(0, -2 + bob);
+      ctx.scale(flip, 1);
+
+      // Piernas
+      ctx.save();
+      const legStep = Math.sin((st?.step || 0) * 1.6) * 2.5;
+      const legSpread = anim.startsWith('walk') ? legStep : 0.5;
+      ctx.fillStyle = dead && anim === 'death_fire' ? '#2a2a2a' : '#f4c8ad';
+      ctx.beginPath();
+      ctx.roundRect(-6 + legSpread, 7, 5, 5, 2);
+      ctx.roundRect(1 - legSpread, 7, 5, 5, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Cuerpo
+      ctx.save();
+      const tilt = anim === 'attack' ? -0.1 * flip : 0;
+      ctx.rotate(tilt);
+      ctx.translate(0, dead ? 2 : 0);
+      const bodySquash = anim === 'idle' ? 1 + Math.sin((st?.t || 0) * 14) * 0.03 : 1;
+      ctx.scale(1, bodySquash * squash);
+      ctx.fillStyle = dead && anim === 'death_fire' ? '#1d1d1d' : '#f8f8ff';
+      ctx.beginPath();
+      ctx.roundRect(-8, -1, 16, 12, 6);
+      ctx.fill();
+      ctx.fillStyle = dead && anim === 'death_fire' ? '#2b2b2b' : '#e0e0f7';
+      ctx.beginPath();
+      ctx.roundRect(-7, 3, 14, 8, 5);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos
+      ctx.save();
+      ctx.fillStyle = dead && anim === 'death_fire' ? '#2a2a2a' : '#f4c8ad';
+      const armSwing = anim.startsWith('walk') ? Math.sin((st?.step || 0) * 1.8) * 3.2 : Math.sin((st?.t || 0) * 18) * 1.4;
+      const attackPush = (st?.attackPush || 0) * 4;
+      ctx.beginPath();
+      ctx.roundRect(-10 + armSwing - attackPush, 0 - attackPush, 4, 7 + attackPush, 2.2);
+      ctx.roundRect(6 - armSwing + attackPush, 0 - attackPush, 4, 7 + attackPush, 2.2);
+      ctx.fill();
+      ctx.restore();
+
+      // Cabeza
+      ctx.save();
+      const headShake = anim === 'idle' ? Math.sin((st?.t || 0) * 18) * 0.8 : 0;
+      const headPush = anim === 'attack' ? 1.1 : 0;
+      ctx.translate(headShake + headPush, -8 - (dead ? -2 : 0));
+      ctx.scale(1, squash * 1.02);
+      const faceDark = dead && anim === 'death_fire';
+      ctx.fillStyle = faceDark ? '#20150f' : '#f4c8ad';
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, TAU);
+      ctx.fill();
+
+      // Pelo
+      ctx.save();
+      ctx.translate(-1, -1);
+      ctx.fillStyle = faceDark ? '#0f0c0b' : '#4a2d1d';
+      ctx.beginPath();
+      ctx.ellipse(1, -1.5, 10, 7, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Ojos y cejas
+      const eyeOpen = anim === 'attack' ? 2.2 : 1.6;
+      ctx.fillStyle = faceDark ? '#f7f7f7' : '#0f0f0f';
+      ctx.beginPath();
+      ctx.ellipse(-3.5, -1, eyeOpen, 2.2, 0, 0, TAU);
+      ctx.ellipse(3.5, -1, eyeOpen, 2.2, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = faceDark ? '#f7f7f7' : '#2c0a0a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-6, -4.5);
+      ctx.lineTo(-1.5, -2.8);
+      ctx.moveTo(6, -4.5);
+      ctx.lineTo(1.5, -2.8);
+      ctx.stroke();
+
+      // Mejillas y boca
+      if (!faceDark && anim !== 'death_damage' && anim !== 'death_crush') {
+        ctx.fillStyle = anim === 'eat' ? '#ffc2c2' : '#ff8080';
+        ctx.beginPath();
+        ctx.arc(-4.5, 2.8, 1.6, 0, TAU);
+        ctx.arc(4.5, 2.8, 1.6, 0, TAU);
+        ctx.fill();
+      }
+      ctx.strokeStyle = faceDark ? '#f7f7f7' : '#a12424';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (anim === 'attack') {
+        ctx.arc(0, 4, 3.4, 0, Math.PI);
+      } else if (anim === 'eat') {
+        ctx.arc(0, 3.5, 2.4, 0, Math.PI * 1.1);
+      } else {
+        ctx.arc(0, 3.8, 2.1, 0, Math.PI);
+      }
+      ctx.stroke();
+
+      // Ojos en espiral / fuego
+      if (dead && anim === 'death_damage') {
+        ctx.strokeStyle = '#3a1f1f';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(-4, -0.5); ctx.quadraticCurveTo(-2, -3.5, 0, -1); ctx.quadraticCurveTo(2, 1.5, 4, -0.5);
+        ctx.moveTo(-4, 2.5); ctx.quadraticCurveTo(-1, 0, 2, 3); ctx.quadraticCurveTo(1.5, 4.5, -1.5, 4);
+        ctx.stroke();
+      } else if (dead && anim === 'death_fire') {
+        ctx.fillStyle = 'rgba(60,60,60,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(-4, -8); ctx.quadraticCurveTo(-1, -10, 2, -7); ctx.quadraticCurveTo(5, -4, 2, -1); ctx.quadraticCurveTo(-2, 2, -3, 6);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Humo pequeño para muerte por fuego
+      if (dead && anim === 'death_fire') {
+        ctx.save();
+        ctx.translate(0, -18 - Math.sin((st?.t || 0) * 5) * 1.5);
+        ctx.globalAlpha = 0.5;
+        drawEllipse(ctx, 2.5, 4, '#3b3b3b');
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+  });
+
   // Rig chibi para paciente tumbada en cama compacta (32x32 máx).
   PuppetAPI.registerRig('patient_bed', {
     create(host) {

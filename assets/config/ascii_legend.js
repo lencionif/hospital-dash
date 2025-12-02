@@ -15,7 +15,8 @@
   //   Recompensas: '$' moneda, '%' bolsa, '1/2/3' jeringas, '4/5/6' goteros, 'y/Y' comida
   //   NPC manuales: 'J' jefe, 'H' supervisora, 'k' médico, 't' TCAE, 'c' celador,
   //     'n' enfermera sexy, 'h' limpieza, 'g' guardia de seguridad (hostil), 'v' familiar
-  //   Extras: 'B' cama vacía, 'P' paciente furioso (debug), 'L/l' luces
+    //   Extras: 'B' cama vacía, 'P' paciente furioso (debug), 'L/l' luces
+    //   Enemigos humanos: 'f' paciente furiosa (bípeda agresiva fuera de cama)
   // Caracteres descartados: 'D' (puerta antigua), variaciones de pacientes/loot sin
   // normalizar. Los mapas debug y generador usan únicamente los símbolos oficiales.
 
@@ -48,7 +49,8 @@
 
     // Pacientes
     'p': { key: 'patient_bed', kind: ENT.PATIENT_BED || 'patient_bed', factoryKey: 'patient_normal', isPatient: true },
-    'f': { key: 'patient_fury',kind: 'patient_fury',factoryKey: 'patient_furious_debug', isPatient: true },
+    // 'f' -> paciente furiosa bípeda, chibi agresiva
+    'f': { key: 'furious_patient', kind: 'furious_patient', factoryKey: 'patient_furious', isPatient: true },
 
     // Timbre asociado
     'b': { key: 'bell',        kind: 'bell',        factoryKey: 'bell_patient', isTrigger: true },

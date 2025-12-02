@@ -12,6 +12,7 @@
   ENT.PATIENT_FURIOUS = ENT.PATIENT_FURIOUS || ENT.FURIOUS || 'FURIOUS';
   const TILE = W.TILE_SIZE ?? W.TILE ?? G.TILE_SIZE ?? 32;
   const HERO_Z = typeof W.HERO_Z === 'number' ? W.HERO_Z : 10;
+  const PATIENT_FURIOUS_SPEED = typeof W.PATIENT_FURIOUS_SPEED === 'number' ? W.PATIENT_FURIOUS_SPEED : 72;
 
   function ensureStats() {
     G.stats = G.stats || {};
@@ -573,6 +574,132 @@
     return furiosa;
   }
 
+  function overlap(a, b) {
+    return a && b && a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  // [HospitalDash] Furious patient entity: chases hero until cured with correct pill.
+  function furiousPatientAiUpdate(dt = 0, e) {
+    if (!e) return;
+    if (e.dead) {
+      if (!e._countedNeutralized) {
+        e._countedNeutralized = true;
+        try { W.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
+      }
+      e.vx = e.vy = 0;
+      return;
+    }
+    if (e._culled) { e.vx = e.vy = 0; return; }
+
+    const hero = G.player || null;
+    const carry = hero ? getCarry(hero) : null;
+    const requiredKey = e.requiredKeyName || e.keyName;
+    const hasCorrectPill = !!carry && (
+      carry.targetPatientId === e.id
+      || carry.forPatientId === e.id
+      || carry.patientId === e.id
+      || (requiredKey && carry.pairName === requiredKey)
+    );
+
+    if (hero && hasCorrectPill && overlap(e, hero)) {
+      clearCarry(hero, { reason: 'furious_cured' });
+      e.cured = true;
+      e.state = 'eat';
+      e.cureT = e.cureT || 1.1;
+      e.vx = e.vy = 0;
+    }
+
+    if (e.cured) {
+      e.vx = e.vy = 0;
+      e.state = 'eat';
+      e.cureT = Math.max(0, (e.cureT || 0) - dt);
+      if (e.cureT <= 0 || e._eatDone) {
+        e.dead = true;
+        e.deathCause = e.deathCause || 'damage';
+        try { W.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
+      }
+      return;
+    }
+
+    if (!hero || hero.dead) {
+      e.vx = e.vy = 0;
+      e.state = 'idle';
+      return;
+    }
+
+    const dx = hero.x - e.x;
+    const dy = hero.y - e.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const speed = PATIENT_FURIOUS_SPEED;
+    e.vx = (dx / dist) * speed;
+    e.vy = (dy / dist) * speed;
+    e.dir = Math.abs(e.vx) > Math.abs(e.vy) ? Math.sign(e.vx || 0) : (e.vy < 0 ? -1 : 1);
+
+    if (overlap(e, hero) && !hero.isCuring && window.DamageAPI?.applyTouch && !e.dead) {
+      e.state = 'attack';
+      try { window.DamageAPI.applyTouch(e, hero); } catch (_) {}
+    } else {
+      const ax = Math.abs(e.vx || 0);
+      const ay = Math.abs(e.vy || 0);
+      const eps = 4;
+      if (ax > ay && ax > eps) e.state = 'walk_h';
+      else if (ay >= ax && ay > eps) e.state = 'walk_v';
+      else e.state = 'idle';
+    }
+  }
+
+  function spawnFuriousPatientAtTile(tx, ty, opts = {}) {
+    ensureCollections();
+    const px = (tx + 0.5) * TILE;
+    const py = (ty + 0.5) * TILE;
+    const size = opts.size || 24;
+    const e = {
+      id: opts.id || `FURPAT_${Math.random().toString(36).slice(2, 8)}`,
+      kind: ENT.PATIENT_FURIOUS,
+      x: px - size * 0.5,
+      y: py - size * 0.5,
+      w: size,
+      h: size,
+      dir: 0,
+      vx: 0,
+      vy: 0,
+      dynamic: true,
+      pushable: true,
+      solid: true,
+      health: 3,
+      touchDamage: 0.5,
+      touchCooldown: 0.9,
+      _touchCD: 0,
+      fireImmune: false,
+      populationType: 'humans',
+      aiUpdate: furiousPatientAiUpdate,
+      puppet: {
+        rig: 'patient_furious',
+        z: HERO_Z,
+        skin: opts.skin || 'default',
+      },
+      requiredKeyName: opts.requiredKeyName || opts.keyName || opts.pillKey || opts.name,
+      state: 'idle',
+    };
+
+    try { W.PuppetAPI?.attach?.(e, e.puppet); } catch (_) {}
+    addEntity(e);
+
+    const stats = ensureStats();
+    stats.activeFuriosas = (stats.activeFuriosas || 0) + 1;
+    ensurePatientCounters();
+    G.patientsFurious = (G.patientsFurious | 0) + 1;
+    syncPatientArrayCounters();
+    try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
+
+    if (!G.patients.includes(e)) G.patients.push(e);
+    if (!G.allPatients.includes(e)) G.allPatients.push(e);
+    if (!G.entities.includes(e)) G.entities.push(e);
+    if (!G.movers.includes(e)) G.movers.push(e);
+    e.group = 'human';
+    return e;
+  }
+
   function onFuriosaNeutralized(furiosa) {
     if (furiosa) {
       if (furiosa._countedNeutralized) return;
@@ -639,6 +766,8 @@
     wrongDelivery,
     toFurious: convertToFuriosa,
     onFuriosaNeutralized,
+    spawnFuriousPatientAtTile,
+    furiousPatientAiUpdate,
     getPatients,
     getAllPatients,
     getPills,
@@ -667,6 +796,10 @@
     const patient = createPatient(x, y, opts || {});
     return patient;
   };
+
+  W.Entities.Patients = W.Entities.Patients || {};
+  W.Entities.Patients.spawnFuriousPatientAtTile = spawnFuriousPatientAtTile;
+  W.Entities.spawnFuriousPatientAtTile = spawnFuriousPatientAtTile;
 
   W.Entities.Objects = W.Entities.Objects || {};
   W.Entities.Objects.spawnPill = function (_name, x, y, opts = {}) {
