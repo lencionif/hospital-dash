@@ -763,6 +763,14 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         return null;
       },
       celador(tx, ty, def) { return ENTITY_FACTORIES.npc_celador(tx, ty, def); },
+      furious_patient(tx, ty, def) {
+        // [HospitalDash] Colocación directa de paciente furiosa chibi.
+        if (window.Entities?.Patients?.spawnFuriousPatientAtTile) {
+          return window.Entities.Patients.spawnFuriousPatientAtTile(tx, ty, def || {});
+        }
+        if (window.Entities?.spawnFuriousPatientAtTile) return window.Entities.spawnFuriousPatientAtTile(tx, ty, def || {});
+        return null;
+      },
       npc_tcae(tx, ty, def) {
         if (window.Entities?.TCAE?.spawnFromAscii) return window.Entities.TCAE.spawnFromAscii(tx, ty, def || {});
         if (window.TCAEAPI?.spawn) return window.TCAEAPI.spawn(tx, ty);
