@@ -26,6 +26,15 @@
     red: 0xff6b6b
   };
 
+  function spawnBossFromAscii(tx, ty) {
+    const level = (root.G?.level) || (root.G?.levelIndex) || 1;
+    if (level === 1 && root.Entities?.spawnBossHemaAtTile) {
+      return root.Entities.spawnBossHemaAtTile(tx, ty);
+    }
+    // Futuras expansiones: distintos bosses por nivel.
+    return null;
+  }
+
   const LEGEND = {
     // Terreno / fuera del mapa
     '#': { key: 'wall',        kind: 'wall',        blocking: true },
@@ -37,7 +46,7 @@
 
     // Posición del héroe / puntos especiales
     'S': { key: 'hero_spawn',  kind: 'hero_spawn',      factoryKey: 'hero_spawn', isSpawn: true },
-    'X': { key: 'boss_main',   kind: 'boss_main',       factoryKey: 'boss_main_spawn', isBoss: true },
+    'X': { key: 'boss_main',   kind: 'boss_main',       factoryKey: 'boss_main_spawn', isBoss: true, spawn: spawnBossFromAscii },
     'M': { key: 'mini_boss',   kind: 'mini_boss',       factoryKey: 'mini_boss_spawn', isMiniBoss: true },
 
     // Teléfono de control room
