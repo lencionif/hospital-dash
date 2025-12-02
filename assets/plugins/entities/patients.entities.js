@@ -8,7 +8,10 @@
     FURIOUS: 'FURIOUS',
     PILL: 'PILL'
   });
+  ENT.PATIENT_BED = ENT.PATIENT_BED || ENT.PATIENT || 'PATIENT_BED';
+  ENT.PATIENT_FURIOUS = ENT.PATIENT_FURIOUS || ENT.FURIOUS || 'FURIOUS';
   const TILE = W.TILE_SIZE ?? W.TILE ?? G.TILE_SIZE ?? 32;
+  const HERO_Z = typeof W.HERO_Z === 'number' ? W.HERO_Z : 10;
 
   function ensureStats() {
     G.stats = G.stats || {};
@@ -129,6 +132,42 @@
     syncPatientArrayCounters();
   }
 
+  function patientBedAiUpdate(dt = 0, e) {
+    if (!e || e.dead) return;
+
+    const ax = Math.abs(e.vx || 0);
+    const ay = Math.abs(e.vy || 0);
+    if (ax > 1 || ay > 1) {
+      e.state = ax > ay ? 'walk_h' : 'walk_v';
+    } else if (e.isTalking) {
+      e.state = 'talk';
+    } else {
+      e.state = e.state === 'eat' ? 'eat' : 'idle';
+    }
+
+    if (e.bellCountdown > 0 && !e.cured) {
+      e.bellCountdown -= dt;
+      if (e.bellCountdown < 10 && !e.warned) {
+        e.state = 'attack';
+        e.warned = true;
+      }
+      if (e.bellCountdown <= 0) {
+        try { W.PatientsAPI?.toFurious?.(e); } catch (_) {}
+        if (typeof W.spawnFuriousPatientAt === 'function') {
+          try { W.spawnFuriousPatientAt(e.x, e.y, e); } catch (_) {}
+        }
+        e.dead = true;
+      }
+    }
+
+    if (e.justGotCorrectPill && !e.cured) {
+      e.state = 'eat';
+      e.cured = true;
+      e.bellCountdown = 0;
+      e.justGotCorrectPill = false;
+    }
+  }
+
   function nextIdentity() {
     ensureStats();
     const seedBase = (G.levelSeed ?? G.seed ?? G.mapSeed ?? Date.now()) >>> 0;
@@ -188,12 +227,17 @@
 
     const patient = {
       id: opts.id || `PAT_${Math.random().toString(36).slice(2, 9)}`,
-      kind: ENT.PATIENT,
+      kind: ENT.PATIENT_BED,
       x: x || 0,
       y: y || 0,
-      w: opts.w || TILE * 0.9,
-      h: opts.h || TILE * 0.75,
-      static: true,
+      w: opts.w || 24,
+      h: opts.h || 24,
+      dir: opts.dir ?? 0,
+      vx: 0,
+      vy: 0,
+      static: false,
+      dynamic: true,
+      pushable: true,
       solid: true,
       displayName: identity.displayName,
       name: identity.displayName,
@@ -209,16 +253,29 @@
       skin: skinName,
       bellId: null,
       pillId: null,
-      ringing: false
+      ringing: false,
+      populationType: 'patients',
+      touchDamage: 0,
+      touchCooldown: 0.9,
+      _touchCD: 0,
+      health: opts.health ?? 2,
+      fireImmune: false,
+      ai: 'PATIENT_BED',
+      aiUpdate: patientBedAiUpdate,
+      bellCountdown: opts.bellCountdown || 0,
+      warned: false,
+      cured: false,
+      justGotCorrectPill: false,
+      puppet: { rig: 'patient_bed', z: HERO_Z, skin: skinName || 'default' }
     };
 
     if (!patient.id) patient.id = (Math.random() * 1e9) | 0;
-    patient.state = patient.state || 'idle_bed';
+    patient.state = patient.state || 'idle';
     patient.showNameTag = true;
 
     try {
-      const puppet = window.Puppet?.bind?.(patient, 'patient_bed', { z: 0, scale: 1, data: { skin: patient.skin } })
-        || W.PuppetAPI?.attach?.(patient, { rig: 'patient_bed', z: 0, scale: 1, data: { skin: patient.skin } });
+      const puppet = window.Puppet?.bind?.(patient, 'patient_bed', { z: HERO_Z, scale: 1, data: { skin: patient.skin } })
+        || W.PuppetAPI?.attach?.(patient, { rig: 'patient_bed', z: HERO_Z, scale: 1, data: { skin: patient.skin } });
       patient.rigOk = patient.rigOk === true || !!puppet;
     } catch (_) {
       patient.rigOk = patient.rigOk === true;
@@ -595,6 +652,7 @@
   };
 
   W.PatientsAPI = PatientsAPI;
+  W.patientBedAiUpdate = patientBedAiUpdate;
 
   if (typeof W.patientsSnapshot !== 'function') {
     W.patientsSnapshot = () => counterSnapshot();

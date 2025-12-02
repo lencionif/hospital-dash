@@ -2,6 +2,7 @@
   'use strict';
 
   const root = typeof W !== 'undefined' ? W : window;
+  const ENT = root.ENT || (root.ENT = {});
 
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
@@ -46,7 +47,7 @@
     'l': { key: 'light_broken',kind: 'light_broken',factoryKey: 'light_broken' },
 
     // Pacientes
-    'p': { key: 'patient_bed', kind: 'patient_bed', factoryKey: 'patient_normal', isPatient: true },
+    'p': { key: 'patient_bed', kind: ENT.PATIENT_BED || 'patient_bed', factoryKey: 'patient_normal', isPatient: true },
     'f': { key: 'patient_fury',kind: 'patient_fury',factoryKey: 'patient_furious_debug', isPatient: true },
 
     // Timbre asociado
