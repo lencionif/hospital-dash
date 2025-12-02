@@ -209,6 +209,276 @@
     }
   });
 
+  // Rig chibi para Boss Hematológica en cama (tile único 32x32 aprox.)
+  PuppetAPI.registerRig('boss_hema', {
+    create(host) {
+      return {
+        t: 0,
+        blinkT: 2 + Math.random() * 3,
+        blinkPhase: 0,
+        shakeT: 0,
+        deathProgress: 0,
+        mouthT: 0,
+        headBob: 0,
+      };
+    },
+    update(state, host, dt = 0) {
+      if (!state || !host) return;
+      state.t += dt;
+      state.mouthT += dt * (host.state === 'talk' ? 6 : 2);
+      state.headBob = host.state === 'talk' ? Math.sin(state.t * 6) * 0.6 : 0;
+      const anim = host.dead ? `death_${host.deathCause || 'damage'}` : (host.state || 'idle');
+      state.anim = anim;
+
+      state.blinkT -= dt;
+      if (state.blinkT <= 0) {
+        state.blinkPhase = 1;
+        state.blinkT = 3 + Math.random() * 3;
+      }
+      state.blinkPhase = Math.max(0, state.blinkPhase - dt * 6);
+
+      if (host.bossActive) state.shakeT = Math.min(1, (state.shakeT || 0) + dt * 2.5);
+      else state.shakeT = Math.max(0, (state.shakeT || 0) - dt * 1.5);
+
+      if (host.dead) {
+        state.deathProgress = Math.min(1, (state.deathProgress || 0) + dt * 1.4);
+      } else {
+        state.deathProgress = 0;
+      }
+    },
+    draw(ctx, camera, host, state) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || host.rig?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+
+      const anim = state?.anim || 'idle';
+      const dead = anim.startsWith('death_');
+      const crush = dead && host.deathCause === 'crush';
+      const fire = dead && host.deathCause === 'fire';
+      const damage = dead && host.deathCause === 'damage';
+      const bob = Math.sin((state?.t || 0) * 2.2) * (anim === 'idle' ? 1.2 : 0.6);
+      const shake = (state?.shakeT || 0) * (host.bossActive ? 1 : 0) * 1.1;
+      const shakeX = shake ? Math.sin((state?.t || 0) * 24) * shake : 0;
+      const shakeY = shake ? Math.cos((state?.t || 0) * 26) * shake : 0;
+      const walkTilt = anim.startsWith('walk') ? Math.sin((state?.t || 0) * 6) * 1.2 : 0;
+      const bedScaleY = crush ? 0.35 : (fire ? 0.95 : 1);
+      const bedScaleX = crush ? 1.1 : 1;
+
+      if (anim === 'cured') {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        const halo = ctx.createRadialGradient(0, 0, 6, 0, 0, 16);
+        halo.addColorStop(0, 'rgba(120, 230, 210, 0.75)');
+        halo.addColorStop(1, 'rgba(80, 150, 180, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.ellipse(0, 4, 18, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.translate(shakeX + walkTilt * 0.2, shakeY);
+
+      // Sombra
+      ctx.save();
+      ctx.scale(bedScaleX, bedScaleY);
+      drawEllipse(ctx, 10.5, 4, 'rgba(0,0,0,0.25)');
+      ctx.restore();
+
+      // Cama base
+      ctx.save();
+      ctx.scale(bedScaleX, bedScaleY);
+      ctx.fillStyle = '#9fbcc9';
+      ctx.beginPath();
+      ctx.roundRect(-12, -6, 24, 14, 4);
+      ctx.fill();
+      ctx.fillStyle = '#c8e4f0';
+      ctx.beginPath();
+      ctx.roundRect(-11, -5, 22, 12, 4);
+      ctx.fill();
+      ctx.fillStyle = '#62b8c4';
+      ctx.beginPath();
+      ctx.roundRect(-11, 0, 22, 8, 3);
+      ctx.fill();
+      ctx.restore();
+
+      // Pie de suero
+      ctx.save();
+      ctx.translate(13 + shakeX * 0.2, -8 + shakeY * 0.2);
+      ctx.strokeStyle = '#6a7c8a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(0, -14);
+      ctx.moveTo(-3, -12); ctx.lineTo(3, -12);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.fillRect(-1.5, -2, 3, 2);
+      // Bolsas
+      const bag = (color) => {
+        ctx.beginPath();
+        ctx.roundRect(-3.5, -11, 7, 8, 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.stroke();
+      };
+      ctx.save();
+      ctx.translate(-5, -10);
+      bag('rgba(230,70,70,0.75)');
+      ctx.restore();
+      ctx.save();
+      ctx.translate(5, -10);
+      bag('rgba(70,170,230,0.75)');
+      ctx.restore();
+      ctx.restore();
+
+      // Colchón y sábana
+      ctx.save();
+      ctx.translate(0, -2 + bob * 0.4);
+      ctx.scale(bedScaleX, bedScaleY);
+      ctx.fillStyle = '#f7f9fb';
+      ctx.beginPath();
+      ctx.roundRect(-10, -6, 20, 12, 4);
+      ctx.fill();
+      ctx.fillStyle = '#8ed3d6';
+      ctx.beginPath();
+      ctx.roundRect(-10, 0, 20, 7, 3);
+      ctx.fill();
+      ctx.restore();
+
+      // Paciente
+      ctx.save();
+      ctx.translate(0, -5 + bob);
+      ctx.scale(crush ? 1.05 : 1, crush ? 0.55 : 1);
+
+      // Cuerpo bajo sábana
+      ctx.save();
+      ctx.fillStyle = '#f8fbff';
+      ctx.beginPath();
+      ctx.roundRect(-8, 2, 16, 7, 3);
+      ctx.fill();
+      ctx.fillStyle = '#bde3e8';
+      ctx.beginPath();
+      ctx.roundRect(-7, 3, 14, 6, 3);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos
+      ctx.save();
+      const armColor = fire ? '#d6b6a0' : '#f0c9b4';
+      ctx.fillStyle = damage ? '#f3d9d0' : armColor;
+      ctx.beginPath();
+      ctx.roundRect(-9, 4, 4, 5, 2);
+      ctx.roundRect(5, 4, 4, 5, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Cabeza
+      ctx.save();
+      ctx.translate(0, -4 + (state?.headBob || 0));
+      ctx.scale(1, crush ? 0.7 : 1);
+      const faceColor = fire ? '#d1a88f' : '#f2cbb6';
+      const paleFace = damage ? '#f1ded6' : faceColor;
+      ctx.fillStyle = paleFace;
+      ctx.beginPath();
+      ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pelo
+      ctx.save();
+      ctx.fillStyle = fire ? '#5a3a2e' : '#3b2a26';
+      ctx.beginPath();
+      ctx.ellipse(0, -2, 9, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Ojos
+      const eyeOpen = Math.max(0, 2.2 - (state?.blinkPhase || 0) * 2.2);
+      ctx.fillStyle = '#0d0d0d';
+      ctx.beginPath();
+      ctx.ellipse(-3, -1, eyeOpen, 1.6, 0, 0, Math.PI * 2);
+      ctx.ellipse(3, -1, eyeOpen, 1.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Boca
+      ctx.strokeStyle = '#a25454';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (anim === 'talk') {
+        const mouth = 1 + Math.sin(state?.mouthT || 0) * 1.2;
+        ctx.ellipse(0, 3.5, 2, mouth * 0.6, 0, 0, Math.PI * 2);
+      } else if (anim === 'eat') {
+        ctx.arc(0, 3.6, 2.4, 0, Math.PI * 1.05);
+      } else if (dead && damage) {
+        ctx.moveTo(-2, 4); ctx.lineTo(2, 4);
+      } else {
+        ctx.arc(0, 3.8, 2, 0, Math.PI);
+      }
+      ctx.stroke();
+
+      // Muertes especiales en ojos
+      if (dead) {
+        if (damage) {
+          ctx.strokeStyle = '#5a2d2d';
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.moveTo(-4, -2); ctx.lineTo(-2, 1); ctx.lineTo(0, -2); ctx.lineTo(2, 1); ctx.lineTo(4, -2);
+          ctx.stroke();
+        } else if (fire) {
+          ctx.fillStyle = 'rgba(50,50,50,0.6)';
+          ctx.beginPath();
+          ctx.arc(0, -4, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+      ctx.restore();
+
+      // Overlay de fuego
+      if (fire) {
+        ctx.save();
+        ctx.globalAlpha = 0.35 + (state?.deathProgress || 0) * 0.4;
+        ctx.fillStyle = 'rgba(240,120,60,0.8)';
+        ctx.beginPath();
+        ctx.ellipse(0, -8, 10, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Humo para fuego
+      if (fire) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#555';
+        for (let i = 0; i < 2; i++) {
+          const t = (state?.t || 0) + i * 0.6;
+          const rise = Math.sin(t) * 2 + i * 5;
+          ctx.beginPath();
+          ctx.ellipse(-4 + i * 4, -16 - rise, 3 + i, 4 + i, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Brillo de curación
+      if (anim === 'eat') {
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = 'rgba(140, 240, 220, 0.8)';
+        ctx.beginPath();
+        ctx.ellipse(0, -2, 8, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.restore();
+    },
+  });
+
   // Rig chibi para paciente tumbada en cama compacta (32x32 máx).
   PuppetAPI.registerRig('patient_bed', {
     create(host) {
