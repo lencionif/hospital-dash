@@ -28,6 +28,9 @@
 
   function spawnBossFromAscii(tx, ty) {
     const level = (root.G?.level) || (root.G?.levelIndex) || 1;
+    if (typeof root.Entities?.spawnBossForLevel === 'function') {
+      return root.Entities.spawnBossForLevel(level, tx, ty);
+    }
     if (level === 1 && root.Entities?.spawnBossHemaAtTile) {
       return root.Entities.spawnBossHemaAtTile(tx, ty);
     }
@@ -38,7 +41,6 @@
       }
       return boss;
     }
-    // Futuras expansiones: distintos bosses por nivel.
     return null;
   }
 

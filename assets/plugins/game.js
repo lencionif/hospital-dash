@@ -834,6 +834,17 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (def.kind === 'wall' || def.kind === 'void') continue;
         if (def.baseKind === 'floor' || def.kind === 'floor') continue;
 
+        if (def.isBoss || def.key === 'boss_main' || def.kind === 'boss_main') {
+          const level = (G.level ?? G.levelIndex ?? 1);
+          const boss = window.Entities?.spawnBossForLevel?.(level, x, y)
+            || (typeof def.spawn === 'function' ? def.spawn(x, y) : null);
+          if (boss) {
+            addEntity(boss);
+            G.boss = boss;
+            continue;
+          }
+        }
+
         const entity = spawnFromKind(def, x, y, ch);
         if (entity) {
           addEntity(entity);
