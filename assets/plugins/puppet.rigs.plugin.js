@@ -208,6 +208,201 @@
       ctx.restore();
     }
   });
+
+  // Rig chibi para Boss Pyromana (nivel 3)
+  PuppetAPI.registerRig('boss_pyro', {
+    create(host) {
+      return {
+        t: 0,
+        blinkT: 2 + Math.random() * 3,
+        blink: 0,
+        bob: 0,
+        flamePulse: 0,
+        anim: host?.state || 'idle',
+        deathProgress: 0,
+      };
+    },
+    update(st, host, dt = 0) {
+      if (!st || !host) return;
+      st.t += dt;
+      st.bob = Math.sin(st.t * 2.4) * 0.6;
+      st.flamePulse = 0.7 + Math.sin(st.t * 6) * 0.3;
+      st.blinkT -= dt;
+      if (st.blinkT <= 0) { st.blink = 1; st.blinkT = 3 + Math.random() * 3; }
+      st.blink = Math.max(0, st.blink - dt * 6);
+
+      const moving = Math.abs(host.vx || 0) + Math.abs(host.vy || 0) > 1;
+      const walkAnim = moving ? ((Math.abs(host.vx || 0) > Math.abs(host.vy || 0)) ? 'walk_h' : 'walk_v') : 'idle';
+      let anim = walkAnim;
+      if (host.dead) anim = `death_${host.deathCause || 'damage'}`;
+      else if (host.state === 'attack') anim = 'attack';
+      else if (host.state === 'eat') anim = 'eat';
+      else if (!moving) anim = host.state || 'idle';
+      st.anim = anim;
+      if (host.dead) st.deathProgress = Math.min(1, (st.deathProgress || 0) + dt * 1.2);
+      else st.deathProgress = 0;
+    },
+    draw(ctx, camera, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || host.rig?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y + (st?.bob || 0));
+      ctx.scale(zoom, zoom);
+
+      const anim = st?.anim || 'idle';
+      const dead = anim.startsWith('death_');
+      const crush = dead && host.deathCause === 'crush';
+      const fireDeath = dead && host.deathCause === 'fire';
+      const damageDeath = dead && host.deathCause === 'damage';
+      const tilt = (anim.startsWith('walk') ? Math.sin((st?.t || 0) * 6) * 4 : 0) * (anim === 'walk_h' ? 1 : 0);
+      const flameScale = anim === 'attack' ? 1.25 : 1;
+      const bodySquashY = crush ? 0.4 : 1;
+      const bodySquashX = crush ? 1.2 : 1;
+
+      // Cama básica
+      ctx.save();
+      ctx.scale(bodySquashX, bodySquashY);
+      ctx.fillStyle = '#f0f4ff';
+      ctx.strokeStyle = '#c8d2e8';
+      roundRect(ctx, -12, -6, 24, 14, 5, true, true);
+      ctx.restore();
+
+      // Halo curada
+      if (anim === 'cured') {
+        ctx.save();
+        const halo = ctx.createRadialGradient(0, 0, 4, 0, 0, 16);
+        halo.addColorStop(0, 'rgba(120,220,200,0.55)');
+        halo.addColorStop(1, 'rgba(120,220,200,0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 15, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Cuerpo
+      ctx.save();
+      ctx.rotate((tilt * Math.PI) / 180);
+      ctx.fillStyle = '#ffeae6';
+      ctx.strokeStyle = '#e55a5a';
+      roundRect(ctx, -8, -12, 16, 18, 6, true, true);
+      ctx.restore();
+
+      // Cabeza
+      ctx.save();
+      ctx.translate(0, -14);
+      ctx.fillStyle = '#ffd7c2';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 8, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Ojos
+      const blink = 1 - (st?.blink || 0);
+      ctx.fillStyle = '#231f20';
+      ctx.beginPath();
+      ctx.ellipse(-3, 0.5, 1.4, 2 * blink, 0, 0, Math.PI * 2);
+      ctx.ellipse(3, 0.5, 1.4, 2 * blink, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Pupilas locas
+      ctx.fillStyle = '#ff6b35';
+      ctx.beginPath();
+      ctx.arc(-3, -0.2, 0.7, 0, Math.PI * 2);
+      ctx.arc(3, -0.2, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      // Boca
+      ctx.strokeStyle = '#b23c3c';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-3, 3.5);
+      ctx.quadraticCurveTo(0, 5 + (anim === 'eat' ? -1 : 0), 3, 3.5);
+      ctx.stroke();
+      // Pelo
+      ctx.fillStyle = '#2b1b1b';
+      ctx.beginPath();
+      ctx.moveTo(-8, -4);
+      ctx.quadraticCurveTo(0, -10, 8, -4);
+      ctx.quadraticCurveTo(2, -6, -8, -4);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos simples
+      ctx.save();
+      ctx.strokeStyle = '#f6b1a8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-7, -6);
+      ctx.lineTo(-10, -2 + (anim === 'attack' ? -2 : 0));
+      ctx.moveTo(7, -6);
+      ctx.lineTo(10, -2 + (anim === 'eat' ? 2 : 0));
+      ctx.stroke();
+      ctx.restore();
+
+      // Llama flotante / mechero
+      ctx.save();
+      ctx.translate(10, -4 + (anim === 'attack' ? -2 : 0));
+      const grd = ctx.createLinearGradient(0, -6, 0, 6);
+      grd.addColorStop(0, 'rgba(255, 215, 120, 0.95)');
+      grd.addColorStop(1, 'rgba(255, 120, 50, 0.8)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.moveTo(0, -6 * flameScale);
+      ctx.quadraticCurveTo(3, 0, 0, 6 * flameScale);
+      ctx.quadraticCurveTo(-3, 0, 0, -6 * flameScale);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(80,40,10,0.7)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      // Llamas alrededor
+      const flameSlots = [
+        { x: -10, y: -8 },
+        { x: 10, y: -8 },
+        { x: -8, y: 8 },
+        { x: 8, y: 8 },
+      ];
+      for (const f of flameSlots) {
+        ctx.save();
+        ctx.translate(f.x, f.y + (anim === 'idle' ? Math.sin((st?.t || 0) * 4 + f.x) * 0.6 : 0));
+        const s = (flameScale * (st?.flamePulse || 1)) * (dead ? 0.6 : 1);
+        const grad = ctx.createRadialGradient(0, -2 * s, 1, 0, 0, 8 * s);
+        grad.addColorStop(0, fireDeath ? 'rgba(70,70,70,0.9)' : 'rgba(255,230,150,0.95)');
+        grad.addColorStop(1, fireDeath ? 'rgba(90,60,20,0.4)' : 'rgba(255,120,40,0.7)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, -6 * s);
+        ctx.quadraticCurveTo(4 * s, 0, 0, 7 * s);
+        ctx.quadraticCurveTo(-4 * s, 0, 0, -6 * s);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Siluetas de muerte fuego/humo
+      if (dead) {
+        ctx.save();
+        if (fireDeath) {
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = 'rgba(30,30,30,0.8)';
+          ctx.beginPath();
+          ctx.ellipse(0, -6, 10, 12, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (damageDeath) {
+          ctx.strokeStyle = '#f4d742';
+          ctx.lineWidth = 1.4;
+          for (let i = 0; i < 4; i++) {
+            const ang = (st?.t || 0) * 5 + i * (Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ang) * 4, Math.sin(ang) * 4 - 10);
+            ctx.lineTo(Math.cos(ang) * 7, Math.sin(ang) * 7 - 10);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
+      ctx.restore();
+    },
+  });
   // -------------------------------------------------------------------------
   // Rig: boss_cleaner (Jefa de limpiadoras desmayada, chibi top-down)
   // -------------------------------------------------------------------------
