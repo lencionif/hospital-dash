@@ -31,6 +31,13 @@
     if (level === 1 && root.Entities?.spawnBossHemaAtTile) {
       return root.Entities.spawnBossHemaAtTile(tx, ty);
     }
+    if (level === 2 && root.Entities?.spawnBossCleanerAtTile) {
+      const boss = root.Entities.spawnBossCleanerAtTile(tx, ty);
+      if (root.G) {
+        root.G.bossRoom = { level: 2, tx, ty, kind: 'boss_cleaner' };
+      }
+      return boss;
+    }
     // Futuras expansiones: distintos bosses por nivel.
     return null;
   }

@@ -208,6 +208,265 @@
       ctx.restore();
     }
   });
+  // -------------------------------------------------------------------------
+  // Rig: boss_cleaner (Jefa de limpiadoras desmayada, chibi top-down)
+  // -------------------------------------------------------------------------
+  PuppetAPI.registerRig('boss_cleaner', {
+    create(host) {
+      return {
+        t: 0,
+        step: 0,
+        anim: 'idle',
+        blink: 0,
+        eyeOpen: 1,
+        mopSwing: 0,
+        halo: 0,
+        wobble: 0,
+      };
+    },
+    update(st, host, dt = 0) {
+      if (!st || !host) return;
+      st.t += dt;
+      const dead = host.dead;
+      st.anim = dead ? `death_${host.deathCause || 'damage'}` : (host.state || 'idle');
+      const moving = st.anim.startsWith('walk');
+      st.step += dt * (moving ? 4 : 2.2);
+      st.wobble = moving ? Math.sin(st.step) * 1.5 : Math.sin(st.t * 2.4) * 0.6;
+      st.mopSwing = st.anim === 'attack'
+        ? Math.min(1, (st.mopSwing || 0) + dt * 6)
+        : Math.max(0, (st.mopSwing || 0) - dt * 4);
+      st.halo = st.anim === 'talk' || st.anim === 'cured'
+        ? Math.min(1, (st.halo || 0) + dt * 3)
+        : Math.max(0, (st.halo || 0) - dt * 2);
+
+      st.blink = st.blink || (2.5 + Math.random() * 2);
+      st.blink -= dt;
+      if (st.blink <= 0) {
+        st.eyeOpen = Math.max(0, (st.eyeOpen || 1) - dt * 18);
+        if (st.eyeOpen <= 0.1) {
+          st.blink = 2 + Math.random() * 2;
+          st.eyeOpen = 1;
+        }
+      } else {
+        st.eyeOpen = Math.min(1, (st.eyeOpen || 1) + dt * 5);
+      }
+    },
+    draw(ctx, camera, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || host.rig?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+
+      const anim = st?.anim || 'idle';
+      const dead = anim.startsWith('death_');
+      const crush = dead && anim === 'death_crush';
+      const fire = dead && anim === 'death_fire';
+      const bob = Math.sin((st?.t || 0) * 2.2) * (dead ? 0 : 0.8);
+      const squashY = crush ? 0.5 : 1;
+      const squashX = crush ? 1.25 : 1;
+
+      // Charco de agua
+      ctx.save();
+      ctx.scale(1, squashY);
+      ctx.fillStyle = fire ? '#5c6a75' : 'rgba(35,200,215,0.55)';
+      drawEllipse(ctx, 13, 7.5, ctx.fillStyle);
+      drawEllipse(ctx, 9, 5, fire ? '#4a555f' : 'rgba(55,220,235,0.35)');
+      ctx.restore();
+
+      // Sombra
+      ctx.save();
+      ctx.scale(1, squashY);
+      drawEllipse(ctx, 9, 3, 'rgba(0,0,0,0.2)');
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(0, -1 + bob);
+      ctx.scale(squashX, squashY);
+
+      // Señal de suelo mojado
+      ctx.save();
+      ctx.translate(-10, 6);
+      ctx.rotate(-0.2);
+      ctx.fillStyle = fire ? '#4d4d4d' : '#f5c400';
+      ctx.beginPath();
+      ctx.moveTo(-3, 6); ctx.lineTo(3, 6); ctx.lineTo(0, -6); ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = fire ? '#222' : '#181818';
+      ctx.fillRect(-1, 0, 2, 3);
+      ctx.restore();
+
+      // Cubo y pulverizador
+      ctx.save();
+      ctx.translate(10, 5);
+      ctx.fillStyle = fire ? '#3a3a3a' : '#f6d541';
+      ctx.beginPath();
+      ctx.roundRect(-3.5, -2.5, 7, 6, 1.5);
+      ctx.fill();
+      ctx.fillStyle = fire ? '#1f1f1f' : '#5aa3ff';
+      ctx.roundRect(-8, -4, 4, 5, 1.2);
+      ctx.fill();
+      ctx.restore();
+
+      // Mocho
+      ctx.save();
+      const swing = (st?.mopSwing || 0) * 0.9;
+      ctx.translate(8, -2);
+      ctx.rotate(-0.6 + swing);
+      ctx.fillStyle = fire ? '#2b2b2b' : '#caa074';
+      ctx.fillRect(-1, -1, 10, 2);
+      ctx.translate(10, 0);
+      ctx.fillStyle = fire ? '#1b1b1b' : '#8d96a7';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5, 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Halo de curación
+      if (st?.halo > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.35 * st.halo;
+        drawEllipse(ctx, 15, 10, 'rgba(120,210,255,0.9)');
+        ctx.globalAlpha = 0.2 * st.halo;
+        ctx.strokeStyle = 'rgba(110,255,210,0.8)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, -3, 12, 8, 0, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Cuerpo
+      ctx.save();
+      ctx.translate(0, 4);
+      const bodySquash = anim === 'idle' ? 1 + Math.sin((st?.t || 0) * 2.5) * 0.05 : 1;
+      ctx.scale(1, bodySquash);
+      ctx.fillStyle = fire ? '#3a3a3a' : '#f6f7fb';
+      ctx.beginPath();
+      ctx.roundRect(-8, -3, 16, 12, 6);
+      ctx.fill();
+      ctx.fillStyle = fire ? '#2b2b2b' : '#e3e9ff';
+      ctx.roundRect(-7, 1, 14, 7, 5);
+      ctx.fill();
+      ctx.restore();
+
+      // Brazos
+      ctx.save();
+      ctx.translate(0, 2 + st.wobble * 0.2);
+      ctx.fillStyle = fire ? '#2c2c2c' : '#58a3ff';
+      const armSwing = Math.sin((st?.step || 0) * 1.6) * (anim.startsWith('walk') ? 1.6 : 0.5);
+      ctx.roundRect(-10 + armSwing, -1, 4, 7, 2);
+      ctx.roundRect(6 - armSwing, -1, 4, 7, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Piernas y zuecos
+      ctx.save();
+      ctx.translate(0, 8 + st.wobble * 0.1);
+      ctx.fillStyle = fire ? '#1f1f1f' : '#ff88b5';
+      const legDrag = anim.startsWith('walk') ? Math.sin((st?.step || 0) * 1.4) * 1.5 : 0.4;
+      ctx.roundRect(-6 + legDrag, -1, 5, 4, 2);
+      ctx.roundRect(1 - legDrag, -1, 5, 4, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Cabeza
+      ctx.save();
+      ctx.translate(0, -4 + st.wobble * 0.2);
+      ctx.scale(1, crush ? 0.75 : 1);
+      ctx.fillStyle = fire ? '#2b1d17' : '#f4c8ad';
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, TAU);
+      ctx.fill();
+
+      // Pelo y coleta
+      ctx.save();
+      ctx.translate(-1, -3);
+      ctx.fillStyle = fire ? '#19110c' : '#5a3524';
+      ctx.beginPath();
+      ctx.ellipse(1, 1, 10, 7, 0, 0, TAU);
+      ctx.fill();
+      ctx.translate(7, -3);
+      ctx.rotate(0.6);
+      ctx.fillStyle = fire ? '#120c08' : '#6d412c';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5, 3, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // Ojos y boca
+      ctx.save();
+      const eyeScale = (st?.eyeOpen ?? 1) * (anim === 'death_damage' ? 0.4 : 1);
+      ctx.fillStyle = fire ? '#f7f7f7' : '#0f0f0f';
+      ctx.beginPath();
+      ctx.ellipse(-3.5, -1, 1.6, 1.2 * eyeScale, 0, 0, TAU);
+      ctx.ellipse(3.5, -1, 1.6, 1.2 * eyeScale, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = fire ? '#f7f7f7' : '#b02b2b';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (anim === 'attack') ctx.arc(0, 3.5, 3, 0, Math.PI);
+      else if (anim === 'eat') ctx.arc(0, 3, 2.4, 0, Math.PI * 1.1);
+      else ctx.arc(0, 3.2, 2.1, 0, Math.PI);
+      ctx.stroke();
+      ctx.restore();
+
+      // Mejillas
+      if (!dead && !fire) {
+        ctx.fillStyle = anim === 'eat' ? '#ffb7c0' : '#ff9aa8';
+        drawEllipse(ctx, 2, 1.2, ctx.fillStyle);
+        ctx.save();
+        ctx.translate(5, 1);
+        drawEllipse(ctx, 2, 1.2, ctx.fillStyle);
+        ctx.restore();
+      }
+
+      // Ojos especiales muerte
+      if (dead && anim === 'death_damage') {
+        ctx.strokeStyle = '#2b1b1b';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(-4, -1); ctx.quadraticCurveTo(-1, -4, 1, -1); ctx.quadraticCurveTo(3, 2, -1, 2);
+        ctx.moveTo(4, -1); ctx.quadraticCurveTo(1, -4, -1, -1); ctx.quadraticCurveTo(-3, 2, 1, 2);
+        ctx.stroke();
+      } else if (dead && anim === 'death_fire') {
+        ctx.fillStyle = 'rgba(50,50,50,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(-3, -8); ctx.quadraticCurveTo(-1, -11, 2, -8); ctx.quadraticCurveTo(5, -4, 2, -2); ctx.quadraticCurveTo(-2, 1, -3, 5);
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      // Partículas muerte
+      if (dead) {
+        if (anim === 'death_fire') {
+          ctx.save();
+          ctx.globalAlpha = 0.6;
+          drawEllipse(ctx, 11, 6, '#2f2f2f');
+          ctx.fillStyle = 'rgba(80,80,80,0.5)';
+          ctx.fillRect(-2, -18, 3, 8);
+          ctx.fillRect(3, -15, 2, 6);
+          ctx.restore();
+        } else if (anim === 'death_damage') {
+          ctx.save();
+          ctx.strokeStyle = '#f4d742';
+          ctx.lineWidth = 1.2;
+          for (let i = 0; i < 4; i++) {
+            const ang = st.t * 4 + i * (Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ang) * 6, Math.sin(ang) * 6 - 12);
+            ctx.lineTo(Math.cos(ang) * 10, Math.sin(ang) * 10 - 12);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    },
+  });
 
   // Rig chibi para Boss Hematológica en cama (tile único 32x32 aprox.)
   PuppetAPI.registerRig('boss_hema', {
@@ -1742,8 +2001,7 @@
       ctx.restore();
     }
   });
-})();
-// Comentario: se registran rigs chibi del jefe de servicio y su yogur bomba.
+  // Comentario: se registran rigs chibi del jefe de servicio y su yogur bomba.
 
 // Añadido rig chibi del jefe de servicio y proyectil de yogur.
 
@@ -2056,8 +2314,7 @@
       ctx.restore();
     },
   });
-})();
-// Comentario: rigs actualizados para jefe de servicio y proyectil.
+  // Comentario: rigs actualizados para jefe de servicio y proyectil.
 
   // Rig chibi para "visitante molesto" (estética chibi 24x24 px aprox.)
   PuppetAPI.registerRig('npc_visitor_annoying', {
@@ -2254,3 +2511,5 @@
       ctx.restore();
     },
   });
+
+})();
