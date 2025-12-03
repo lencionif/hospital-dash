@@ -375,20 +375,32 @@
       const wantsSlide = (e.slide != null) ? !!e.slide : isCartEntity(e);
       const muSource = (e.mu != null) ? e.mu : (wantsSlide ? (CFG.cartSlideMu ?? 0) : 0);
       const mu = clamp(muSource, 0, 0.95);
+      const baseFrictionMult = Number.isFinite(e._baseFrictionMultiplier)
+        ? e._baseFrictionMultiplier
+        : (Number.isFinite(e.frictionMultiplier) ? e.frictionMultiplier : 1);
+      if (!Number.isFinite(e._baseFrictionMultiplier)) e._baseFrictionMultiplier = baseFrictionMult;
+      if (Number.isFinite(e._wetFloorTimer)) {
+        e._wetFloorTimer = Math.max(0, e._wetFloorTimer - dt);
+        if (e._wetFloorTimer <= 0) {
+          e.onWetFloor = false;
+          e.frictionMultiplier = baseFrictionMult;
+        }
+      }
+      const frictionMultiplier = clamp(Number.isFinite(e.frictionMultiplier) ? e.frictionMultiplier : 1, 0, 1);
       const baseFrictionValue = (typeof e._frictionOverride === 'number')
         ? clamp(e._frictionOverride, 0, 0.95)
         : (typeof e.friction === 'number'
           ? clamp(e.friction, 0, 0.95)
           : (CFG.friction ?? 0.02));
       const base = 1 - baseFrictionValue;
-      const fr = base * (1 - mu);
+      const fr = base * (1 - mu) * frictionMultiplier;
       const wr = Math.max(CFG.restitution, resolveRestitution(e));
       const slideFrictionValue = (typeof e._slideFrictionOverride === 'number')
         ? clamp(e._slideFrictionOverride, 0.001, 0.95)
         : (typeof e.slideFriction === 'number'
           ? clamp(e.slideFriction, 0.001, 0.95)
           : ((CFG.slideFriction ?? CFG.friction) ?? 0.02));
-      const slideCoef = 1 - slideFrictionValue;
+      const slideCoef = (1 - slideFrictionValue) * frictionMultiplier;
       const entMass = massOf(e);
       const minFireMass = CFG.fireMinMass ?? DEFAULTS.fireMinMass ?? 0;
       const allowFireSpawn = !e.static && (Number.isFinite(entMass) ? entMass : minFireMass) >= minFireMass;

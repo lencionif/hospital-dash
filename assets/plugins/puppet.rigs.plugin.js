@@ -495,6 +495,56 @@
     }
   });
 
+  PuppetAPI.registerRig('puddle_wet', {
+    create(e) {
+      return {
+        t: 0,
+        bounce: 0,
+        wobble: 0,
+      };
+    },
+    update(st, e, dt) {
+      if (!st) return;
+      st.t += dt;
+      st.bounce = Math.sin(st.t * 3) * 1;
+      st.wobble = Math.sin(st.t * 5) * 0.04;
+    },
+    draw(ctx, cam, e, st) {
+      if (!ctx || !cam || !e || !st) return;
+      const scr = (typeof toScreen === 'function') ? toScreen(cam, e) : {
+        x: (e.x - cam.x) * cam.zoom + (ctx.canvas?.width || 0) * 0.5,
+        y: (e.y - cam.y) * cam.zoom + (ctx.canvas?.height || 0) * 0.5,
+      };
+      ctx.save();
+      ctx.translate(scr.x, scr.y + st.bounce);
+      ctx.scale(cam.zoom, cam.zoom);
+
+      const rX = 14 * (1 + st.wobble);
+      const rY = 10 * (1 - st.wobble);
+
+      const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 14);
+      g.addColorStop(0, 'rgba(120, 200, 255, 0.95)');
+      g.addColorStop(0.6, 'rgba(40, 140, 240, 0.9)');
+      g.addColorStop(1, 'rgba(0, 60, 140, 0.75)');
+
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rX, rY, 0, 0, Math.PI * 2);
+      ctx.fillStyle = g;
+      ctx.fill();
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(0, 40, 120, 0.9)';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.ellipse(-5, -3, rX * 0.4, rY * 0.3, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.stroke();
+
+      ctx.restore();
+    },
+  });
+
   PuppetAPI.registerRig('cart_meds_pinball', {
     create(e) {
       return { t: 0, bounce: 0, squash: 0, hitFlashT: 0, lastSpeed: 0 };

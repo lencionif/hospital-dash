@@ -4,6 +4,8 @@
   const root = typeof W !== 'undefined' ? W : window;
   const ENT = root.ENT || (root.ENT = {});
 
+  if (typeof ENT.WATER_PUDDLE === 'undefined') ENT.WATER_PUDDLE = 'water_puddle';
+
   // Entidades de carros pinball
   if (typeof ENT.CART_FOOD === 'undefined') ENT.CART_FOOD = 'cart_food';
   if (typeof ENT.CART_MEDS === 'undefined') ENT.CART_MEDS = 'cart_meds';
@@ -125,7 +127,7 @@
     'E': { key: 'elevator',       kind: ENT.ELEVATOR,     factoryKey: 'elevator_tile' },
 
     // Agua / charco
-    '~': { key: 'water',          kind: 'puddle',         factoryKey: 'hazard_puddle', isWater: true, isHazard: true },
+    '~': { key: 'water',          kind: ENT.WATER_PUDDLE, factoryKey: ENT.WATER_PUDDLE, isWater: true, isHazard: true },
 
     // Fuego
     'x': { key: 'fire',           kind: 'fire',           factoryKey: 'fire_tile',  isHazard: true },

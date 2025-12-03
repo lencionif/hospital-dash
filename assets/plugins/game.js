@@ -806,11 +806,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       },
       tcae(tx, ty, def) { return ENTITY_FACTORIES.npc_tcae(tx, ty, def); },
       hazard_puddle(tx, ty, def) {
-        if (window.Entities?.Puddles?.spawnFromAscii) return window.Entities.Puddles.spawnFromAscii(tx, ty, def || {});
-        if (window.Entities?.spawnPuddleFromAscii) return window.Entities.spawnPuddleFromAscii(tx, ty, def || {});
-        if (typeof window.spawnPuddle === 'function') return window.spawnPuddle((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
+        if (window.Entities?.WaterPuddle?.spawnFromAscii) return window.Entities.WaterPuddle.spawnFromAscii(tx, ty, def || {});
+        if (typeof window.createWaterPuddle === 'function') return window.createWaterPuddle((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
         return null;
       },
+      water_puddle(tx, ty, def) { return ENTITY_FACTORIES.hazard_puddle(tx, ty, def); },
       door_normal(tx, ty) {
         if (window.Entities?.Doors?.spawnNormalDoor) return window.Entities.Doors.spawnNormalDoor(toPx(tx), toPx(ty), { tx, ty });
         return null;
