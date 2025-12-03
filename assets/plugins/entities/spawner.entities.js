@@ -48,7 +48,7 @@ const HP_PER_HEART = window.HP_PER_HEART || 1;
  *  Obligatorio:
  *    kind    : ENT.X (tipo lógico)
  *    x, y    : posición en píxeles (centro del tile)
- *    rig     : nombre del rig de PuppetAPI
+ *    rig     : nombre del rig de PuppetAPI (opcional si usas solo spriteId)
  *
  *  Recomendado:
  *    role            : etiqueta de rol (“hero”, “npc”, “animal”, “cart”,
@@ -191,16 +191,19 @@ function createGameEntity(cfg) {
       close:  cfg.audioProfile?.close  || 'door_close',
     },
 
-    // Puppet / rig
-    puppet: {
-      rig: cfg.rig,                            // OBLIGATORIO
-      z: cfg.z !== undefined ? cfg.z : HERO_Z, // mismo plano que héroe
+    // Puppet / rig (opcional). Si no hay rig, se dibuja por spriteId/spriteKey.
+    puppet: cfg.rig ? {
+      rig: cfg.rig,
+      z: cfg.z !== undefined ? cfg.z : HERO_Z,
       skin: cfg.skin || 'default',
-    },
+    } : null,
 
-    // Sprites opcionales (si algún rig los usa)
+    // Sprites opcionales (para rigs o entidades solo-sprite)
     spriteId: cfg.spriteId || null,
     spriteKey: cfg.spriteKey || null,
+
+    // Capa/z visual cuando se dibuja con sprite
+    z: cfg.z !== undefined ? cfg.z : HERO_Z,
 
     // Hooks genéricos de lógica
     aiUpdate: cfg.aiUpdate || baseAiUpdate,

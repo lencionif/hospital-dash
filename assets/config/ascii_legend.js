@@ -14,6 +14,9 @@
   if (typeof ENT.DOOR_NORMAL === 'undefined') ENT.DOOR_NORMAL = 'door_normal';
   if (typeof ENT.DOOR_URGENT === 'undefined') ENT.DOOR_URGENT = 'door_urgent';
   if (typeof ENT.ELEVATOR === 'undefined') ENT.ELEVATOR = 'elevator';
+  if (typeof ENT.SPAWNER_ANIMALS === 'undefined') ENT.SPAWNER_ANIMALS = 'spawner_animals';
+  if (typeof ENT.SPAWNER_HUMANS === 'undefined') ENT.SPAWNER_HUMANS = 'spawner_humans';
+  if (typeof ENT.SPAWNER_CARTS === 'undefined') ENT.SPAWNER_CARTS = 'spawner_carts';
 
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
@@ -88,10 +91,11 @@
     'd': { key: ENT.DOOR_NORMAL, kind: ENT.DOOR_NORMAL, factoryKey: ENT.DOOR_NORMAL, blocking: false, isWalkable: true, isDoor: true },
     'u': { key: ENT.DOOR_URGENT, kind: ENT.DOOR_URGENT, factoryKey: ENT.DOOR_URGENT, blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
 
-    // Spawns abstractos según level_rules
+    // Spawners permanentes (sprite-only)
+    'A': { key: ENT.SPAWNER_ANIMALS, kind: ENT.SPAWNER_ANIMALS, sprite: 'SPR_SPAWNER_ANIMALS' },
+    'H': { key: ENT.SPAWNER_HUMANS,  kind: ENT.SPAWNER_HUMANS,  sprite: 'SPR_SPAWNER_HUMANS' },
+    'C': { key: ENT.SPAWNER_CARTS,   kind: ENT.SPAWNER_CARTS,   sprite: 'SPR_SPAWNER_CARTS' },
     'N': { key: 'spawn_npc',   kind: 'spawn_npc',   factoryKey: 'spawn_npc_human', isSpawn: true },
-    'A': { key: 'spawn_animal',kind: 'spawn_animal',factoryKey: 'spawn_enemy_animal', isSpawn: true },
-    'C': { key: 'spawn_cart',  kind: 'spawn_cart',  factoryKey: 'spawn_cart', isSpawn: true },
 
     // Carros colocados directamente
     // 'Q' -> carro de comidas (cart_food)
@@ -113,7 +117,7 @@
 
     // NPC humanos concretos (colocados manualmente)
     'J': { key: 'npc_jefe',        kind: 'jefe',          factoryKey: 'npc_jefe_servicio', isNPC: true },
-    'H': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
+    'Z': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
     'k': { key: 'npc_medico',      kind: (root.ENT && root.ENT.MEDIC) || 'medico', factoryKey: 'npc_medico',      isNPC: true }, // 'k' -> Medica (NPC hostil que deja pastillas envenenadas).
     't': { key: 'npc_tcae',        kind: (root.ENT && root.ENT.TCAE) || 'tcae', factoryKey: 'npc_tcae',        isNPC: true },
     // Celador: NPC fuerte que prioriza empujar carros contra el jugador y hace 0.5 corazones de daño por contacto.
