@@ -687,6 +687,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.npcs.length = 0;
     G.lights.length = 0;
     G.roomLights.length = 0;
+    try { window.SpawnerAPI?.reset?.(); } catch (_) {}
 
     // === Constantes / fallback ===
     // Importante: NO redefinimos el TILE del motor aquí (evita la TDZ).
@@ -869,6 +870,13 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // Guarda referencia global para applyPlacementsFromMapgen
     G.__asciiPlacements = asciiPlacements;
 
+    const isWalkableTile = (tx, ty) => {
+      if (!Array.isArray(G.map)) return false;
+      const rowRef = G.map[ty];
+      if (!Array.isArray(rowRef)) return true;
+      return rowRef[tx] === 0;
+    };
+
     for (let y = 0; y < G.mapH; y++){
       const row = [];
       const colorRow = [];
@@ -883,6 +891,37 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (!def) continue;
         if (def.kind === 'wall' || def.kind === 'void') continue;
         if (def.baseKind === 'floor' || def.kind === 'floor') continue;
+
+        if (ch === 'A' || ch === 'H' || ch === 'C') {
+          const px = x * TILE + TILE / 2;
+          const py = y * TILE + TILE / 2;
+          if (blocking || !isWalkableTile(x, y)) {
+            console.warn('[SPAWNER] Tile bloqueado, no se puede colocar spawner en', x, y);
+            continue;
+          }
+          const defSpawner = def;
+          const population = (defSpawner.kind === ENT.SPAWNER_ANIMALS)
+            ? 'animals'
+            : (defSpawner.kind === ENT.SPAWNER_HUMANS ? 'humans' : 'carts');
+          const cdBase = LevelRulesAPI?.getNumber?.(`spawners.${population}.cooldown`, population === 'animals' ? 7 : 7);
+          const radius = LevelRulesAPI?.getNumber?.(`spawners.${population}.radius`, population === 'animals' ? 3 : 3);
+          try {
+            window.SpawnerAPI?.createSpawner?.({
+              kind: defSpawner.kind,
+              spriteId: defSpawner.sprite,
+              tileX: x,
+              tileY: y,
+              x: px,
+              y: py,
+              spawnPopulation: population,
+              spawnCooldownBase: cdBase,
+              spawnRadiusTiles: radius,
+            });
+          } catch (err) {
+            console.warn('[SPAWNER] Error al crear spawner', err);
+          }
+          continue;
+        }
 
         if ((ch === 'F' || ch === 'x') && window.FireAPI?.spawnAtTile) {
           const px = x * TILE + TILE / 2;
@@ -1424,6 +1463,10 @@ function updateEntities(dt){
   if (window.SpawnerManager && typeof SpawnerManager.update === 'function'){
     try { SpawnerManager.update(dt); }
     catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
+  }
+  if (window.SpawnerAPI && typeof SpawnerAPI.updateAll === 'function') {
+    try { SpawnerAPI.updateAll(dt); }
+    catch (err) { if (dbg) console.warn('[updateEntities] error SpawnerAPI.updateAll', err); }
   }
 }
 

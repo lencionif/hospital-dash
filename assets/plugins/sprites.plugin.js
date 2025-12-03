@@ -12,12 +12,18 @@
   'use strict';
 
   const TAU = Math.PI * 2;
+  const SPRITE_ALIASES = {
+    SPR_SPAWNER_ANIMALS: 'spawner_enemigos',
+    SPR_SPAWNER_HUMANS: 'spawner_npc',
+    SPR_SPAWNER_CARTS: 'spawner_carros'
+  };
 
   const Sprites = {
     _opts: { basePath: './assets/images/', tile: 32 },
     _imgs: Object.create(null),       // mapa: key -> HTMLImageElement/Canvas
     _keys: [],                        // lista de keys cargadas (orden del manifest)
     _ready: false,
+    _aliases: { ...SPRITE_ALIASES },
     _viewer: { enabled: false, page: 0, perRow: 10, thumb: 48 },
     _isHttp: /^https?:/i.test(location.protocol),
     _base: function(){ return this._opts.basePath.replace(/\/+$/,'') + '/'; },
@@ -261,6 +267,12 @@
 
     // Mapea entidad → nombre de sprite (por defecto)
     _keyForEntity(e) {
+      if (e.spriteId) {
+        const id = String(e.spriteId).trim();
+        const alias = this._aliases[id] || this._aliases[id.toUpperCase?.()] || this._aliases[id.toLowerCase?.()];
+        if (alias) return alias;
+        return id;
+      }
       // Si la entidad ya trae spriteKey/skin, úsalo
       if (e.spriteKey) return e.spriteKey;
       if (e.skin) return e.skin;
