@@ -1,4 +1,5 @@
 // assets/plugins/entities/hazards.entities.js
+// TODO: Archivo no referenciado en index.html. Candidato a eliminación si se confirma que no se usa.
 // Papelitos y aviones de papel usados por la supervisora.
 (function (W) {
   'use strict';

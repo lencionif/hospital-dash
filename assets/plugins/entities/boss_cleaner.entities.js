@@ -1,4 +1,5 @@
 // assets/plugins/entities/boss_cleaner.entities.js
+// TODO: Archivo no referenciado en index.html. Candidato a eliminación si se confirma que no se usa.
 // Entidad Boss Nivel 2: Jefa de limpiadoras desmayada. Se activa cuando
 // no quedan pacientes normales, lanza cuenta atrás de 5 minutos y se cura
 // acercando el carro de urgencias sin aplastarla.
