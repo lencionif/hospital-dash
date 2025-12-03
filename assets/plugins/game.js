@@ -762,6 +762,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (window.Entities?.Guardia?.spawn) return window.Entities.Guardia.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
         return null;
       },
+      npc_cleaner(tx, ty, def) {
+        if (window.Entities?.Cleaner?.spawnFromAscii) return window.Entities.Cleaner.spawnFromAscii(tx, ty, def || {});
+        if (window.Entities?.Cleaner?.spawn) return window.Entities.Cleaner.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
+        if (typeof window.spawnCleaner === 'function') return window.spawnCleaner((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
+        return null;
+      },
       celador(tx, ty, def) { return ENTITY_FACTORIES.npc_celador(tx, ty, def); },
       furious_patient(tx, ty, def) {
         // [HospitalDash] Colocación directa de paciente furiosa chibi.
@@ -778,6 +784,13 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         return null;
       },
       tcae(tx, ty, def) { return ENTITY_FACTORIES.npc_tcae(tx, ty, def); },
+      hazard_puddle(tx, ty, def) {
+        if (window.Entities?.Puddles?.spawnFromAscii) return window.Entities.Puddles.spawnFromAscii(tx, ty, def || {});
+        if (window.Entities?.spawnPuddleFromAscii) return window.Entities.spawnPuddleFromAscii(tx, ty, def || {});
+        if (typeof window.spawnPuddle === 'function') return window.spawnPuddle((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
+        return null;
+      },
+      water_tile(tx, ty, def) { return ENTITY_FACTORIES.hazard_puddle(tx, ty, def); },
     };
 
     const spawnFromKind = (def, tx, ty, ch) => {
