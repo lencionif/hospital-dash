@@ -327,8 +327,12 @@
       e.vy = (e.vy || 0) + fy;
     }
 
-    function handleCartBounce(e){
+    function handleCartBounce(e, meta = {}){
       if (!isCartEntity(e) || e.bounceCount == null) return;
+      const handled = typeof e.onWallHit === 'function' && (meta.normalX || meta.normalY)
+        ? e.onWallHit(e, meta.normalX || 0, meta.normalY || 0, Object.assign({ alreadyReflected: !!meta.alreadyReflected }, meta))
+        : false;
+      if (handled === true) return;
       e.bounceCount = (e.bounceCount || 0) + 1;
       e.justBounced = true;
       const speed = Math.hypot(e.vx || 0, e.vy || 0);
@@ -427,9 +431,11 @@
             handleSlipImpact(e, 'x', Math.abs(vxStep), contactX, contactY);
           }
           const v = -(e.vx || 0) * wr;
+          const preVx = e.vx || 0;
+          const preVy = e.vy || 0;
           e.vx = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vx || 1);
-          handleCartBounce(e);
+          handleCartBounce(e, { axis: 'x', normalX: vxStep > 0 ? 1 : -1, normalY: 0, preVx, preVy, restitution: wr, alreadyReflected: true });
           if (!isWall(nx + s, ny, e.w, e.h)) nx += s;
         }
         const tryY = ny + sy;
@@ -462,9 +468,11 @@
             handleSlipImpact(e, 'y', Math.abs(vyStep), contactX, contactY);
           }
           const v = -(e.vy || 0) * wr;
+          const preVx = e.vx || 0;
+          const preVy = e.vy || 0;
           e.vy = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vy || 1);
-          handleCartBounce(e);
+          handleCartBounce(e, { axis: 'y', normalX: 0, normalY: vyStep > 0 ? 1 : -1, preVx, preVy, restitution: wr, alreadyReflected: true });
           if (!isWall(nx, ny + s, e.w, e.h)) ny += s;
         }
       }
