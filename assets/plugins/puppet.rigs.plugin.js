@@ -3341,4 +3341,41 @@
     },
   });
 
+  // Rig procedural para foco de fuego en suelo.
+  PuppetAPI.registerRig('fire_tile', {
+    create() {
+      return { t: 0, flicker: 0, scale: 1 };
+    },
+    update(state, host, dt = 0) {
+      if (!state) return;
+      state.t += dt;
+      state.flicker = 0.9 + Math.sin(state.t * 18 + (host?.id || 0)) * 0.1 + (Math.random() - 0.5) * 0.05;
+      state.scale = 0.9 + Math.sin(state.t * 2) * 0.1;
+    },
+    draw(ctx, cam, host, state) {
+      if (!ctx || !host || host.dead) return;
+      const { x, y, zoom } = toScreen(cam, host);
+      const s = (zoom || 1) * (state?.scale || 1);
+      const size = 20 * s;
+
+      ctx.save();
+      ctx.translate(x, y + 4 * s);
+      ctx.scale(1, state?.flicker || 1);
+
+      const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, size);
+      grad.addColorStop(0, 'rgba(255, 255, 200, 0.95)');
+      grad.addColorStop(0.4, 'rgba(255, 200, 80, 0.9)');
+      grad.addColorStop(0.8, 'rgba(255, 120, 30, 0.8)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, -size);
+      ctx.bezierCurveTo(size * 0.6, -size * 0.4, size * 0.4, size * 0.3, 0, size);
+      ctx.bezierCurveTo(-size * 0.4, size * 0.3, -size * 0.6, -size * 0.4, 0, -size);
+      ctx.fill();
+      ctx.restore();
+    },
+  });
+
 })();

@@ -5,6 +5,7 @@
   const ENT = root.ENT || (root.ENT = {});
 
   if (typeof ENT.WATER_PUDDLE === 'undefined') ENT.WATER_PUDDLE = 'water_puddle';
+  if (typeof ENT.FIRE_HAZARD === 'undefined') ENT.FIRE_HAZARD = 'fire_hazard';
 
   // Entidades de carros pinball
   if (typeof ENT.CART_FOOD === 'undefined') ENT.CART_FOOD = 'cart_food';
@@ -19,9 +20,9 @@
   //   Spawns:  'S' héroe, 'X' boss, 'M' miniboss
   //   Objetos críticos: 'd' puerta normal, 'u' puerta boss/urgencias, 'E' ascensor,
   //     'T' teléfono, 'b' timbre, 'p' cama con paciente, 'i' pastilla vinculada,
-  //     'F' carro comida, 'U' carro urgencias, '+' carro medicinas
+  //     'Q' carro comida, 'U' carro urgencias, '+' carro medicinas
   //   Spawns genéricos: 'N' NPC, 'A' animal, 'C' carro, 'o' loot aleatorio
-  //   Enemigos/otros: 'm' mosquito, 'r' rata, 'x' fuego, '~' agua, 'e' extintor
+  //   Enemigos/otros: 'm' mosquito, 'r' rata, 'F' fuego, '~' agua, 'e' extintor
   //   Recompensas: '$' moneda, '%' bolsa, '1/2/3' jeringas, '4/5/6' goteros, 'y/Y' comida
   //   NPC manuales: 'J' jefe, 'H' supervisora, 'k' médico, 't' TCAE, 'c' celador,
   //     'n' enfermera sexy, 'h' limpieza, 'g' guardia de seguridad (hostil), 'v' familiar
@@ -93,8 +94,8 @@
     'C': { key: 'spawn_cart',  kind: 'spawn_cart',  factoryKey: 'spawn_cart', isSpawn: true },
 
     // Carros colocados directamente
-    // 'F' -> carro de comidas (cart_food)
-    'F': { key: 'cart_food',      kind: ENT.CART_FOOD || 'cart_food',      factoryKey: 'cart_food', isCart: true },
+    // 'Q' -> carro de comidas (cart_food)
+    'Q': { key: 'cart_food',      kind: ENT.CART_FOOD || 'cart_food',      factoryKey: 'cart_food', isCart: true },
     'U': { key: 'cart_emergency', kind: ENT.CART_EMERGENCY || 'cart_emergency', factoryKey: 'cart_emergency', isCart: true },
     '+': { key: 'cart_meds',      kind: ENT.CART_MEDS || 'cart_meds',      factoryKey: 'cart_meds', isCart: true },
 
@@ -129,8 +130,9 @@
     // Agua / charco
     '~': { key: 'water',          kind: ENT.WATER_PUDDLE, factoryKey: ENT.WATER_PUDDLE, isWater: true, isHazard: true },
 
-    // Fuego
-    'x': { key: 'fire',           kind: 'fire',           factoryKey: 'fire_tile',  isHazard: true },
+    // Fuego (tile hazard)
+    'F': { key: 'fire',           kind: ENT.FIRE_HAZARD,  factoryKey: ENT.FIRE_HAZARD,  isHazard: true },
+    'x': { key: 'fire',           kind: ENT.FIRE_HAZARD,  factoryKey: ENT.FIRE_HAZARD,  isHazard: true },
 
     // Pastilla genérica
     'i': { key: 'pill',           kind: 'pill',           factoryKey: 'pill_generic' },
