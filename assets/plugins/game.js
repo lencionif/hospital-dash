@@ -729,6 +729,11 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (window.Entities?.spawnRatAtTile) return window.Entities.spawnRatAtTile(tx, ty, def || {});
         return null;
       },
+      cart_food(tx, ty) {
+        if (window.Entities?.Carts?.spawnCartFood) return window.Entities.Carts.spawnCartFood(tx, ty);
+        if (typeof window.spawnCartFood === 'function') return window.spawnCartFood(tx, ty);
+        return null;
+      },
       npc_rat(tx, ty, def) { return ENTITY_FACTORIES.rat(tx, ty, def); },
       npc_mosquito(tx, ty, def) { return ENTITY_FACTORIES.mosquito(tx, ty, def); },
       npc_supervisora(tx, ty, def) {

@@ -4,6 +4,9 @@
   const root = typeof W !== 'undefined' ? W : window;
   const ENT = root.ENT || (root.ENT = {});
 
+  // Entidad de carro de comidas equilibrado (pinball)
+  if (typeof ENT.CART_FOOD === 'undefined') ENT.CART_FOOD = 'cart_food';
+
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
   //   Spawns:  'S' héroe, 'X' boss, 'M' miniboss
@@ -83,7 +86,8 @@
     'C': { key: 'spawn_cart',  kind: 'spawn_cart',  factoryKey: 'spawn_cart', isSpawn: true },
 
     // Carros colocados directamente
-    'F': { key: 'cart_food',      kind: 'cart_food',      factoryKey: 'cart_food', isCart: true },
+    // 'F' -> carro de comidas (cart_food)
+    'F': { key: 'cart_food',      kind: ENT.CART_FOOD || 'cart_food',      factoryKey: 'cart_food', isCart: true },
     'U': { key: 'cart_emergency', kind: 'cart_emergency', factoryKey: 'cart_emergency', isCart: true },
     '+': { key: 'cart_meds',      kind: 'cart_meds',      factoryKey: 'cart_meds', isCart: true },
 

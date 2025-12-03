@@ -327,6 +327,25 @@
       e.vy = (e.vy || 0) + fy;
     }
 
+    function handleCartBounce(e){
+      if (!isCartEntity(e) || e.bounceCount == null) return;
+      e.bounceCount = (e.bounceCount || 0) + 1;
+      e.justBounced = true;
+      const speed = Math.hypot(e.vx || 0, e.vy || 0);
+      if (speed > 0) {
+        const boosted = Math.min(e.maxSpeed || (CFG.cartMaxSpeed ?? speed), speed * 1.1);
+        const scale = boosted / speed;
+        e.vx *= scale;
+        e.vy *= scale;
+      }
+      const limit = Number.isFinite(e.maxBounces) ? e.maxBounces : null;
+      if (limit != null && e.bounceCount >= limit) {
+        e.vx = 0;
+        e.vy = 0;
+        e.aiState = 'stopped';
+      }
+    }
+
     function moveWithCollisions(e, dt){
       if (!e) return;
       const sub = 4;
@@ -391,6 +410,7 @@
           const v = -(e.vx || 0) * wr;
           e.vx = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vx || 1);
+          handleCartBounce(e);
           if (!isWall(nx + s, ny, e.w, e.h)) nx += s;
         }
         const tryY = ny + sy;
@@ -425,6 +445,7 @@
           const v = -(e.vy || 0) * wr;
           e.vy = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vy || 1);
+          handleCartBounce(e);
           if (!isWall(nx, ny + s, e.w, e.h)) ny += s;
         }
       }

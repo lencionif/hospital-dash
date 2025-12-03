@@ -50,6 +50,7 @@
     'OBJECT',
     'ITEM',
     'CART',
+    'CART_FOOD',
     'CARRO',
     'BELL',
     'PILL',
