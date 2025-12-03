@@ -683,3 +683,301 @@ function playEntityAudio(e, key) {
  *      PuppetAPI.update(dt);
  *      PuppetAPI.draw(ctx, cam);
  * ==========================================================================*/
+
+// ---------------------------------------------------------------------------
+// Implementación real de la Limpiadora y sus charcos (hazard de agua)
+// ---------------------------------------------------------------------------
+(function (W) {
+  'use strict';
+
+  const root = W || window;
+  const G = root.G || (root.G = {});
+  const ENT = (function ensureEnt(ns) {
+    const e = ns || {};
+    if (typeof e.CLEANER === 'undefined') e.CLEANER = 'CLEANER';
+    if (typeof e.PUDDLE === 'undefined') e.PUDDLE = 'PUDDLE';
+    return e;
+  })(root.ENT || (root.ENT = {}));
+
+  const HERO_Z = typeof root.HERO_Z === 'number' ? root.HERO_Z : 10;
+  const HP_PER_HEART = root.HP_PER_HEART || 1;
+  const TILE = root.TILE_SIZE || root.TILE || 32;
+  const DEBUG_CLEANER = !!root.DEBUG_CLEANER;
+
+  const overlap = root.overlap || ((a, b) => a && b && Math.abs(a.x - b.x) * 2 < (a.w + b.w) && Math.abs(a.y - b.y) * 2 < (a.h + b.h));
+
+  function ensureCollections() {
+    if (!Array.isArray(G.entities)) G.entities = [];
+    if (!Array.isArray(G.npcs)) G.npcs = [];
+    if (!Array.isArray(G.hazards)) G.hazards = [];
+    if (!Array.isArray(G.movers)) G.movers = [];
+  }
+
+  function gridToWorldCenter(tx, ty) {
+    return { x: tx * TILE + TILE * 0.5, y: ty * TILE + TILE * 0.5 };
+  }
+
+  function attachRig(e) {
+    if (!root.PuppetAPI?.attach) return;
+    try {
+      const rig = root.PuppetAPI.attach(e, e.puppet);
+      if (rig) e.rigOk = true;
+    } catch (err) {
+      e.rigOk = false;
+      if (root.DEBUG_RIGS || DEBUG_CLEANER) console.warn('[CleanerRig] attach failed', err);
+    }
+  }
+
+  function spawnPuddle(x, y, opts = {}) {
+    ensureCollections();
+    const e = {
+      id: root.genId ? root.genId() : `puddle-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: ENT.PUDDLE,
+      x,
+      y,
+      w: 32,
+      h: 32,
+      dir: 0,
+      vx: 0,
+      vy: 0,
+      solid: false,
+      health: Infinity,
+      frictionFactor: opts.frictionFactor ?? 0.2,
+      slipChance: opts.slipChance ?? 0.7,
+      ttl: opts.ttl ?? 40,
+      puppet: { rig: 'hazard_puddle', z: HERO_Z, skin: 'default' },
+      aiUpdate: puddleAiUpdate,
+      update(dt) { puddleAiUpdate(dt, this); },
+      _fireCheck: 0,
+    };
+
+    attachRig(e);
+    G.entities.push(e);
+    G.hazards.push(e);
+    return e;
+  }
+
+  function spawnPuddleAtTile(tx, ty, opts = {}) {
+    const pos = gridToWorldCenter(tx, ty);
+    return spawnPuddle(pos.x, pos.y, opts);
+  }
+
+  function handleSlipImpact(hero, puddle, dt) {
+    if (!hero.slipping) return;
+    hero._slipTimer = Math.max(0, (hero._slipTimer || 0) - dt);
+    if (hero._slipTimer <= 0) hero.slipping = false;
+    if (hero._slipCooldown) hero._slipCooldown = Math.max(0, hero._slipCooldown - dt);
+    if (hero._slipImpactLock) hero._slipImpactLock = Math.max(0, hero._slipImpactLock - dt);
+
+    const speed = Math.hypot(hero.vx || 0, hero.vy || 0);
+    const prev = hero._slipPrevSpeed || speed;
+    if (!hero._slipImpactLock && prev > 80 && speed < prev * 0.35) {
+      try { root.DamageAPI?.applyTouch?.(puddle, hero); } catch (_) {}
+      hero._slipImpactLock = 0.5;
+    }
+    hero._slipPrevSpeed = speed;
+  }
+
+  function puddleAiUpdate(dt, e) {
+    if (!e || e.dead) return;
+    e.ttl -= dt;
+    if (e.ttl <= 0) { e.dead = true; e._remove = true; return; }
+
+    const hero = G.player;
+    if (hero && !hero.dead) {
+      const touching = overlap(e, hero);
+      if (touching) {
+        hero._frictionOverrideTag = 'puddle';
+        hero._frictionOverride = Math.min(hero._frictionOverride ?? 1, e.frictionFactor || 0.2);
+        hero._puddleFrictionTimer = 0.25;
+        if (!hero.slipping && (!hero._slipCooldown || hero._slipCooldown <= 0) && Math.random() < e.slipChance) {
+          const boost = 1.2 + Math.random() * 0.6;
+          hero.slipping = true;
+          hero._slipTimer = 0.9;
+          hero._slipCooldown = 0.6;
+          hero.vx = hero.vx ? hero.vx * boost : (Math.random() - 0.5) * 90;
+          hero.vy = hero.vy ? hero.vy * boost : (Math.random() - 0.5) * 90;
+          hero._slipPrevSpeed = Math.hypot(hero.vx, hero.vy);
+          if (DEBUG_CLEANER) console.log('[PUDDLE] slipping hero', { boost });
+        }
+      }
+
+      if (hero._puddleFrictionTimer) {
+        hero._puddleFrictionTimer = Math.max(0, hero._puddleFrictionTimer - dt);
+        if (hero._puddleFrictionTimer <= 0 && hero._frictionOverrideTag === 'puddle') {
+          delete hero._frictionOverride;
+          delete hero._frictionOverrideTag;
+        }
+      }
+
+      handleSlipImpact(hero, e, dt);
+    }
+
+    if (Array.isArray(G.movers)) {
+      for (const m of G.movers) {
+        if (!m || m.dead || m === hero) continue;
+        if (overlap(e, m)) {
+          m._frictionOverride = Math.min(m._frictionOverride ?? 1, e.frictionFactor || 0.2);
+        }
+      }
+    }
+
+    e._fireCheck -= dt;
+    if (e._fireCheck <= 0) {
+      e._fireCheck = 0.5;
+      const tx = Math.floor(e.x / TILE);
+      const ty = Math.floor(e.y / TILE);
+      if (root.FireAPI?.extinguishAtTile) {
+        try { root.FireAPI.extinguishAtTile(tx, ty, { reason: 'water_puddle' }); } catch (_) {}
+        e.ttl = Math.max(e.ttl - 0.4, 5);
+      }
+    }
+  }
+
+  function updateWalkState(e) {
+    if (Math.abs(e.vx || 0) > Math.abs(e.vy || 0)) e.state = 'walk_h';
+    else if (Math.abs(e.vy || 0) > 0.01) e.state = 'walk_v';
+    else e.state = 'idle';
+  }
+
+  function cleanerOnDamage(e, amount, cause) {
+    if (e.dead) return;
+    e.health -= amount;
+    if (e.health <= 0) {
+      e.health = 0;
+      e.dead = true;
+      e.deathCause = cause || 'damage';
+      e.vx = e.vy = 0;
+      e.state = 'dead';
+      try { root.SpawnerAPI?.notifyDeath?.({ entity: e, populationType: 'humans', template: 'cleaner' }); } catch (_) {}
+    }
+  }
+
+  function spawnCleaner(x, y, opts = {}) {
+    ensureCollections();
+    const health = (opts.hearts ?? 3) * HP_PER_HEART;
+    const e = {
+      id: root.genId ? root.genId() : `cleaner-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: ENT.CLEANER,
+      x,
+      y,
+      w: 24,
+      h: 24,
+      dir: 0,
+      vx: 0,
+      vy: 0,
+      solid: true,
+      health,
+      maxHealth: health,
+      touchDamage: opts.touchDamage ?? 0.5,
+      touchCooldown: opts.touchCooldown ?? 0.9,
+      _touchCD: 0,
+      fireImmune: false,
+      populationType: 'humans',
+      aiId: 'CLEANER',
+      state: 'idle',
+      puppet: { rig: 'npc_cleaner', z: HERO_Z, skin: 'default' },
+      aiUpdate: cleanerAiUpdate,
+      update(dt) { cleanerAiUpdate(dt, this); },
+      onDamage: cleanerOnDamage,
+      maxPuddlesPerRoom: opts.maxPuddlesPerRoom ?? 8,
+      _puddles: [],
+    };
+
+    attachRig(e);
+    G.entities.push(e);
+    G.npcs.push(e);
+    if (DEBUG_CLEANER) console.log('[Cleaner] spawn', { x, y });
+    return e;
+  }
+
+  function spawnCleanerAtTile(tx, ty, opts = {}) {
+    const pos = gridToWorldCenter(tx, ty);
+    return spawnCleaner(pos.x, pos.y, opts);
+  }
+
+  function cleanerAiUpdate(dt, e) {
+    if (!e || e.dead) return;
+    if (e._touchCD > 0) e._touchCD -= dt;
+    const player = G.player;
+    if (player && overlap(e, player)) {
+      e.state = 'attack';
+      if (root.DamageAPI?.applyTouch) root.DamageAPI.applyTouch(e, player);
+    }
+
+    e._puddleCD = (e._puddleCD ?? 0.6) - dt;
+    if (e._puddleCD <= 0) {
+      e._puddles = (e._puddles || []).filter((p) => p && !p.dead && !p._remove);
+      if (e._puddles.length < e.maxPuddlesPerRoom) {
+        const puddle = spawnPuddle(e.x, e.y, { frictionFactor: 0.18 + Math.random() * 0.05, slipChance: 0.65 + Math.random() * 0.1 });
+        e._puddles.push(puddle);
+        if (DEBUG_CLEANER) console.log('[Cleaner] puddle spawned', { x: e.x, y: e.y });
+      }
+      e._puddleCD = 1 + Math.random() * 0.4;
+    }
+
+    const target = e._patrolTarget || choosePatrolTarget(e);
+    const dx = target.x - e.x;
+    const dy = target.y - e.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const speed = optsSpeed(e) * (player && Math.hypot(player.x - e.x, player.y - e.y) < TILE * 3 ? 1.1 : 1);
+
+    if (dist < 6) {
+      e.vx = 0; e.vy = 0;
+      e._patrolTimer = (e._patrolTimer || 0) - dt;
+      if (e._patrolTimer <= 0) {
+        e._patrolTarget = null;
+        e._patrolTimer = 0.5 + Math.random();
+      }
+      if (e.state !== 'attack') e.state = 'idle';
+    } else {
+      e.vx = (dx / dist) * speed;
+      e.vy = (dy / dist) * speed;
+      if (Math.abs(e.vx) < 2 && Math.abs(e.vy) < 2) e.state = 'idle';
+      else updateWalkState(e);
+    }
+
+    if (e.rig) root.PuppetAPI?.update?.(e.rig, dt);
+  }
+
+  function optsSpeed(e) {
+    return e.speed || 60;
+  }
+
+  function choosePatrolTarget(e) {
+    const tx = Math.floor(e.x / TILE);
+    const ty = Math.floor(e.y / TILE);
+    const rx = (Math.random() * 7 - 3) | 0;
+    const ry = (Math.random() * 7 - 3) | 0;
+    const pos = gridToWorldCenter(tx + rx, ty + ry);
+    e._patrolTarget = { x: pos.x, y: pos.y };
+    return e._patrolTarget;
+  }
+
+  const CleanerAPI = {
+    spawn: spawnCleaner,
+    spawnAtTile: spawnCleanerAtTile,
+    spawnFromAscii(tx, ty, opts = {}) { return spawnCleanerAtTile(tx, ty, opts); },
+    aiUpdate: cleanerAiUpdate,
+    updateAll(dt = 0) {
+      if (!Array.isArray(G.entities)) return;
+      for (const e of G.entities) {
+        if (e && e.kind === ENT.CLEANER) cleanerAiUpdate(dt, e);
+        if (e && e.kind === ENT.PUDDLE) puddleAiUpdate(dt, e);
+      }
+    },
+  };
+
+  root.Entities = root.Entities || {};
+  root.Entities.Cleaner = CleanerAPI;
+  root.Entities.spawnCleaner = spawnCleaner;
+  root.Entities.spawnCleanerAtTile = spawnCleanerAtTile;
+  root.Entities.spawnCleanerFromAscii = (tx, ty, def) => spawnCleanerAtTile(tx, ty, def || {});
+  root.Entities.Puddles = {
+    spawn: spawnPuddle,
+    spawnAtTile: spawnPuddleAtTile,
+    spawnFromAscii(tx, ty, def) { return spawnPuddleAtTile(tx, ty, def || {}); },
+  };
+  root.spawnPuddle = spawnPuddle;
+  root.spawnCleaner = spawnCleaner;
+})(window);

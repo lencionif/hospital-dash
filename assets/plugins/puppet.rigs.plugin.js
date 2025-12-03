@@ -33,6 +33,229 @@
     ctx.restore();
   }
 
+  // Rig chibi para Limpiadora top-down.
+  PuppetAPI.registerRig('npc_cleaner', {
+    create(host) {
+      return { t: 0, walk: 0, attack: 0, squash: 0, anim: host?.state || 'idle', flip: 1 };
+    },
+    update(st, host, dt = 0) {
+      if (!st || !host) return;
+      st.t += dt;
+      const dead = host.dead;
+      st.anim = dead ? `death_${host.deathCause || 'damage'}` : (host.state || 'idle');
+      const moving = Math.abs(host.vx || 0) + Math.abs(host.vy || 0) > 0.1;
+      st.walk += dt * (moving ? 7 : 3);
+      st.attack = st.anim === 'attack'
+        ? Math.min(1, (st.attack || 0) + dt * 5)
+        : Math.max(0, (st.attack || 0) - dt * 6);
+      if (!dead) {
+        const faceAxis = Math.abs(host.vx || 0) >= Math.abs(host.vy || 0)
+          ? (Math.sign(host.vx || st.flip || 1) || 1)
+          : (host.vy < 0 ? -1 : 1);
+        st.flip = faceAxis >= 0 ? 1 : -1;
+      }
+      st.squash = dead && host.deathCause === 'crush' ? 0.5 : 1;
+    },
+    draw(ctx, camera, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+
+      const anim = st?.anim || 'idle';
+      const dead = anim.startsWith('death_');
+      const crush = dead && host.deathCause === 'crush';
+      const fire = dead && host.deathCause === 'fire';
+      const bob = Math.sin((st?.t || 0) * (anim.startsWith('walk') ? 6 : 3)) * (dead ? 0 : 0.7);
+      const flip = st?.flip || 1;
+      const attackPush = (st?.attack || 0) * 6 * flip;
+
+      // sombra
+      ctx.save();
+      ctx.scale(1, st?.squash || 1);
+      drawEllipse(ctx, 9, 3.2, 'rgba(0,0,0,0.22)');
+      ctx.restore();
+
+      ctx.translate(0, -2 + bob);
+      ctx.scale(flip, st?.squash || 1);
+
+      // piernas
+      ctx.save();
+      const step = Math.sin((st?.walk || 0) * 1.4) * (anim.startsWith('walk') ? 2.8 : 0.8);
+      ctx.fillStyle = fire ? '#2d2d2d' : '#ffbfa4';
+      ctx.beginPath();
+      ctx.roundRect(-7 + step, 6, 4, 6, 2);
+      ctx.roundRect(3 - step, 6, 4, 6, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // zuecos
+      ctx.save();
+      ctx.fillStyle = fire ? '#3a3a3a' : '#ff5f7a';
+      ctx.beginPath();
+      ctx.roundRect(-8, 10, 6, 4, 2);
+      ctx.roundRect(2, 10, 6, 4, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // cubo
+      ctx.save();
+      ctx.translate(11, 5 + (anim === 'walk_v' ? Math.sin((st?.walk || 0) * 1.2) : 0));
+      ctx.scale(flip, 1);
+      ctx.fillStyle = fire ? '#2c2c2c' : '#4bb5ff';
+      ctx.beginPath();
+      ctx.roundRect(-4, -3, 8, 8, 2);
+      ctx.fill();
+      ctx.strokeStyle = fire ? '#1a1a1a' : '#2c7fb8';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+
+      // cuerpo
+      ctx.save();
+      const tilt = anim.startsWith('walk') ? Math.sin((st?.walk || 0) * 0.6) * 0.05 : 0;
+      ctx.rotate(tilt - (anim === 'attack' ? 0.05 * flip : 0));
+      ctx.fillStyle = fire ? '#3c3c3c' : '#f7f7ff';
+      ctx.beginPath();
+      ctx.roundRect(-8, -2, 16, 14, 6);
+      ctx.fill();
+      ctx.fillStyle = fire ? '#2a2a2a' : '#e3e8ff';
+      ctx.roundRect(-7, 3, 14, 8, 5);
+      ctx.fill();
+      ctx.restore();
+
+      // brazos
+      ctx.save();
+      ctx.fillStyle = fire ? '#2f2f2f' : '#ffbfa4';
+      const swing = anim.startsWith('walk') ? Math.sin((st?.walk || 0) * 1.6) * 3 : Math.sin((st?.t || 0) * 10) * 1.2;
+      ctx.beginPath();
+      ctx.roundRect(-11 + swing, -1, 4, 8, 2);
+      ctx.roundRect(7 - swing, -1, 4, 8, 2);
+      ctx.fill();
+      ctx.restore();
+
+      // mocho
+      ctx.save();
+      ctx.translate(-9, -4);
+      ctx.rotate(-0.4 + attackPush * 0.02);
+      ctx.fillStyle = fire ? '#3b3b3b' : '#c19a6b';
+      ctx.fillRect(-1, -1, 14, 2);
+      ctx.translate(14, 0);
+      ctx.fillStyle = fire ? '#2a2a2a' : '#9bb7d3';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6 + attackPush * 0.1, 3, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // cabeza
+      ctx.save();
+      const headBob = anim === 'idle' ? Math.sin((st?.t || 0) * 3.5) * 0.8 : 0;
+      ctx.translate(0, -8 + headBob);
+      ctx.scale(1, crush ? 0.6 : 1);
+      ctx.fillStyle = fire ? '#2a211b' : '#ffcbad';
+      ctx.beginPath();
+      ctx.arc(0, 0, 8.5, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // pelo
+      ctx.save();
+      ctx.translate(-1, -9 + headBob);
+      ctx.fillStyle = fire ? '#16110f' : '#6b402a';
+      ctx.beginPath();
+      ctx.ellipse(1, 0, 10, 6, 0.08, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // ojos y boca
+      ctx.save();
+      ctx.translate(0, -8 + headBob);
+      ctx.scale(1, crush ? 0.7 : 1);
+      const eyeOpen = anim === 'attack' ? 2.3 : 1.7;
+      ctx.fillStyle = fire ? '#f6f6f6' : '#181818';
+      ctx.beginPath();
+      ctx.ellipse(-3.5, -1, eyeOpen, 2.2, 0, 0, TAU);
+      ctx.ellipse(3.5, -1, eyeOpen, 2.2, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = fire ? '#f0f0f0' : '#a53131';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      if (anim === 'attack') ctx.arc(0, 3.5, 2.6, 0, Math.PI);
+      else if (anim === 'eat') ctx.arc(0, 3.2, 2.4, 0, Math.PI * 1.1);
+      else ctx.arc(0, 3.5, 2.1, 0, Math.PI);
+      ctx.stroke();
+      ctx.restore();
+
+      // humo muerte fuego
+      if (fire) {
+        ctx.save();
+        ctx.translate(0, -18 + Math.sin((st?.t || 0) * 4) * -1.2);
+        ctx.globalAlpha = 0.5;
+        drawEllipse(ctx, 2.2, 4.5, 'rgba(60,60,60,0.8)');
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+  });
+
+  // Rig chibi para charco de agua.
+  PuppetAPI.registerRig('hazard_puddle', {
+    create() {
+      return { t: 0 };
+    },
+    update(st, host, dt = 0) {
+      if (!st || !host) return;
+      st.t += dt;
+    },
+    draw(ctx, camera, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam } = baseCoords(ctx, host, camera);
+      const zoom = (cam.zoom || 1) * (host.puppet?.scale || 1);
+      const t = st?.t || 0;
+      ctx.save();
+      ctx.translate(x, y + Math.sin(t * 2) * 0.2);
+      ctx.scale(zoom, zoom);
+
+      const ripple = 1 + Math.sin(t * 3) * 0.05;
+      const wave = (ang, baseR) => baseR + Math.sin(t * 4 + ang) * 1.2;
+
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = 'rgba(70, 200, 230, 0.65)';
+      ctx.beginPath();
+      ctx.moveTo(-12 * ripple, 0);
+      ctx.quadraticCurveTo(-wave(0, 8), -wave(1, 6), 0, -10 * ripple);
+      ctx.quadraticCurveTo(wave(2, 9), -wave(3, 5), 12 * ripple, 0);
+      ctx.quadraticCurveTo(wave(4, 9), wave(5, 6), 0, 10 * ripple);
+      ctx.quadraticCurveTo(-wave(6, 8), wave(7, 5), -12 * ripple, 0);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = 'rgba(50, 170, 210, 0.6)';
+      ctx.beginPath();
+      ctx.moveTo(-7 * ripple, 0);
+      ctx.quadraticCurveTo(0, -6 * ripple, 7 * ripple, 0);
+      ctx.quadraticCurveTo(0, 6 * ripple, -7 * ripple, 0);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.ellipse(4, -3, 2.4, 1.4, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.restore();
+    }
+  });
+
   // [HospitalDash] Chibi rig for furious patient (biped aggressive).
   PuppetAPI.registerRig('patient_furious', {
     create(host) {
