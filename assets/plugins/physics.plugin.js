@@ -332,17 +332,36 @@
       e.bounceCount = (e.bounceCount || 0) + 1;
       e.justBounced = true;
       const speed = Math.hypot(e.vx || 0, e.vy || 0);
+      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : {};
+      const isCartMeds = e.kind === ENT?.CART_MEDS || e.kindName === 'cart_meds';
       if (speed > 0) {
-        const boosted = Math.min(e.maxSpeed || (CFG.cartMaxSpeed ?? speed), speed * 1.1);
-        const scale = boosted / speed;
-        e.vx *= scale;
-        e.vy *= scale;
+        if (isCartMeds) {
+          const boost = Number.isFinite(e.pinballBoostPerHit) ? e.pinballBoostPerHit : 1.12;
+          const maxSpeed = (
+            (Number.isFinite(e.pinballMaxSpeed) && e.pinballMaxSpeed) ||
+            (e.physics?.maxSpeed) ||
+            e.maxSpeed ||
+            (CFG.cartMaxSpeed ?? speed)
+          );
+          const newSpeed = Math.min(speed * boost, maxSpeed);
+          const scale = newSpeed / speed;
+          e.vx *= scale;
+          e.vy *= scale;
+          try { window.AudioAPI?.playSfx?.('cart_meds_bounce'); } catch (_) {}
+        } else {
+          const boosted = Math.min(e.maxSpeed || (CFG.cartMaxSpeed ?? speed), speed * 1.1);
+          const scale = boosted / speed;
+          e.vx *= scale;
+          e.vy *= scale;
+        }
       }
       const limit = Number.isFinite(e.maxBounces) ? e.maxBounces : null;
       if (limit != null && e.bounceCount >= limit) {
-        e.vx = 0;
-        e.vy = 0;
-        e.aiState = 'stopped';
+        if (!isCartMeds) {
+          e.vx = 0;
+          e.vy = 0;
+          e.aiState = 'stopped';
+        }
       }
     }
 

@@ -316,6 +316,69 @@
     }
   });
 
+  PuppetAPI.registerRig('cart_meds_pinball', {
+    create(e) {
+      return { t: 0, bounce: 0, squash: 0, hitFlashT: 0, lastSpeed: 0 };
+    },
+    update(state, e, dt) {
+      if (!state || !e) return;
+      state.t += dt;
+      const speed = Math.hypot(e.vx || 0, e.vy || 0);
+      state.lastSpeed = speed;
+      state.bounce = Math.sin(state.t * 6) * (speed > 10 ? 2.5 : 1.0);
+      const speedNorm = Math.min(speed / (e.physics?.maxSpeed || 1), 1);
+      state.squash = speedNorm * 0.2;
+      if (state.hitFlashT > 0) {
+        state.hitFlashT = Math.max(0, state.hitFlashT - dt * 4);
+      }
+    },
+    draw(ctx, cam, e, state) {
+      if (!ctx || !cam || !e || !state) return;
+      const scr = (typeof toScreen === 'function') ? toScreen(cam, e) : {
+        x: (e.x - cam.x) * cam.zoom + (ctx.canvas?.width || 0) * 0.5,
+        y: (e.y - cam.y) * cam.zoom + (ctx.canvas?.height || 0) * 0.5,
+      };
+      const radius = 12;
+
+      ctx.save();
+      ctx.translate(scr.x, scr.y + state.bounce);
+      ctx.scale(cam.zoom, cam.zoom);
+
+      const sx = 1 + state.squash;
+      const sy = 1 - state.squash;
+      ctx.scale(sx, sy);
+
+      const isHit = state.hitFlashT > 0;
+      const baseColor = isHit ? '#ffffff' : '#f5e3b2';
+
+      const grd = ctx.createRadialGradient(0, -radius * 0.4, radius * 0.2, 0, 0, radius);
+      grd.addColorStop(0, '#ffffff');
+      grd.addColorStop(0.4, baseColor);
+      grd.addColorStop(1, '#b4935a');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#c8a46d';
+      ctx.fillRect(-8, -4, 16, 8);
+      ctx.fillStyle = '#3c3f46';
+      ctx.fillRect(-6, -3, 12, 6);
+
+      ctx.fillStyle = '#00c2ff';
+      ctx.fillRect(-2, -3, 4, 6);
+      ctx.fillRect(-4, -1, 8, 2);
+
+      ctx.globalAlpha = 0.35;
+      ctx.scale(1, 0.4);
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(0, radius * 2.1, radius * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+
   // [HospitalDash] Chibi rig for furious patient (biped aggressive).
   PuppetAPI.registerRig('patient_furious', {
     create(host) {

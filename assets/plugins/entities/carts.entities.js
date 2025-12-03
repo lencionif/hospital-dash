@@ -8,6 +8,7 @@
   const ENT = (function ensureEnt(ns) {
     const e = ns || {};
     if (typeof e.CART_FOOD === 'undefined') e.CART_FOOD = 'cart_food';
+    if (typeof e.CART_MEDS === 'undefined') e.CART_MEDS = 'cart_meds';
     return e;
   })(root.ENT || (root.ENT = {}));
 
@@ -97,6 +98,47 @@
     }
   }
 
+  function cartMedsAiUpdate(e, dt) {
+    if (!e) return;
+    updateTouchCooldown(e, dt);
+
+    if (e.health <= 0 || e.dead) {
+      e.dead = true;
+      e.state = 'dead';
+      e.aiState = 'dead';
+      if (!e.deathCause) e.deathCause = e._lastHitCause || 'damage';
+      notifySpawnerDeath(e);
+      return;
+    }
+
+    const speed = Math.hypot(e.vx || 0, e.vy || 0);
+    e.state = speed > 5 ? 'move' : 'idle';
+
+    if (e.aiState === 'stunned') {
+      e.aiTimer -= dt;
+      if (e.aiTimer <= 0) {
+        e.aiState = 'idle';
+      }
+    }
+
+    if (!e.dead && root.DamageAPI && overlap(e, G.player)) {
+      if (!e._touchCD || e._touchCD <= 0) {
+        root.DamageAPI.applyTouch(e, G.player);
+        e._touchCD = e.touchCooldown;
+      }
+    }
+
+    if (e.bounceCount >= e.maxBounces && speed > 0) {
+      e.vx *= 0.85;
+      e.vy *= 0.85;
+      if (Math.hypot(e.vx, e.vy) < 10) {
+        e.vx = 0;
+        e.vy = 0;
+        e.aiState = 'idle';
+      }
+    }
+  }
+
   function spawnCartFood(tx, ty) {
     ensureCollections();
 
@@ -147,9 +189,71 @@
     return e;
   }
 
+  function createCartMeds(x, y) {
+    ensureCollections();
+
+    const e = {
+      id: root.genId ? root.genId() : `cart-meds-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: ENT.CART_MEDS,
+      kindName: 'cart_meds',
+      populationType: 'carts',
+      role: 'cart',
+      x,
+      y,
+      w: 24,
+      h: 24,
+      dir: 0,
+      vx: 0,
+      vy: 0,
+      solid: true,
+      isTileWalkable: false,
+      health: 8,
+      maxHealth: 8,
+      fireImmune: false,
+      touchDamage: 2,
+      touchCooldown: 0.9,
+      _touchCD: 0,
+      population: 'carts',
+      aiState: 'idle',
+      state: 'idle',
+      aiTimer: 0,
+      bounceCount: 0,
+      maxBounces: 5,
+      pinballBoostPerHit: 1.12,
+      pinballMaxSpeed: 260,
+      aiUpdate: cartMedsAiUpdate,
+      physics: {
+        mass: 0.7,
+        restitution: 0.95,
+        friction: 0.015,
+        maxSpeed: 260,
+      },
+      puppet: {
+        rig: 'cart_meds_pinball',
+        z: HERO_Z,
+        skin: 'cart_meds',
+      },
+    };
+
+    attachRig(e);
+    G.entities.push(e);
+    G.movers.push(e);
+    G.carts.push(e);
+    notifyGroups(e);
+    return e;
+  }
+
+  function spawnCartMeds(tx, ty) {
+    return createCartMeds(toPxFromTile(tx), toPxFromTile(ty));
+  }
+
   root.Entities = root.Entities || {};
   root.Entities.Carts = root.Entities.Carts || {};
   root.Entities.Carts.spawnCartFood = spawnCartFood;
   if (!root.spawnCartFood) root.spawnCartFood = spawnCartFood;
+  root.Entities.Carts.spawnCartMeds = spawnCartMeds;
+  if (!root.spawnCartMeds) root.spawnCartMeds = spawnCartMeds;
   root.cartFoodAiUpdate = cartFoodAiUpdate;
+  root.cartMedsAiUpdate = cartMedsAiUpdate;
+  root.createCartMeds = createCartMeds;
 })(typeof window !== 'undefined' ? window : globalThis);
