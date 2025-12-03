@@ -201,6 +201,66 @@
     }
   });
 
+  PuppetAPI.registerRig('cart_food_pinball', {
+    create() {
+      return { t: 0, bounce: 0, squash: 0, flash: 0 };
+    },
+    update(state, e, dt) {
+      if (!state || !e) return;
+      state.t += dt;
+      const speed = Math.hypot(e.vx || 0, e.vy || 0);
+      if (e.dead) {
+        state.bounce = 0;
+      } else if (speed > 5) {
+        state.bounce = Math.sin(state.t * 10) * 1.5;
+      } else {
+        state.bounce = Math.sin(state.t * 4) * 0.5;
+      }
+    },
+    draw(ctx, cam, e, state) {
+      if (!ctx || !e) return;
+      const camera = cam || { x: 0, y: 0, zoom: 1 };
+      const canvas = ctx.canvas || { width: 0, height: 0 };
+      const x = (e.x - camera.x) * camera.zoom + canvas.width * 0.5;
+      const y = (e.y - camera.y) * camera.zoom + canvas.height * 0.5;
+
+      ctx.save();
+      ctx.translate(x, y + (state?.bounce || 0));
+      ctx.scale(camera.zoom, camera.zoom);
+
+      const radius = Math.min(e.w || 24, e.h || 24) * 0.5;
+
+      ctx.globalAlpha = 0.25;
+      ctx.beginPath();
+      ctx.ellipse(0, radius * 0.9, radius * 1.1, radius * 0.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      const gradient = ctx.createRadialGradient(-radius * 0.3, -radius * 0.4, radius * 0.2, 0, 0, radius);
+      gradient.addColorStop(0, '#ffe8a0');
+      gradient.addColorStop(0.4, '#f0b46a');
+      gradient.addColorStop(1, '#aa6b39');
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      ctx.fillStyle = '#d9e7ff';
+      ctx.fillRect(-radius * 0.6, -radius * 0.1, radius * 1.2, radius * 0.4);
+
+      ctx.beginPath();
+      ctx.arc(-radius * 0.25, 0, radius * 0.25, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffdd99';
+      ctx.fill();
+
+      ctx.fillStyle = '#7dc3ff';
+      ctx.fillRect(radius * 0.1, -radius * 0.35, radius * 0.25, radius * 0.6);
+
+      ctx.restore();
+    },
+  });
+
   // Rig chibi para charco de agua.
   PuppetAPI.registerRig('hazard_puddle', {
     create() {
