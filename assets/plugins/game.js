@@ -693,6 +693,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // Usamos el valor global expuesto por el motor: window.TILE_SIZE (o window.TILE como compat),
     // y como último recurso 32.
     const TILE = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || 32;
+    const toPx = (t) => t * TILE + TILE / 2;
 
     const legendApi = window.AsciiLegendAPI || window.PlacementAPI || {};
     const getAsciiDef = legendApi.getDefFromChar || legendApi.getDef || ((ch, opts) => {
@@ -805,6 +806,14 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (window.Entities?.Puddles?.spawnFromAscii) return window.Entities.Puddles.spawnFromAscii(tx, ty, def || {});
         if (window.Entities?.spawnPuddleFromAscii) return window.Entities.spawnPuddleFromAscii(tx, ty, def || {});
         if (typeof window.spawnPuddle === 'function') return window.spawnPuddle((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
+        return null;
+      },
+      door_normal(tx, ty) {
+        if (window.Entities?.Doors?.spawnNormalDoor) return window.Entities.Doors.spawnNormalDoor(toPx(tx), toPx(ty), { tx, ty });
+        return null;
+      },
+      door_urgent(tx, ty) {
+        if (window.Entities?.Doors?.spawnUrgentDoor) return window.Entities.Doors.spawnUrgentDoor(toPx(tx), toPx(ty), { tx, ty });
         return null;
       },
       water_tile(tx, ty, def) { return ENTITY_FACTORIES.hazard_puddle(tx, ty, def); },
@@ -1539,6 +1548,8 @@ function updateEntities(dt){
 
     // enemigos
     updateEntities(dt);
+    // puertas (IA + quemado)
+    Entities?.Doors?.updateAllDoors?.(dt);
     // ascensores
     Entities?.Elevator?.update?.(dt);
 

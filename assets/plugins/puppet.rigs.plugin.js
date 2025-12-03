@@ -201,6 +201,103 @@
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // Rigs de puertas de hospital (normales y de urgencias)
+  // ---------------------------------------------------------------------------
+  function mixColorHex(a, b, t) {
+    const lerp = (x, y) => Math.round(x + (y - x) * t);
+    const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
+    const pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
+    return `#${lerp(pa[0], pb[0]).toString(16).padStart(2, '0')}${lerp(pa[1], pb[1]).toString(16).padStart(2, '0')}${lerp(pa[2], pb[2]).toString(16).padStart(2, '0')}`;
+  }
+
+  function drawRoundRect(ctx, x, y, w, h, r, fill = true, stroke = false) {
+    const radius = Math.max(0, Math.min(r, Math.min(w, h) * 0.5));
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  function registerDoorRig(key, isUrgentRig = false) {
+    PuppetAPI.registerRig(key, {
+      create() {
+        return { t: 0, openT: 0, burnT: 0, hitFlash: 0 };
+      },
+      update(st, e, dt = 0) {
+        st.t += dt;
+        const targetOpen = (e.aiState === 'open' || e.aiState === 'opening') ? 1 : 0;
+        st.openT += (targetOpen - st.openT) * Math.min(1, dt * 6);
+        const targetBurn = (e.aiState === 'burning' || e.aiState === 'burnt') ? 1 : 0;
+        st.burnT += (targetBurn - st.burnT) * Math.min(1, dt * 2);
+        if (e.state === 'hit') {
+          st.hitFlash = 0.2;
+          e.state = 'idle';
+        }
+        if (st.hitFlash > 0) st.hitFlash = Math.max(0, st.hitFlash - dt);
+      },
+      draw(ctx, cam, e, st) {
+        if (!ctx || !e) return;
+        const camera = cam || { x: 0, y: 0, zoom: 1 };
+        const screen = (typeof toScreen === 'function') ? toScreen(camera, e) : {
+          x: (e.x - camera.x) * (camera.zoom || 1) + (ctx.canvas?.width || 0) * 0.5,
+          y: (e.y - camera.y) * (camera.zoom || 1) + (ctx.canvas?.height || 0) * 0.5
+        };
+
+        ctx.save();
+        ctx.translate(screen.x, screen.y);
+        ctx.scale(camera.zoom || 1, camera.zoom || 1);
+
+        const bob = Math.sin(st.t * 2) * 0.3;
+        const w = e.w;
+        const h = e.h + 4;
+        const frame = 3;
+
+        ctx.save();
+        ctx.translate(0, bob);
+
+        ctx.fillStyle = '#8b5a2b';
+        drawRoundRect(ctx, -w / 2 - frame, -h / 2 - frame, w + frame * 2, h + frame * 2, 4, true, false);
+
+        const baseColor = e.isUrgent || isUrgentRig ? '#c62828' : '#1565c0';
+        const doorColor = mixColorHex(baseColor, '#2b2b2b', st.burnT || 0);
+        ctx.fillStyle = doorColor;
+        const openFrac = st.openT || 0;
+        const doorWidth = w * (1 - 0.75 * openFrac);
+        drawRoundRect(ctx, -doorWidth / 2, -h / 2, doorWidth, h, 3, true, false);
+
+        ctx.fillStyle = '#0d47a1';
+        drawRoundRect(ctx, -doorWidth / 3, -h / 3, doorWidth * 0.65, h * 0.25, 2, true, false);
+
+        if (e.isUrgent || isUrgentRig) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.beginPath();
+          ctx.rect(-4, -4, 8, 2);
+          ctx.rect(-1, -7, 2, 14);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        if (st.hitFlash > 0) {
+          ctx.globalAlpha = st.hitFlash / 0.2;
+          ctx.fillStyle = 'rgba(255,255,255,0.75)';
+          drawRoundRect(ctx, -doorWidth / 2, -h / 2, doorWidth, h, 3, true, false);
+        }
+
+        ctx.restore();
+        ctx.restore();
+      }
+    });
+  }
+
+  registerDoorRig('door_hospital', false);
+  registerDoorRig('door_hospital_urgent', true);
+
   PuppetAPI.registerRig('cart_food_pinball', {
     create() {
       return { t: 0, bounce: 0, squash: 0, flash: 0 };

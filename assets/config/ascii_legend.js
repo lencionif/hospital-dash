@@ -8,6 +8,8 @@
   if (typeof ENT.CART_FOOD === 'undefined') ENT.CART_FOOD = 'cart_food';
   if (typeof ENT.CART_MEDS === 'undefined') ENT.CART_MEDS = 'cart_meds';
   if (typeof ENT.CART_EMERGENCY === 'undefined') ENT.CART_EMERGENCY = 'cart_emergency';
+  if (typeof ENT.DOOR_NORMAL === 'undefined') ENT.DOOR_NORMAL = 'door_normal';
+  if (typeof ENT.DOOR_URGENT === 'undefined') ENT.DOOR_URGENT = 'door_urgent';
 
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
@@ -79,8 +81,8 @@
     'b': { key: 'bell',        kind: 'bell',        factoryKey: 'bell_patient', isTrigger: true },
 
     // Puertas
-    'd': { key: 'door_normal', kind: 'door_normal', factoryKey: 'door_normal', blocking: false, isWalkable: true, isDoor: true },
-    'u': { key: 'door_boss',   kind: 'door_boss',   factoryKey: 'door_urgencias', blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
+    'd': { key: ENT.DOOR_NORMAL, kind: ENT.DOOR_NORMAL, factoryKey: ENT.DOOR_NORMAL, blocking: false, isWalkable: true, isDoor: true },
+    'u': { key: ENT.DOOR_URGENT, kind: ENT.DOOR_URGENT, factoryKey: ENT.DOOR_URGENT, blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
 
     // Spawns abstractos según level_rules
     'N': { key: 'spawn_npc',   kind: 'spawn_npc',   factoryKey: 'spawn_npc_human', isSpawn: true },
