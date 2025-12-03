@@ -4,9 +4,10 @@
   const root = typeof W !== 'undefined' ? W : window;
   const ENT = root.ENT || (root.ENT = {});
 
-  // Entidad de carro de comidas equilibrado (pinball)
+  // Entidades de carros pinball
   if (typeof ENT.CART_FOOD === 'undefined') ENT.CART_FOOD = 'cart_food';
   if (typeof ENT.CART_MEDS === 'undefined') ENT.CART_MEDS = 'cart_meds';
+  if (typeof ENT.CART_EMERGENCY === 'undefined') ENT.CART_EMERGENCY = 'cart_emergency';
 
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
@@ -89,7 +90,7 @@
     // Carros colocados directamente
     // 'F' -> carro de comidas (cart_food)
     'F': { key: 'cart_food',      kind: ENT.CART_FOOD || 'cart_food',      factoryKey: 'cart_food', isCart: true },
-    'U': { key: 'cart_emergency', kind: 'cart_emergency', factoryKey: 'cart_emergency', isCart: true },
+    'U': { key: 'cart_emergency', kind: ENT.CART_EMERGENCY || 'cart_emergency', factoryKey: 'cart_emergency', isCart: true },
     '+': { key: 'cart_meds',      kind: ENT.CART_MEDS || 'cart_meds',      factoryKey: 'cart_meds', isCart: true },
 
     // Camas sueltas (sin paciente)
