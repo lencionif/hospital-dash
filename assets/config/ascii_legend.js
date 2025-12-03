@@ -10,6 +10,7 @@
   if (typeof ENT.CART_EMERGENCY === 'undefined') ENT.CART_EMERGENCY = 'cart_emergency';
   if (typeof ENT.DOOR_NORMAL === 'undefined') ENT.DOOR_NORMAL = 'door_normal';
   if (typeof ENT.DOOR_URGENT === 'undefined') ENT.DOOR_URGENT = 'door_urgent';
+  if (typeof ENT.ELEVATOR === 'undefined') ENT.ELEVATOR = 'elevator';
 
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
@@ -121,7 +122,7 @@
     'v': { key: 'npc_visitor_annoying', kind: 'visitor_annoying', factoryKey: 'npc_visitor_annoying', isNPC: true },
 
     // Ascensor
-    'E': { key: 'elevator',       kind: 'elevator',       factoryKey: 'elevator_tile' },
+    'E': { key: 'elevator',       kind: ENT.ELEVATOR,     factoryKey: 'elevator_tile' },
 
     // Agua / charco
     '~': { key: 'water',          kind: 'puddle',         factoryKey: 'hazard_puddle', isWater: true, isHazard: true },
