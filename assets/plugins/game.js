@@ -734,6 +734,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (typeof window.spawnCartFood === 'function') return window.spawnCartFood(tx, ty);
         return null;
       },
+      cart_meds(tx, ty) {
+        if (window.Entities?.Carts?.spawnCartMeds) return window.Entities.Carts.spawnCartMeds(tx, ty);
+        if (typeof window.spawnCartMeds === 'function') return window.spawnCartMeds(tx, ty);
+        if (typeof window.createCartMeds === 'function') return window.createCartMeds((tx + 0.5) * TILE, (ty + 0.5) * TILE);
+        return null;
+      },
       npc_rat(tx, ty, def) { return ENTITY_FACTORIES.rat(tx, ty, def); },
       npc_mosquito(tx, ty, def) { return ENTITY_FACTORIES.mosquito(tx, ty, def); },
       npc_supervisora(tx, ty, def) {
