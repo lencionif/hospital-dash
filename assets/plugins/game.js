@@ -693,6 +693,7 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // Usamos el valor global expuesto por el motor: window.TILE_SIZE (o window.TILE como compat),
     // y como último recurso 32.
     const TILE = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || 32;
+    const ENT = (typeof window !== 'undefined' && window.ENT) || {};
     const toPx = (t) => t * TILE + TILE / 2;
 
     const legendApi = window.AsciiLegendAPI || window.PlacementAPI || {};
@@ -703,6 +704,8 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       }
       return def;
     });
+
+    const elevatorsList = [];
 
     const ENTITY_FACTORIES = {
       hero_spawn(tx, ty) {
@@ -817,6 +820,14 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         return null;
       },
       water_tile(tx, ty, def) { return ENTITY_FACTORIES.hazard_puddle(tx, ty, def); },
+      elevator_tile(tx, ty) {
+        const x = toPx(tx);
+        const y = toPx(ty);
+        const e = (window.Entities?.Elevator?.spawn?.(x, y, { tx, ty })
+          || (typeof window.createElevator === 'function' ? window.createElevator(x, y, { tx, ty }) : null));
+        if (e) elevatorsList.push(e);
+        return e;
+      },
     };
 
     const spawnFromKind = (def, tx, ty, ch) => {
@@ -890,12 +901,29 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
           if (!G.player && def.kind === 'hero_spawn') {
             G.player = entity;
           }
+          if (entity.kind === ENT.ELEVATOR && !elevatorsList.includes(entity)) elevatorsList.push(entity);
         } else if (def.isSpawn) {
           asciiPlacements.push({ type: def.kind, tx: x, ty: y, char: ch });
         }
       }
       G.map.push(row);
       G.floorColors.push(colorRow);
+    }
+
+    // Emparejar ascensores secuencialmente
+    if (elevatorsList.length > 1) {
+      for (let i = 0; i < elevatorsList.length; i += 2) {
+        const a = elevatorsList[i];
+        const b = elevatorsList[i + 1];
+        if (!a || !b) continue;
+        const pairIndex = Math.floor(i / 2);
+        a.pairId = b.pairId = pairIndex;
+        a.pairedElevator = b;
+        b.pairedElevator = a;
+        if (window.DEBUG_ELEVATOR) {
+          try { console.log(`[Elevator] Pair #${pairIndex}: ${a.id} <-> ${b.id}`); } catch (_) {}
+        }
+      }
     }
 
     // Mezclamos con placements del generador (si ya existían)

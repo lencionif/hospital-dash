@@ -33,6 +33,30 @@
     ctx.restore();
   }
 
+  function toScreen(cam, e) {
+    const camera = cam || {};
+    const canvas = cam?.canvas || cam?.ctx?.canvas || { width: 0, height: 0 };
+    const zoom = camera.zoom || 1;
+    const x = (e.x - (camera.x || 0)) * zoom + canvas.width * 0.5;
+    const y = (e.y - (camera.y || 0)) * zoom + canvas.height * 0.5;
+    return { x, y, zoom };
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === 'function') return ctx.roundRect(x, y, w, h, r);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
   // Rig chibi para Limpiadora top-down.
   PuppetAPI.registerRig('npc_cleaner', {
     create(host) {
@@ -199,6 +223,64 @@
 
       ctx.restore();
     }
+  });
+
+  // Rig chibi para ascensor con puertas correderas y luz superior
+  PuppetAPI.registerRig('elevator_box', {
+    create(e) {
+      return { t: 0, doorT: 0, lightPulse: 0, hitFlash: 0 };
+    },
+    update(st, e, dt) {
+      st.t += dt;
+      st.lightPulse = 0.5 + 0.5 * Math.sin(st.t * 4);
+      let targetDoorT = 0;
+      if (e.aiState === 'opening' || e.aiState === 'open') targetDoorT = 1;
+      st.doorT += (targetDoorT - st.doorT) * Math.min(1, dt * 8);
+      if (e.cooldown > 0) st.hitFlash = Math.max(st.hitFlash, 0.4);
+      if (st.hitFlash > 0) st.hitFlash = Math.max(0, st.hitFlash - dt * 2);
+    },
+    draw(ctx, cam, e, st) {
+      const { x, y, zoom } = toScreen(cam, e);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+      const half = 12;
+
+      // Marco del ascensor
+      ctx.fillStyle = '#b87d2a';
+      roundRect(ctx, -half - 4, -half - 4, (half + 4) * 2, (half + 4) * 2, 4);
+      ctx.fill();
+
+      // Cabina interior
+      ctx.fillStyle = '#30343b';
+      roundRect(ctx, -half, -half, half * 2, half * 2, 3);
+      ctx.fill();
+
+      // Puertas
+      const doorGap = 2 + 6 * st.doorT;
+      const doorWidth = half - 3;
+      ctx.fillStyle = '#2e8f8f';
+      roundRect(ctx, -doorWidth, -half + 1, doorWidth - doorGap, half * 2 - 2, 2);
+      ctx.fill();
+      roundRect(ctx, doorGap, -half + 1, doorWidth - doorGap, half * 2 - 2, 2);
+      ctx.fill();
+
+      // Luz superior
+      const lightOn = (e.aiState === 'open' || e.aiState === 'opening' || e.cooldown > 0);
+      if (lightOn) ctx.fillStyle = `rgba(255, 255, 120, ${0.7 + 0.3 * st.lightPulse})`;
+      else ctx.fillStyle = 'rgba(130, 160, 80, 0.6)';
+      roundRect(ctx, -8, -half - 6, 16, 4, 2);
+      ctx.fill();
+
+      // Overlay flash cooldown
+      if (st.hitFlash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${st.hitFlash})`;
+        roundRect(ctx, -half - 4, -half - 4, (half + 4) * 2, (half + 4) * 2, 4);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    },
   });
 
   // ---------------------------------------------------------------------------
