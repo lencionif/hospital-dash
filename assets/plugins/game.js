@@ -884,6 +884,14 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (def.kind === 'wall' || def.kind === 'void') continue;
         if (def.baseKind === 'floor' || def.kind === 'floor') continue;
 
+        if ((ch === 'F' || ch === 'x') && window.FireAPI?.spawnAtTile) {
+          const px = x * TILE + TILE / 2;
+          const py = y * TILE + TILE / 2;
+          const fire = window.FireAPI.spawnAtTile(x, y, { x: px, y: py });
+          addEntity(fire);
+          continue;
+        }
+
         if (def.isBoss || def.key === 'boss_main' || def.kind === 'boss_main') {
           const level = (G.level ?? G.levelIndex ?? 1);
           const boss = window.Entities?.spawnBossForLevel?.(level, x, y)
