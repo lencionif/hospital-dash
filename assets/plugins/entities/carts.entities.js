@@ -1,4 +1,5 @@
 // assets/plugins/entities/carts.entities.js
+// TODO: Archivo no referenciado en index.html. Candidato a eliminación si se confirma que no se usa.
 // Registro y comportamiento de los carros pinball (carro de comidas equilibrado)
 (function (W) {
   'use strict';

@@ -1,4 +1,5 @@
 // assets/plugins/entities/boss_pyro.entities.js
+// TODO: Archivo no referenciado en index.html. Candidato a eliminación si se confirma que no se usa.
 // Boss nivel 3: Paciente psiquiátrica piromana.
 (function (W) {
   'use strict';
