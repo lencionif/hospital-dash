@@ -4,7 +4,6 @@
 
   const TAU = Math.PI * 2;
   const rigs = new Set();
-  const rigDefs = new Map();
   const headCache = new Map();
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -29,7 +28,7 @@
     return store;
   }
 
-  function createHuman(opts = {}) {
+  function create(opts = {}) {
     const rig = {
       host: opts.host || null,
       scale: opts.scale || 1,
@@ -52,6 +51,7 @@
         legR: { rx: 6, ry: 6, ox: 6, oy: 16 },
       }
     };
+    rigs.add(rig);
     return rig;
   }
 
@@ -63,7 +63,7 @@
     return 'E';
   }
 
-  function updateHuman(rig, dt = 0, hostState = {}) {
+  function update(rig, dt = 0, hostState = {}) {
     if (!rig) return;
     rig.t += dt;
     const h = rig.host || {};
@@ -108,7 +108,7 @@
     ctx.restore();
   }
 
-  function drawHuman(rig, ctx, camera) {
+  function draw(rig, ctx, camera) {
     if (!rig || !rig.host || !ctx) return;
     const h = rig.host;
     const cam = camera || { x: 0, y: 0, zoom: 1 };
@@ -198,47 +198,13 @@
     ctx.restore();
   }
 
-  function resolveRigDef(name){
-    const key = (name || 'human');
-    return rigDefs.get(key) || null;
-  }
-
-  function registerRig(name, def){
-    if (!name || !def) return;
-    rigDefs.set(name, def);
-  }
-
   function attach(entity, opts = {}) {
     if (!entity) return null;
-    const rigName = opts.rig || 'human';
-    const def = resolveRigDef(rigName);
-    const factory = def?.create || createHuman;
-    const rig = factory({ host: entity, scale: opts.scale || 1, rig: rigName, data: opts.data || {} }) || null;
-    if (!rig) return null;
-    rig.rigName = rigName;
-    rig._def = def || null;
-    rig.host = rig.host || entity;
-    rig.scale = rig.scale || opts.scale || 1;
-    rig.data = rig.data || opts.data || {};
-    rigs.add(rig);
+    const rig = create({ host: entity, scale: opts.scale || 1, rig: opts.rig || 'human' });
     entity.rig = rig;
     entity.puppetState = rig;
     entity.puppet = opts;
     return rig;
-  }
-
-  function update(rig, dt = 0, hostState = {}) {
-    if (!rig) return;
-    const def = rig._def || resolveRigDef(rig.rigName);
-    if (def?.update) return def.update(rig, rig.host || null, dt, hostState);
-    return updateHuman(rig, dt, hostState);
-  }
-
-  function draw(rig, ctx, camera) {
-    if (!rig || !ctx) return;
-    const def = rig._def || resolveRigDef(rig.rigName);
-    if (def?.draw) return def.draw(ctx, camera, rig.host || null, rig);
-    return drawHuman(rig, ctx, camera);
   }
 
   function detach(entity) {
@@ -258,7 +224,5 @@
     if (e.code === 'KeyJ') toggleDebug();
   });
 
-  registerRig('human', { create: createHuman, update: updateHuman, draw: drawHuman });
-
-  window.PuppetAPI = { create: createHuman, update, draw, attach, detach, setHeroHead, toggleDebug, registerRig };
+  window.PuppetAPI = { create, update, draw, attach, detach, setHeroHead, toggleDebug };
 })();

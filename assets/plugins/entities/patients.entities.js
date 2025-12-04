@@ -8,11 +8,7 @@
     FURIOUS: 'FURIOUS',
     PILL: 'PILL'
   });
-  ENT.PATIENT_BED = ENT.PATIENT_BED || ENT.PATIENT || 'PATIENT_BED';
-  ENT.PATIENT_FURIOUS = ENT.PATIENT_FURIOUS || ENT.FURIOUS || 'FURIOUS';
   const TILE = W.TILE_SIZE ?? W.TILE ?? G.TILE_SIZE ?? 32;
-  const HERO_Z = typeof W.HERO_Z === 'number' ? W.HERO_Z : 10;
-  const PATIENT_FURIOUS_SPEED = typeof W.PATIENT_FURIOUS_SPEED === 'number' ? W.PATIENT_FURIOUS_SPEED : 72;
 
   function ensureStats() {
     G.stats = G.stats || {};
@@ -133,42 +129,6 @@
     syncPatientArrayCounters();
   }
 
-  function patientBedAiUpdate(dt = 0, e) {
-    if (!e || e.dead) return;
-
-    const ax = Math.abs(e.vx || 0);
-    const ay = Math.abs(e.vy || 0);
-    if (ax > 1 || ay > 1) {
-      e.state = ax > ay ? 'walk_h' : 'walk_v';
-    } else if (e.isTalking) {
-      e.state = 'talk';
-    } else {
-      e.state = e.state === 'eat' ? 'eat' : 'idle';
-    }
-
-    if (e.bellCountdown > 0 && !e.cured) {
-      e.bellCountdown -= dt;
-      if (e.bellCountdown < 10 && !e.warned) {
-        e.state = 'attack';
-        e.warned = true;
-      }
-      if (e.bellCountdown <= 0) {
-        try { W.PatientsAPI?.toFurious?.(e); } catch (_) {}
-        if (typeof W.spawnFuriousPatientAt === 'function') {
-          try { W.spawnFuriousPatientAt(e.x, e.y, e); } catch (_) {}
-        }
-        e.dead = true;
-      }
-    }
-
-    if (e.justGotCorrectPill && !e.cured) {
-      e.state = 'eat';
-      e.cured = true;
-      e.bellCountdown = 0;
-      e.justGotCorrectPill = false;
-    }
-  }
-
   function nextIdentity() {
     ensureStats();
     const seedBase = (G.levelSeed ?? G.seed ?? G.mapSeed ?? Date.now()) >>> 0;
@@ -228,17 +188,12 @@
 
     const patient = {
       id: opts.id || `PAT_${Math.random().toString(36).slice(2, 9)}`,
-      kind: ENT.PATIENT_BED,
+      kind: ENT.PATIENT,
       x: x || 0,
       y: y || 0,
-      w: opts.w || 24,
-      h: opts.h || 24,
-      dir: opts.dir ?? 0,
-      vx: 0,
-      vy: 0,
-      static: false,
-      dynamic: true,
-      pushable: true,
+      w: opts.w || TILE * 0.9,
+      h: opts.h || TILE * 0.75,
+      static: true,
       solid: true,
       displayName: identity.displayName,
       name: identity.displayName,
@@ -254,29 +209,16 @@
       skin: skinName,
       bellId: null,
       pillId: null,
-      ringing: false,
-      populationType: 'patients',
-      touchDamage: 0,
-      touchCooldown: 0.9,
-      _touchCD: 0,
-      health: opts.health ?? 2,
-      fireImmune: false,
-      ai: 'PATIENT_BED',
-      aiUpdate: patientBedAiUpdate,
-      bellCountdown: opts.bellCountdown || 0,
-      warned: false,
-      cured: false,
-      justGotCorrectPill: false,
-      puppet: { rig: 'patient_bed', z: HERO_Z, skin: skinName || 'default' }
+      ringing: false
     };
 
     if (!patient.id) patient.id = (Math.random() * 1e9) | 0;
-    patient.state = patient.state || 'idle';
+    patient.state = patient.state || 'idle_bed';
     patient.showNameTag = true;
 
     try {
-      const puppet = window.Puppet?.bind?.(patient, 'patient_bed', { z: HERO_Z, scale: 1, data: { skin: patient.skin } })
-        || W.PuppetAPI?.attach?.(patient, { rig: 'patient_bed', z: HERO_Z, scale: 1, data: { skin: patient.skin } });
+      const puppet = window.Puppet?.bind?.(patient, 'patient_bed', { z: 0, scale: 1, data: { skin: patient.skin } })
+        || W.PuppetAPI?.attach?.(patient, { rig: 'patient_bed', z: 0, scale: 1, data: { skin: patient.skin } });
       patient.rigOk = patient.rigOk === true || !!puppet;
     } catch (_) {
       patient.rigOk = patient.rigOk === true;
@@ -574,132 +516,6 @@
     return furiosa;
   }
 
-  function overlap(a, b) {
-    return a && b && a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  }
-
-  // [HospitalDash] Furious patient entity: chases hero until cured with correct pill.
-  function furiousPatientAiUpdate(dt = 0, e) {
-    if (!e) return;
-    if (e.dead) {
-      if (!e._countedNeutralized) {
-        e._countedNeutralized = true;
-        try { W.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
-      }
-      e.vx = e.vy = 0;
-      return;
-    }
-    if (e._culled) { e.vx = e.vy = 0; return; }
-
-    const hero = G.player || null;
-    const carry = hero ? getCarry(hero) : null;
-    const requiredKey = e.requiredKeyName || e.keyName;
-    const hasCorrectPill = !!carry && (
-      carry.targetPatientId === e.id
-      || carry.forPatientId === e.id
-      || carry.patientId === e.id
-      || (requiredKey && carry.pairName === requiredKey)
-    );
-
-    if (hero && hasCorrectPill && overlap(e, hero)) {
-      clearCarry(hero, { reason: 'furious_cured' });
-      e.cured = true;
-      e.state = 'eat';
-      e.cureT = e.cureT || 1.1;
-      e.vx = e.vy = 0;
-    }
-
-    if (e.cured) {
-      e.vx = e.vy = 0;
-      e.state = 'eat';
-      e.cureT = Math.max(0, (e.cureT || 0) - dt);
-      if (e.cureT <= 0 || e._eatDone) {
-        e.dead = true;
-        e.deathCause = e.deathCause || 'damage';
-        try { W.PatientsAPI?.onFuriosaNeutralized?.(e); } catch (_) {}
-      }
-      return;
-    }
-
-    if (!hero || hero.dead) {
-      e.vx = e.vy = 0;
-      e.state = 'idle';
-      return;
-    }
-
-    const dx = hero.x - e.x;
-    const dy = hero.y - e.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const speed = PATIENT_FURIOUS_SPEED;
-    e.vx = (dx / dist) * speed;
-    e.vy = (dy / dist) * speed;
-    e.dir = Math.abs(e.vx) > Math.abs(e.vy) ? Math.sign(e.vx || 0) : (e.vy < 0 ? -1 : 1);
-
-    if (overlap(e, hero) && !hero.isCuring && window.DamageAPI?.applyTouch && !e.dead) {
-      e.state = 'attack';
-      try { window.DamageAPI.applyTouch(e, hero); } catch (_) {}
-    } else {
-      const ax = Math.abs(e.vx || 0);
-      const ay = Math.abs(e.vy || 0);
-      const eps = 4;
-      if (ax > ay && ax > eps) e.state = 'walk_h';
-      else if (ay >= ax && ay > eps) e.state = 'walk_v';
-      else e.state = 'idle';
-    }
-  }
-
-  function spawnFuriousPatientAtTile(tx, ty, opts = {}) {
-    ensureCollections();
-    const px = (tx + 0.5) * TILE;
-    const py = (ty + 0.5) * TILE;
-    const size = opts.size || 24;
-    const e = {
-      id: opts.id || `FURPAT_${Math.random().toString(36).slice(2, 8)}`,
-      kind: ENT.PATIENT_FURIOUS,
-      x: px - size * 0.5,
-      y: py - size * 0.5,
-      w: size,
-      h: size,
-      dir: 0,
-      vx: 0,
-      vy: 0,
-      dynamic: true,
-      pushable: true,
-      solid: true,
-      health: 3,
-      touchDamage: 0.5,
-      touchCooldown: 0.9,
-      _touchCD: 0,
-      fireImmune: false,
-      populationType: 'humans',
-      aiUpdate: furiousPatientAiUpdate,
-      puppet: {
-        rig: 'patient_furious',
-        z: HERO_Z,
-        skin: opts.skin || 'default',
-      },
-      requiredKeyName: opts.requiredKeyName || opts.keyName || opts.pillKey || opts.name,
-      state: 'idle',
-    };
-
-    try { W.PuppetAPI?.attach?.(e, e.puppet); } catch (_) {}
-    addEntity(e);
-
-    const stats = ensureStats();
-    stats.activeFuriosas = (stats.activeFuriosas || 0) + 1;
-    ensurePatientCounters();
-    G.patientsFurious = (G.patientsFurious | 0) + 1;
-    syncPatientArrayCounters();
-    try { W.GameFlowAPI?.notifyPatientCountersChanged?.(); } catch (_) {}
-
-    if (!G.patients.includes(e)) G.patients.push(e);
-    if (!G.allPatients.includes(e)) G.allPatients.push(e);
-    if (!G.entities.includes(e)) G.entities.push(e);
-    if (!G.movers.includes(e)) G.movers.push(e);
-    e.group = 'human';
-    return e;
-  }
-
   function onFuriosaNeutralized(furiosa) {
     if (furiosa) {
       if (furiosa._countedNeutralized) return;
@@ -766,8 +582,6 @@
     wrongDelivery,
     toFurious: convertToFuriosa,
     onFuriosaNeutralized,
-    spawnFuriousPatientAtTile,
-    furiousPatientAiUpdate,
     getPatients,
     getAllPatients,
     getPills,
@@ -781,7 +595,6 @@
   };
 
   W.PatientsAPI = PatientsAPI;
-  W.patientBedAiUpdate = patientBedAiUpdate;
 
   if (typeof W.patientsSnapshot !== 'function') {
     W.patientsSnapshot = () => counterSnapshot();
@@ -796,10 +609,6 @@
     const patient = createPatient(x, y, opts || {});
     return patient;
   };
-
-  W.Entities.Patients = W.Entities.Patients || {};
-  W.Entities.Patients.spawnFuriousPatientAtTile = spawnFuriousPatientAtTile;
-  W.Entities.spawnFuriousPatientAtTile = spawnFuriousPatientAtTile;
 
   W.Entities.Objects = W.Entities.Objects || {};
   W.Entities.Objects.spawnPill = function (_name, x, y, opts = {}) {

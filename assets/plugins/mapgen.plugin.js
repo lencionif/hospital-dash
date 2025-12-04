@@ -725,7 +725,7 @@ const CHARSET_DEFAULT = {
   start:charFor('hero_spawn', 'S'), light:charFor('light_ok', 'L'), lightBroken:charFor('light_broken', 'l'),
   spAnimal:charFor('spawn_animal', 'A'), spStaff:charFor('spawn_npc', 'N'), spCart:charFor('spawn_cart', 'C'),
   patient:charFor('patient_bed', 'p'), pill:charFor('pill', 'i'), bell:charFor('bell', 'b'), phone:charFor('phone_central', 'T'), bossMarker:charFor('boss_main', 'X'),
-  cartUrg:charFor('cart_emergency', 'U'), cartMed:charFor('cart_meds', '+'), cartFood:charFor('cart_food', 'Q'),
+  cartUrg:charFor('cart_emergency', 'U'), cartMed:charFor('cart_meds', '+'), cartFood:charFor('cart_food', 'F'),
   mosquito:charFor('mosquito', 'm'), rat:charFor('rat', 'r'),
   nurse:charFor('npc_nurse_sexy', 'n'), tcae:charFor('npc_tcae', 't'), celador:charFor('npc_celador', 'c'), cleaner:charFor('npc_cleaner', 'h'), guardia:charFor('npc_guard', 'g'), medico:charFor('npc_medico', 'k'),
   jefe_servicio:'J', supervisora:charFor('npc_supervisora', 'H'),
@@ -1728,7 +1728,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
 
     const char = (kind => {
       switch ((kind || '').toLowerCase()) {
-        case 'comida': return 'Q';
+        case 'comida': return 'F';
         case 'medicina': return '+';
         case 'urgencias': return 'U';
         default: return 'C';
@@ -2357,7 +2357,7 @@ const CHARSET = Object.assign({}, (window.CHARSET_DEFAULT || {}), CHARSET_DEFAUL
         const p = randomInside(room,2);
         const roll = rng(); const sub = roll<0.10 ? 'er' : (roll<0.40 ? 'med' : 'food');
         placements.push({type:'cart', sub, x:p.x, y:p.y});
-        markAscii(p.x,p.y, sub==='er' ? (charset.cartUrg||'U') : (sub==='med' ? (charset.cartMed||'+') : (charset.cartFood||'Q')));
+        markAscii(p.x,p.y, sub==='er' ? (charset.cartUrg||'U') : (sub==='med' ? (charset.cartMed||'+') : (charset.cartFood||'F')));
       }
     }
     for (const r of rooms) placeRoomCarts(r);

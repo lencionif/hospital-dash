@@ -2,35 +2,19 @@
   'use strict';
 
   const root = typeof W !== 'undefined' ? W : window;
-  const ENT = root.ENT || (root.ENT = {});
-
-  if (typeof ENT.WATER_PUDDLE === 'undefined') ENT.WATER_PUDDLE = 'water_puddle';
-  if (typeof ENT.FIRE_HAZARD === 'undefined') ENT.FIRE_HAZARD = 'fire_hazard';
-
-  // Entidades de carros pinball
-  if (typeof ENT.CART_FOOD === 'undefined') ENT.CART_FOOD = 'cart_food';
-  if (typeof ENT.CART_MEDS === 'undefined') ENT.CART_MEDS = 'cart_meds';
-  if (typeof ENT.CART_EMERGENCY === 'undefined') ENT.CART_EMERGENCY = 'cart_emergency';
-  if (typeof ENT.DOOR_NORMAL === 'undefined') ENT.DOOR_NORMAL = 'door_normal';
-  if (typeof ENT.DOOR_URGENT === 'undefined') ENT.DOOR_URGENT = 'door_urgent';
-  if (typeof ENT.ELEVATOR === 'undefined') ENT.ELEVATOR = 'elevator';
-  if (typeof ENT.SPAWNER_ANIMALS === 'undefined') ENT.SPAWNER_ANIMALS = 'spawner_animals';
-  if (typeof ENT.SPAWNER_HUMANS === 'undefined') ENT.SPAWNER_HUMANS = 'spawner_humans';
-  if (typeof ENT.SPAWNER_CARTS === 'undefined') ENT.SPAWNER_CARTS = 'spawner_carts';
 
   // Tabla ASCII centralizada y única. Los caracteres oficiales son:
   //   Terreno: '#' muro, '.' suelo, '-' control, ';' boss, ',' miniboss, ' ' vacío
   //   Spawns:  'S' héroe, 'X' boss, 'M' miniboss
   //   Objetos críticos: 'd' puerta normal, 'u' puerta boss/urgencias, 'E' ascensor,
   //     'T' teléfono, 'b' timbre, 'p' cama con paciente, 'i' pastilla vinculada,
-  //     'Q' carro comida, 'U' carro urgencias, '+' carro medicinas
+  //     'F' carro comida, 'U' carro urgencias, '+' carro medicinas
   //   Spawns genéricos: 'N' NPC, 'A' animal, 'C' carro, 'o' loot aleatorio
-  //   Enemigos/otros: 'm' mosquito, 'r' rata, 'F' fuego, '~' agua, 'e' extintor
+  //   Enemigos/otros: 'm' mosquito, 'r' rata, 'x' fuego, '~' agua, 'e' extintor
   //   Recompensas: '$' moneda, '%' bolsa, '1/2/3' jeringas, '4/5/6' goteros, 'y/Y' comida
   //   NPC manuales: 'J' jefe, 'H' supervisora, 'k' médico, 't' TCAE, 'c' celador,
-  //     'n' enfermera sexy, 'h' limpieza, 'g' guardia de seguridad (hostil), 'v' familiar
-    //   Extras: 'B' cama vacía, 'P' paciente furioso (debug), 'L/l' luces
-    //   Enemigos humanos: 'f' paciente furiosa (bípeda agresiva fuera de cama)
+  //     'n' enfermera sexy, 'h' limpieza, 'g' guardia, 'v' familiar
+  //   Extras: 'B' cama vacía, 'P' paciente furioso (debug), 'L/l' luces
   // Caracteres descartados: 'D' (puerta antigua), variaciones de pacientes/loot sin
   // normalizar. Los mapas debug y generador usan únicamente los símbolos oficiales.
 
@@ -39,24 +23,6 @@
     green: 0x6bff8a,
     red: 0xff6b6b
   };
-
-  function spawnBossFromAscii(tx, ty) {
-    const level = (root.G?.level) || (root.G?.levelIndex) || 1;
-    if (typeof root.Entities?.spawnBossForLevel === 'function') {
-      return root.Entities.spawnBossForLevel(level, tx, ty);
-    }
-    if (level === 1 && root.Entities?.spawnBossHemaAtTile) {
-      return root.Entities.spawnBossHemaAtTile(tx, ty);
-    }
-    if (level === 2 && root.Entities?.spawnBossCleanerAtTile) {
-      const boss = root.Entities.spawnBossCleanerAtTile(tx, ty);
-      if (root.G) {
-        root.G.bossRoom = { level: 2, tx, ty, kind: 'boss_cleaner' };
-      }
-      return boss;
-    }
-    return null;
-  }
 
   const LEGEND = {
     // Terreno / fuera del mapa
@@ -69,7 +35,7 @@
 
     // Posición del héroe / puntos especiales
     'S': { key: 'hero_spawn',  kind: 'hero_spawn',      factoryKey: 'hero_spawn', isSpawn: true },
-    'X': { key: 'boss_main',   kind: 'boss_main',       factoryKey: 'boss_main_spawn', isBoss: true, spawn: spawnBossFromAscii },
+    'X': { key: 'boss_main',   kind: 'boss_main',       factoryKey: 'boss_main_spawn', isBoss: true },
     'M': { key: 'mini_boss',   kind: 'mini_boss',       factoryKey: 'mini_boss_spawn', isMiniBoss: true },
 
     // Teléfono de control room
@@ -80,63 +46,55 @@
     'l': { key: 'light_broken',kind: 'light_broken',factoryKey: 'light_broken' },
 
     // Pacientes
-    'p': { key: 'patient_bed', kind: ENT.PATIENT_BED || 'patient_bed', factoryKey: 'patient_normal', isPatient: true },
-    // 'f' -> paciente furiosa bípeda, chibi agresiva
-    'f': { key: 'furious_patient', kind: 'furious_patient', factoryKey: 'patient_furious', isPatient: true },
+    'p': { key: 'patient_bed', kind: 'patient_bed', factoryKey: 'patient_normal', isPatient: true },
+    'f': { key: 'patient_fury',kind: 'patient_fury',factoryKey: 'patient_furious_debug', isPatient: true },
 
     // Timbre asociado
     'b': { key: 'bell',        kind: 'bell',        factoryKey: 'bell_patient', isTrigger: true },
 
     // Puertas
-    'd': { key: ENT.DOOR_NORMAL, kind: ENT.DOOR_NORMAL, factoryKey: ENT.DOOR_NORMAL, blocking: false, isWalkable: true, isDoor: true },
-    'u': { key: ENT.DOOR_URGENT, kind: ENT.DOOR_URGENT, factoryKey: ENT.DOOR_URGENT, blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
+    'd': { key: 'door_normal', kind: 'door_normal', factoryKey: 'door_normal', blocking: false, isWalkable: true, isDoor: true },
+    'u': { key: 'door_boss',   kind: 'door_boss',   factoryKey: 'door_urgencias', blocking: false, isWalkable: true, isDoor: true, bossDoor: true },
 
-    // Spawners permanentes (sprite-only)
-    'A': { key: ENT.SPAWNER_ANIMALS, kind: ENT.SPAWNER_ANIMALS, sprite: 'SPR_SPAWNER_ANIMALS' },
-    'H': { key: ENT.SPAWNER_HUMANS,  kind: ENT.SPAWNER_HUMANS,  sprite: 'SPR_SPAWNER_HUMANS' },
-    'C': { key: ENT.SPAWNER_CARTS,   kind: ENT.SPAWNER_CARTS,   sprite: 'SPR_SPAWNER_CARTS' },
+    // Spawns abstractos según level_rules
     'N': { key: 'spawn_npc',   kind: 'spawn_npc',   factoryKey: 'spawn_npc_human', isSpawn: true },
+    'A': { key: 'spawn_animal',kind: 'spawn_animal',factoryKey: 'spawn_enemy_animal', isSpawn: true },
+    'C': { key: 'spawn_cart',  kind: 'spawn_cart',  factoryKey: 'spawn_cart', isSpawn: true },
 
     // Carros colocados directamente
-    // 'Q' -> carro de comidas (cart_food)
-    'Q': { key: 'cart_food',      kind: ENT.CART_FOOD || 'cart_food',      factoryKey: 'cart_food', isCart: true },
-    'U': { key: 'cart_emergency', kind: ENT.CART_EMERGENCY || 'cart_emergency', factoryKey: 'cart_emergency', isCart: true },
-    '+': { key: 'cart_meds',      kind: ENT.CART_MEDS || 'cart_meds',      factoryKey: 'cart_meds', isCart: true },
+    'F': { key: 'cart_food',      kind: 'cart_food',      factoryKey: 'cart_food', isCart: true },
+    'U': { key: 'cart_emergency', kind: 'cart_emergency', factoryKey: 'cart_emergency', isCart: true },
+    '+': { key: 'cart_meds',      kind: 'cart_meds',      factoryKey: 'cart_meds', isCart: true },
 
     // Camas sueltas (sin paciente)
     'B': { key: 'bed',            kind: 'bed',            factoryKey: 'bed_empty' },
 
     // Enemigos animales
-    // ASCII 'm' -> spawn de mosquitos voladores
-    'm': { key: 'mosquito',       kind: 'mosquito',       factoryKey: 'npc_mosquito', isEnemy: true, spawn: 'spawnMosquitoFromAscii' },
-    // ASCII 'r' -> spawn de ratas terrestres
-    'r': { key: 'rat',            kind: 'rat',            factoryKey: 'npc_rat',      isEnemy: true, spawn: 'spawnRatFromAscii' },
+    'm': { key: 'mosquito',       kind: 'mosquito',       factoryKey: 'npc_mosquito', isEnemy: true },
+    'r': { key: 'rat',            kind: 'rat',            factoryKey: 'npc_rat',      isEnemy: true },
 
     // Paciente furioso colocado directamente
     'P': { key: 'furious_patient',kind: 'furious_patient',factoryKey: 'npc_furious_patient', isEnemy: true },
 
     // NPC humanos concretos (colocados manualmente)
     'J': { key: 'npc_jefe',        kind: 'jefe',          factoryKey: 'npc_jefe_servicio', isNPC: true },
-    'Z': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
-    'k': { key: 'npc_medico',      kind: (root.ENT && root.ENT.MEDIC) || 'medico', factoryKey: 'npc_medico',      isNPC: true }, // 'k' -> Medica (NPC hostil que deja pastillas envenenadas).
-    't': { key: 'npc_tcae',        kind: (root.ENT && root.ENT.TCAE) || 'tcae', factoryKey: 'npc_tcae',        isNPC: true },
-    // Celador: NPC fuerte que prioriza empujar carros contra el jugador y hace 0.5 corazones de daño por contacto.
-    'c': { key: 'npc_celador',     kind: (root.ENT && root.ENT.CELADOR) || 'celador', factoryKey: 'npc_celador',     isNPC: true },
-    // Enfermera sexy: NPC humano mixto/hostil
-    'n': { key: 'npc_nurse_sexy',  kind: 'enfermera_sexy',factoryKey: 'npc_enfermera_sexy', isNPC: true, isEnemy: true },
-    'h': { key: 'npc_cleaner',     kind: 'cleaner',       factoryKey: 'npc_cleaner',     isNPC: true, populationType: 'humans' },
+    'H': { key: 'npc_supervisora', kind: 'supervisora',   factoryKey: 'npc_supervisora', isNPC: true },
+    'k': { key: 'npc_medico',      kind: 'medico',        factoryKey: 'npc_medico',      isNPC: true },
+    't': { key: 'npc_tcae',        kind: 'tcae',          factoryKey: 'npc_tcae',        isNPC: true },
+    'c': { key: 'npc_celador',     kind: 'celador',       factoryKey: 'npc_celador',     isNPC: true },
+    'n': { key: 'npc_nurse_sexy',  kind: 'enfermera_sexy',factoryKey: 'npc_enfermera_sexy', isNPC: true },
+    'h': { key: 'npc_cleaner',     kind: 'cleaner',       factoryKey: 'npc_cleaner',     isNPC: true },
     'g': { key: 'npc_guard',       kind: 'guardia',       factoryKey: 'npc_guardia',     isNPC: true },
-    'v': { key: 'npc_visitor_annoying', kind: 'visitor_annoying', factoryKey: 'npc_visitor_annoying', isNPC: true },
+    'v': { key: 'npc_familiar',    kind: 'familiar',      factoryKey: 'npc_familiar_molesto', isNPC: true },
 
     // Ascensor
-    'E': { key: 'elevator',       kind: ENT.ELEVATOR,     factoryKey: 'elevator_tile' },
+    'E': { key: 'elevator',       kind: 'elevator',       factoryKey: 'elevator_tile' },
 
     // Agua / charco
-    '~': { key: 'water',          kind: ENT.WATER_PUDDLE, factoryKey: ENT.WATER_PUDDLE, isWater: true, isHazard: true },
+    '~': { key: 'water',          kind: 'water',          factoryKey: 'water_tile', isWater: true },
 
-    // Fuego (tile hazard)
-    'F': { key: 'fire',           kind: ENT.FIRE_HAZARD,  factoryKey: ENT.FIRE_HAZARD,  isHazard: true },
-    'x': { key: 'fire',           kind: ENT.FIRE_HAZARD,  factoryKey: ENT.FIRE_HAZARD,  isHazard: true },
+    // Fuego
+    'x': { key: 'fire',           kind: 'fire',           factoryKey: 'fire_tile',  isHazard: true },
 
     // Pastilla genérica
     'i': { key: 'pill',           kind: 'pill',           factoryKey: 'pill_generic' },

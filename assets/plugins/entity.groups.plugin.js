@@ -5,7 +5,6 @@
   const HUMAN = 'human';
   const ANIMAL = 'animal';
   const OBJECT = 'object';
-  const SPAWNER = 'spawners';
 
   const HUMAN_TYPES = new Set([
     'PLAYER',
@@ -51,7 +50,6 @@
     'OBJECT',
     'ITEM',
     'CART',
-    'CART_FOOD',
     'CARRO',
     'BELL',
     'PILL',
@@ -62,18 +60,8 @@
     'FIRE',
     'PHONE',
     'SPAWNER',
-    'SPAWNER_ANIMALS',
-    'SPAWNER_HUMANS',
-    'SPAWNER_CARTS',
     'HAZARD_WET',
     'HAZARD_FIRE'
-  ]);
-
-  const SPAWNER_TYPES = new Set([
-    'SPAWNER',
-    'SPAWNER_ANIMALS',
-    'SPAWNER_HUMANS',
-    'SPAWNER_CARTS'
   ]);
 
   function normalizeKind(entity){
@@ -92,7 +80,6 @@
     if (!Array.isArray(G.humans)) G.humans = [];
     if (!Array.isArray(G.animals)) G.animals = [];
     if (!Array.isArray(G.objects)) G.objects = [];
-    if (!Array.isArray(G.spawners)) G.spawners = [];
     if (!Array.isArray(G.hostiles)) G.hostiles = [];
   }
 
@@ -100,9 +87,6 @@
     if (!entity || typeof entity !== 'object') return entity;
     if (typeof entity.group === 'string' && entity.group) return entity;
     const kind = normalizeKind(entity);
-    if (SPAWNER_TYPES.has(kind)) {
-      entity.group = SPAWNER;
-    } else
     if (HUMAN_TYPES.has(kind)) {
       entity.group = HUMAN;
     } else if (ANIMAL_TYPES.has(kind)) {
@@ -122,8 +106,7 @@
     const listForGroup =
       entity.group === HUMAN ? G.humans :
       entity.group === ANIMAL ? G.animals :
-      entity.group === OBJECT ? G.objects :
-      entity.group === SPAWNER ? G.spawners : null;
+      entity.group === OBJECT ? G.objects : null;
     if (listForGroup && !listForGroup.includes(entity)) listForGroup.push(entity);
     if (entity.hostile === true && !G.hostiles.includes(entity)) {
       G.hostiles.push(entity);
@@ -135,7 +118,6 @@
     if (Array.isArray(G.humans)) G.humans = G.humans.filter((x) => x !== entity);
     if (Array.isArray(G.animals)) G.animals = G.animals.filter((x) => x !== entity);
     if (Array.isArray(G.objects)) G.objects = G.objects.filter((x) => x !== entity);
-    if (Array.isArray(G.spawners)) G.spawners = G.spawners.filter((x) => x !== entity);
     if (Array.isArray(G.hostiles)) G.hostiles = G.hostiles.filter((x) => x !== entity);
   }
 
@@ -143,7 +125,6 @@
     HUMAN,
     ANIMAL,
     OBJECT,
-    SPAWNER,
     HUMAN_TYPES,
     ANIMAL_TYPES,
     OBJECT_TYPES,

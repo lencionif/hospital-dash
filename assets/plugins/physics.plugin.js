@@ -327,80 +327,26 @@
       e.vy = (e.vy || 0) + fy;
     }
 
-    function handleCartBounce(e, meta = {}){
-      if (!isCartEntity(e) || e.bounceCount == null) return;
-      const handled = typeof e.onWallHit === 'function' && (meta.normalX || meta.normalY)
-        ? e.onWallHit(e, meta.normalX || 0, meta.normalY || 0, Object.assign({ alreadyReflected: !!meta.alreadyReflected }, meta))
-        : false;
-      if (handled === true) return;
-      e.bounceCount = (e.bounceCount || 0) + 1;
-      e.justBounced = true;
-      const speed = Math.hypot(e.vx || 0, e.vy || 0);
-      const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : {};
-      const isCartMeds = e.kind === ENT?.CART_MEDS || e.kindName === 'cart_meds';
-      if (speed > 0) {
-        if (isCartMeds) {
-          const boost = Number.isFinite(e.pinballBoostPerHit) ? e.pinballBoostPerHit : 1.12;
-          const maxSpeed = (
-            (Number.isFinite(e.pinballMaxSpeed) && e.pinballMaxSpeed) ||
-            (e.physics?.maxSpeed) ||
-            e.maxSpeed ||
-            (CFG.cartMaxSpeed ?? speed)
-          );
-          const newSpeed = Math.min(speed * boost, maxSpeed);
-          const scale = newSpeed / speed;
-          e.vx *= scale;
-          e.vy *= scale;
-          try { window.AudioAPI?.playSfx?.('cart_meds_bounce'); } catch (_) {}
-        } else {
-          const boosted = Math.min(e.maxSpeed || (CFG.cartMaxSpeed ?? speed), speed * 1.1);
-          const scale = boosted / speed;
-          e.vx *= scale;
-          e.vy *= scale;
-        }
-      }
-      const limit = Number.isFinite(e.maxBounces) ? e.maxBounces : null;
-      if (limit != null && e.bounceCount >= limit) {
-        if (!isCartMeds) {
-          e.vx = 0;
-          e.vy = 0;
-          e.aiState = 'stopped';
-        }
-      }
-    }
-
     function moveWithCollisions(e, dt){
       if (!e) return;
       const sub = 4;
       const wantsSlide = (e.slide != null) ? !!e.slide : isCartEntity(e);
       const muSource = (e.mu != null) ? e.mu : (wantsSlide ? (CFG.cartSlideMu ?? 0) : 0);
       const mu = clamp(muSource, 0, 0.95);
-      const baseFrictionMult = Number.isFinite(e._baseFrictionMultiplier)
-        ? e._baseFrictionMultiplier
-        : (Number.isFinite(e.frictionMultiplier) ? e.frictionMultiplier : 1);
-      if (!Number.isFinite(e._baseFrictionMultiplier)) e._baseFrictionMultiplier = baseFrictionMult;
-      if (Number.isFinite(e._wetFloorTimer)) {
-        e._wetFloorTimer = Math.max(0, e._wetFloorTimer - dt);
-        if (e._wetFloorTimer <= 0) {
-          e.onWetFloor = false;
-          e.frictionMultiplier = baseFrictionMult;
-        }
-      }
-      const frictionMultiplier = clamp(Number.isFinite(e.frictionMultiplier) ? e.frictionMultiplier : 1, 0, 1);
       const baseFrictionValue = (typeof e._frictionOverride === 'number')
         ? clamp(e._frictionOverride, 0, 0.95)
         : (typeof e.friction === 'number'
           ? clamp(e.friction, 0, 0.95)
           : (CFG.friction ?? 0.02));
       const base = 1 - baseFrictionValue;
-      const fr = base * (1 - mu) * frictionMultiplier;
+      const fr = base * (1 - mu);
       const wr = Math.max(CFG.restitution, resolveRestitution(e));
       const slideFrictionValue = (typeof e._slideFrictionOverride === 'number')
         ? clamp(e._slideFrictionOverride, 0.001, 0.95)
         : (typeof e.slideFriction === 'number'
           ? clamp(e.slideFriction, 0.001, 0.95)
           : ((CFG.slideFriction ?? CFG.friction) ?? 0.02));
-      const slideCoef = (1 - slideFrictionValue) * frictionMultiplier;
+      const slideCoef = 1 - slideFrictionValue;
       const entMass = massOf(e);
       const minFireMass = CFG.fireMinMass ?? DEFAULTS.fireMinMass ?? 0;
       const allowFireSpawn = !e.static && (Number.isFinite(entMass) ? entMass : minFireMass) >= minFireMass;
@@ -443,11 +389,8 @@
             handleSlipImpact(e, 'x', Math.abs(vxStep), contactX, contactY);
           }
           const v = -(e.vx || 0) * wr;
-          const preVx = e.vx || 0;
-          const preVy = e.vy || 0;
           e.vx = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vx || 1);
-          handleCartBounce(e, { axis: 'x', normalX: vxStep > 0 ? 1 : -1, normalY: 0, preVx, preVy, restitution: wr, alreadyReflected: true });
           if (!isWall(nx + s, ny, e.w, e.h)) nx += s;
         }
         const tryY = ny + sy;
@@ -480,11 +423,8 @@
             handleSlipImpact(e, 'y', Math.abs(vyStep), contactX, contactY);
           }
           const v = -(e.vy || 0) * wr;
-          const preVx = e.vx || 0;
-          const preVy = e.vy || 0;
           e.vy = (Math.abs(v) < 0.001) ? 0 : v;
           const s = Math.sign(e.vy || 1);
-          handleCartBounce(e, { axis: 'y', normalX: 0, normalY: vyStep > 0 ? 1 : -1, preVx, preVy, restitution: wr, alreadyReflected: true });
           if (!isWall(nx, ny + s, e.w, e.h)) ny += s;
         }
       }

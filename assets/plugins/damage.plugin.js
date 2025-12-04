@@ -205,7 +205,7 @@
     const entities = Array.isArray(state.entities) ? state.entities : [];
     const now = getNow();
 
-    if (W.FireAPI?.update && !W.__FIRE_HOOKED){
+    if (W.FireAPI?.update){
       try { W.FireAPI.update(dt); }
       catch (err) {
         if (W.DEBUG_FORCE_ASCII) console.warn('[Fire] update error', err);
@@ -235,7 +235,6 @@
     if (Array.isArray(fires) && fires.length){
       for (const fire of fires){
         if (!fire || fire.dead) continue;
-        if (ENT?.FIRE_HAZARD && fire.kind === ENT.FIRE_HAZARD) continue;
         if (!aabb(player, fire)){
           fire._damageTimer = 0;
           continue;

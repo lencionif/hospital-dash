@@ -33,7 +33,6 @@
     heartsCanvas: null,
     heartsCtx: null,
     heroFace: null,
-    bossTimer: null,
     patientsValue: null,
     pendingValue: null,
     furiousValue: null,
@@ -100,12 +99,6 @@
     heroFace.title = 'Héroe seleccionado';
     left.appendChild(heroFace);
 
-    const bossTimer = document.createElement('div');
-    bossTimer.className = 'hud-boss-timer';
-    bossTimer.title = 'Cuenta atrás del boss';
-    bossTimer.textContent = 'Boss: --:--';
-    left.appendChild(bossTimer);
-
     const patientsStat = createHudStat('Pacientes', 'hud-patients');
     const pendingStat = createHudStat('Pendientes', 'hud-pending');
     const furiousStat = createHudStat('Furiosas activas', 'hud-furious');
@@ -169,7 +162,6 @@
     HUD_DOM.heartsCanvas = heartsCanvas;
     HUD_DOM.heartsCtx = heartsCtx;
     HUD_DOM.heroFace = heroFace;
-    HUD_DOM.bossTimer = bossTimer;
     HUD_DOM.patientsValue = patientsStat.value;
     HUD_DOM.pendingValue = pendingStat.value;
     HUD_DOM.furiousValue = furiousStat.value;
@@ -360,25 +352,12 @@
     HUD_DOM.heroFace.dataset.hero = key;
   }
 
-  function formatBossTimer(sec){
-    if (!Number.isFinite(sec)) return '--:--';
-    const s = Math.max(0, sec | 0);
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
-  }
-
   function updateDomHud(G){
     if (!G) return;
     ensureHudDom();
     if (!HUD_DOM.root) return;
     const heroId = (G?.player?.heroId || G?.player?.hero || G?.selectedHero || window.SELECTED_HERO_ID || window.START_HERO_ID || 'enrique');
     setHeroFace(heroId);
-    if (HUD_DOM.bossTimer) {
-      const timeLabel = formatBossTimer(G?.bossTimer);
-      HUD_DOM.bossTimer.textContent = `Boss: ${timeLabel}`;
-      HUD_DOM.bossTimer.classList.toggle('is-alert', Number(G?.bossTimer) <= 20);
-    }
     const counters = getPatientCounters(G);
     if (HUD_DOM.patientsValue) HUD_DOM.patientsValue.textContent = `${counters.cured}/${counters.total}`;
     if (HUD_DOM.pendingValue) HUD_DOM.pendingValue.textContent = `${counters.pending}`;

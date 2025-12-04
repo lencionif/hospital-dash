@@ -27,7 +27,6 @@
   // Enemigos básicos
   entity('RAT', (ent, dt, G) => W.Rats?.ai?.(ent, G, dt));
   entity('MOSQUITO', (ent, dt, G) => W.Mosquitos?.ai?.(ent, G, dt));
-  entity('PATIENT_BED', (ent, dt, G) => W.patientBedAiUpdate?.(dt, ent, G));
   system('FURIOUS', (dt) => W.FuriousAPI?.update?.(dt));
 
   // NPCs de apoyo y personal sanitario

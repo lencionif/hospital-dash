@@ -84,23 +84,6 @@
     return config;
   };
 
-  LevelRulesAPI.getNumber = function getNumber(path, fallback = null) {
-    const src = LevelRulesAPI.current || cache.globals || {};
-    if (!path || typeof path !== 'string') return fallback;
-    const parts = path.split('.').filter(Boolean);
-    let node = src;
-    for (const p of parts) {
-      if (node && Object.prototype.hasOwnProperty.call(node, p)) {
-        node = node[p];
-      } else {
-        node = undefined;
-        break;
-      }
-    }
-    const num = Number(node);
-    return Number.isFinite(num) ? num : fallback;
-  };
-
   async function ensureDocument() {
     if (cache.docPromise) return cache.docPromise;
     cache.docPromise = fetch('assets/config/level_rules.xml')

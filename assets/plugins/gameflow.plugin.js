@@ -34,12 +34,13 @@
     gameover:    (typeof document !== 'undefined') ? document.getElementById('game-over-screen') : null
   };
 
-  const musicPlay = (id, opts = {}) => {
-    try { window.MusicManager?.play?.(id, opts); } catch (_) {}
+  const musicFade = (id, fadeTime = 2.0) => {
+    try { window.MusicManager?.fadeTo?.(id, { fadeTime }); } catch (_) {}
   };
-  const musicCrossfade = (id, fadeTime = 2.0) => {
-    try { window.MusicManager?.crossfade?.(id, fadeTime); }
-    catch (_) { try { window.MusicManager?.fadeTo?.(id, { fadeTime }); } catch (_) {} }
+  const levelTrackFor = (level) => {
+    if (level === 2) return 'level2';
+    if (level === 3) return 'level3';
+    return 'level1';
   };
 
   let readyOverlayEl = null;
@@ -49,15 +50,6 @@
   const raf = (typeof W.requestAnimationFrame === 'function')
     ? W.requestAnimationFrame.bind(W)
     : (fn) => setTimeout(fn, 16);
-
-  function readSelectedHeroId(){
-    if (typeof document === 'undefined') return window.SELECTED_HERO_ID || window.START_HERO_ID || 'enrique';
-    const selectedCard = document.querySelector('.char-card.selected');
-    const heroId = selectedCard ? selectedCard.getAttribute('data-hero') : null;
-    const key = (heroId || window.SELECTED_HERO_ID || window.START_HERO_ID || 'enrique').toLowerCase();
-    window.SELECTED_HERO_ID = key;
-    return key;
-  }
 
   function ensureReadyOverlay(){
     if (readyOverlayEl || typeof document === 'undefined') return readyOverlayEl;
@@ -261,20 +253,6 @@
       return GameFlow;
     },
 
-    startGameFromMenu(opts = {}) {
-      const levelId = opts.levelId || opts.level || 1;
-      const heroId = (opts.heroId || readSelectedHeroId()).toLowerCase();
-      window.START_HERO_ID = heroId;
-      try { window.G = window.G || {}; window.G.selectedHero = heroId; } catch (_) {}
-      try { window.GameAPI?.startGame?.({ levelId, heroId }); } catch (_) {}
-      try { window.startGame?.({ level: levelId, heroId }); } catch (_) {}
-      return heroId;
-    },
-
-    getSelectedHeroId(){
-      return readSelectedHeroId();
-    },
-
     // Llamar cuando cargues o reinicies un nivel
     startLevel(levelNumber) {
       S.level = (typeof levelNumber === 'number') ? clamp(levelNumber, 1, S.maxLevels) : S.level;
@@ -292,10 +270,10 @@
       lockBossDoor();
       syncUrgenciasFromStats();
       if (W.FogAPI && typeof W.FogAPI.reset === 'function') W.FogAPI.reset();
-      musicCrossfade('level_theme', 1.0);
+      musicFade(levelTrackFor(S.level));
       try {
-        W.Narrator?.init?.({ level: S.level, levelId: S.level });
-        W.Narrator?.onEvent?.('LEVEL_START', { level: S.level, levelId: S.level });
+        W.Narrator?.say?.('level_start', { level: S.level });
+        W.Narrator?.progress?.();
       } catch (_) {}
     },
 
@@ -343,7 +321,7 @@
 
     notifyBossFinalDelivered() {
       S.finalDelivered = true;
-      musicCrossfade('fire_escape');
+      musicFade('fire_escape');
     },
 
     notifyHeroDeath() {
@@ -530,12 +508,13 @@
     } catch (_) {}
     try {
       const remaining = Math.max(0, (S.totalPatients || 0) - (S.deliveredPatients || 0));
-      W.Narrator?.onEvent?.('BOSS_DOOR_OPEN', { level: S.level, levelId: S.level, remaining });
+      W.Narrator?.say?.('door_open', { level: S.level, remaining });
+      W.Narrator?.progress?.();
     } catch (_) {}
     // Música según fase del nivel
-    if (S.level === 1) musicCrossfade('boss_theme', 1.0);
-    else if (S.level === 2) musicCrossfade('boss_theme', 1.0);
-    else if (S.level === 3) musicCrossfade('boss_theme', 1.0);
+    if (S.level === 1) musicFade('boss1');
+    else if (S.level === 2) musicFade('boss2');
+    else if (S.level === 3) musicFade('pre_final_boss');
   }
 
   // Fog + Zoom al boss
@@ -641,11 +620,7 @@
   function triggerGameOver() {
     S.gameOver = true;
     S.running = false;
-    musicCrossfade('gameover_theme', 0.8);
-    const reason = (S.G && S.G._gameOverReason) || 'health_depleted';
-    if (S.G) S.G._gameOverReason = reason;
     if (S.G) S.G.state = 'GAMEOVER';
-    try { W.Narrator?.onEvent?.('HERO_DIED', { reason }); } catch (_) {}
     showOverlay(DOM.gameover);
     // Pausa subsistemas tolerante
     if (S.G && typeof S.G.pauseAll === 'function') { try { S.G.pauseAll(true); } catch (e) {} }
@@ -735,10 +710,10 @@
         totalPatients: S.totalPatients || 0,
       });
     }
-    musicCrossfade('score');
+    musicFade('score');
     try {
-      W.Narrator?.onEvent?.('OBJECTIVE_COMPLETED', { level: S.level, levelId: S.level, objective: 'nivel' });
-      W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 }, { priority: 'high' });
+      W.Narrator?.say?.('level_complete', { level: S.level, remaining: 0 });
+      W.Narrator?.progress?.();
     } catch (_) {}
   }
 
@@ -746,21 +721,7 @@
   function showOverlay(el) { if (el && el.classList) el.classList.remove('hidden'); }
   function hideOverlay(el) { if (el && el.classList) el.classList.add('hidden'); }
 
-  function bindStartScreen(){
-    if (bindStartScreen._done || typeof document === 'undefined') return;
-    bindStartScreen._done = true;
-    const startBtn = document.getElementById('start-button');
-    if (startBtn){
-      startBtn.addEventListener('click', () => {
-        const heroId = readSelectedHeroId();
-        window.START_HERO_ID = heroId;
-        GameFlow.startGameFromMenu({ heroId });
-      });
-    }
-  }
-
   // Exponer módulo
   W.GameFlowAPI = GameFlow;
-  bindStartScreen();
 
 })(this);

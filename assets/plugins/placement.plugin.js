@@ -1609,7 +1609,6 @@
     if (sub.includes('supervisor') && root.Entities?.SupervisoraAPI?.spawn) return root.Entities.SupervisoraAPI.spawn(x, y, payload);
     if (sub.includes('celador') && root.Entities?.Celador?.spawn) return root.Entities.Celador.spawn(x, y, payload);
     if (sub.includes('medico') && root.MedicoAPI?.spawn) return root.MedicoAPI.spawn(x, y, payload);
-    if (sub.includes('visitor') && root.Entities?.VisitorAnnoying?.spawn) return root.Entities.VisitorAnnoying.spawn(x, y, payload);
     if (sub.includes('familiar') && root.Entities?.FamiliarMolesto?.spawn) return root.Entities.FamiliarMolesto.spawn(x, y, payload);
     if (sub.includes('tcae') && root.Entities?.TCAE?.spawn) return root.Entities.TCAE.spawn({ tx: Math.round(x / TILE_SIZE()), ty: Math.round(y / TILE_SIZE()) });
     if (sub.includes('limpieza') && root.Entities?.Cleaner?.spawn) return root.Entities.Cleaner.spawn(x, y, payload);

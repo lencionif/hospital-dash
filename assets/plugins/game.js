@@ -25,9 +25,6 @@
     MOSQUITO: 7,
     DOOR: 8,
     BOSS: 9,
-    SUPERVISOR: 10,
-    PAPER_PLANE: 11,
-    PAPER_NOTE: 12,
   };
 
   const COLORS = {
@@ -456,9 +453,9 @@ document.addEventListener('keydown', (e)=>{
     "##############################",
     "#............m...............#",
     "#....####............####....#",
-    "#......S#....P.I#....#X.#....#",
-    "#....#..#.......#....#..D....#",
-    "#....####....C..#....####....#",
+    "#....d.S#....p.i#....#X.#....#",
+    "#....#..#.......#....#..u....#",
+    "#....####....b..#....####....#",
     "#...............#............#",
     "#...............#............#",
     "#............####............#",
@@ -509,6 +506,14 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   PHYS_DEFAULTS[ENT.PATIENT]  = { mass: 1.00, rest: 0.10, mu: 0.12 };
   PHYS_DEFAULTS[ENT.BOSS]     = { mass: 8.00, rest: 0.20, mu: 0.10 };
   PHYS_DEFAULTS[ENT.DOOR]     = { mass: 0.00, rest: 0.00, mu: 0.00 }; // estática
+
+  function toWorld(tx, ty) {
+      const TILE = window.TILE_SIZE || 32;
+      return {
+          x: tx * TILE + TILE * 0.5,
+          y: ty * TILE + TILE * 0.5
+      };
+  }
 
   function makeRect(
     x, y, w, h,
@@ -687,15 +692,12 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     G.npcs.length = 0;
     G.lights.length = 0;
     G.roomLights.length = 0;
-    try { window.SpawnerAPI?.reset?.(); } catch (_) {}
 
     // === Constantes / fallback ===
     // Importante: NO redefinimos el TILE del motor aquí (evita la TDZ).
     // Usamos el valor global expuesto por el motor: window.TILE_SIZE (o window.TILE como compat),
     // y como último recurso 32.
     const TILE = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || 32;
-    const ENT = (typeof window !== 'undefined' && window.ENT) || {};
-    const toPx = (t) => t * TILE + TILE / 2;
 
     const legendApi = window.AsciiLegendAPI || window.PlacementAPI || {};
     const getAsciiDef = legendApi.getDefFromChar || legendApi.getDef || ((ch, opts) => {
@@ -705,8 +707,6 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
       }
       return def;
     });
-
-    const elevatorsList = [];
 
     const ENTITY_FACTORIES = {
       hero_spawn(tx, ty) {
@@ -721,122 +721,29 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
           G.roomLights.push({ x: (p.x || wx) + TILE / 2, y: (p.y || wy) + TILE / 2, r: 5.5 * TILE, baseA: 0.28 });
         }
         return p;
-      },
-      mosquito(tx, ty, def) {
-        // ASCII 'm' -> spawn de mosquitos
-        if (window.Entities?.spawnMosquitoFromAscii) return window.Entities.spawnMosquitoFromAscii(tx, ty, def || {});
-        if (window.Entities?.spawnMosquitoAtTile) return window.Entities.spawnMosquitoAtTile(tx, ty, def || {});
-        return null;
-      },
-      rat(tx, ty, def) {
-        // ASCII 'r' -> spawn de ratas
-        if (window.Entities?.spawnRatFromAscii) return window.Entities.spawnRatFromAscii(tx, ty, def || {});
-        if (window.Entities?.spawnRatAtTile) return window.Entities.spawnRatAtTile(tx, ty, def || {});
-        return null;
-      },
-      cart_food(tx, ty) {
-        if (window.Entities?.Carts?.spawnCartFood) return window.Entities.Carts.spawnCartFood(tx, ty);
-        if (typeof window.spawnCartFood === 'function') return window.spawnCartFood(tx, ty);
-        return null;
-      },
-      cart_meds(tx, ty) {
-        if (window.Entities?.Carts?.spawnCartMeds) return window.Entities.Carts.spawnCartMeds(tx, ty);
-        if (typeof window.spawnCartMeds === 'function') return window.spawnCartMeds(tx, ty);
-        if (typeof window.createCartMeds === 'function') return window.createCartMeds((tx + 0.5) * TILE, (ty + 0.5) * TILE);
-        return null;
-      },
-      cart_emergency(tx, ty) {
-        if (window.Entities?.Carts?.spawnEmergencyCart) return window.Entities.Carts.spawnEmergencyCart(tx, ty);
-        if (typeof window.spawnEmergencyCart === 'function') return window.spawnEmergencyCart(tx, ty);
-        if (typeof window.createEmergencyCart === 'function') return window.createEmergencyCart((tx + 0.5) * TILE, (ty + 0.5) * TILE);
-        return null;
-      },
-      npc_rat(tx, ty, def) { return ENTITY_FACTORIES.rat(tx, ty, def); },
-      npc_mosquito(tx, ty, def) { return ENTITY_FACTORIES.mosquito(tx, ty, def); },
-      npc_supervisora(tx, ty, def) {
-        if (window.Entities?.Supervisor?.spawnFromAscii) return window.Entities.Supervisor.spawnFromAscii(tx, ty, def || {});
-        if (window.Entities?.spawnSupervisorFromAscii) return window.Entities.spawnSupervisorFromAscii(tx, ty, def || {});
-        return null;
-      },
-      npc_jefe_servicio(tx, ty, def) {
-        if (window.Entities?.JefeServicio?.spawnFromAscii) return window.Entities.JefeServicio.spawnFromAscii(tx, ty, def || {});
-        if (window.Entities?.spawnJefeServicioFromAscii) return window.Entities.spawnJefeServicioFromAscii(tx, ty, def || {});
-        return null;
-      },
-      jefe(tx, ty, def) { return ENTITY_FACTORIES.npc_jefe_servicio(tx, ty, def); },
-      npc_enfermera_sexy(tx, ty, def) {
-        if (window.Entities?.NurseSexy?.spawnFromAscii) return window.Entities.NurseSexy.spawnFromAscii(tx, ty, def || {});
-        return null;
-      },
-      enfermera_sexy(tx, ty, def) { return ENTITY_FACTORIES.npc_enfermera_sexy(tx, ty, def); },
-      npc_visitor_annoying(tx, ty, def) {
-        if (window.Entities?.spawnVisitorAnnoyingFromAscii) return window.Entities.spawnVisitorAnnoyingFromAscii(tx, ty, def || {});
-        if (window.Entities?.VisitorAnnoying?.spawnFromAscii) return window.Entities.VisitorAnnoying.spawnFromAscii(tx, ty, def || {});
-        return null;
-      },
-      npc_celador(tx, ty, def) {
-        if (window.Entities?.spawnCeladorFromAscii) return window.Entities.spawnCeladorFromAscii(tx, ty, def || {});
-        if (window.Entities?.Celador?.spawn) return window.Entities.Celador.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
-        return null;
-      },
-      npc_guardia(tx, ty, def) {
-        if (window.Entities?.Guardia?.spawnFromAscii) return window.Entities.Guardia.spawnFromAscii(tx, ty, def || {});
-        if (window.Entities?.Guardia?.spawn) return window.Entities.Guardia.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
-        return null;
-      },
-      npc_cleaner(tx, ty, def) {
-        if (window.Entities?.Cleaner?.spawnFromAscii) return window.Entities.Cleaner.spawnFromAscii(tx, ty, def || {});
-        if (window.Entities?.Cleaner?.spawn) return window.Entities.Cleaner.spawn((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
-        if (typeof window.spawnCleaner === 'function') return window.spawnCleaner((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
-        return null;
-      },
-      celador(tx, ty, def) { return ENTITY_FACTORIES.npc_celador(tx, ty, def); },
-      furious_patient(tx, ty, def) {
-        // [HospitalDash] Colocación directa de paciente furiosa chibi.
-        if (window.Entities?.Patients?.spawnFuriousPatientAtTile) {
-          return window.Entities.Patients.spawnFuriousPatientAtTile(tx, ty, def || {});
-        }
-        if (window.Entities?.spawnFuriousPatientAtTile) return window.Entities.spawnFuriousPatientAtTile(tx, ty, def || {});
-        return null;
-      },
-      npc_tcae(tx, ty, def) {
-        if (window.Entities?.TCAE?.spawnFromAscii) return window.Entities.TCAE.spawnFromAscii(tx, ty, def || {});
-        if (window.TCAEAPI?.spawn) return window.TCAEAPI.spawn(tx, ty);
-        if (window.Entities?.spawnTcaeAtTile) return window.Entities.spawnTcaeAtTile(tx, ty, def || {});
-        return null;
-      },
-      tcae(tx, ty, def) { return ENTITY_FACTORIES.npc_tcae(tx, ty, def); },
-      hazard_puddle(tx, ty, def) {
-        if (window.Entities?.WaterPuddle?.spawnFromAscii) return window.Entities.WaterPuddle.spawnFromAscii(tx, ty, def || {});
-        if (typeof window.createWaterPuddle === 'function') return window.createWaterPuddle((tx + 0.5) * TILE, (ty + 0.5) * TILE, def || {});
-        return null;
-      },
-      water_puddle(tx, ty, def) { return ENTITY_FACTORIES.hazard_puddle(tx, ty, def); },
-      door_normal(tx, ty) {
-        if (window.Entities?.Doors?.spawnNormalDoor) return window.Entities.Doors.spawnNormalDoor(toPx(tx), toPx(ty), { tx, ty });
-        return null;
-      },
-      door_urgent(tx, ty) {
-        if (window.Entities?.Doors?.spawnUrgentDoor) return window.Entities.Doors.spawnUrgentDoor(toPx(tx), toPx(ty), { tx, ty });
-        return null;
-      },
-      water_tile(tx, ty, def) { return ENTITY_FACTORIES.hazard_puddle(tx, ty, def); },
-      elevator_tile(tx, ty) {
-        const x = toPx(tx);
-        const y = toPx(ty);
-        const e = (window.Entities?.Elevator?.spawn?.(x, y, { tx, ty })
-          || (typeof window.createElevator === 'function' ? window.createElevator(x, y, { tx, ty }) : null));
-        if (e) elevatorsList.push(e);
-        return e;
-      },
+      }
     };
 
     const spawnFromKind = (def, tx, ty, ch) => {
       if (!def) return null;
+
+      const TILE = (typeof window !== 'undefined' && (window.TILE_SIZE || window.TILE)) || 32;
+      const wx = tx * TILE;
+      const wy = ty * TILE;
+
       const factory = ENTITY_FACTORIES[def.kind] || ENTITY_FACTORIES[def.factoryKey];
+      // Las factories internas ya trabajan en tiles, así que les pasamos tx/ty
       if (typeof factory === 'function') return factory(tx, ty, def);
+
+      // El resto de entidades (PlacementAPI) lo hacemos en coordenadas de mundo
       if (window.PlacementAPI?.spawnFromAscii) {
-        return window.PlacementAPI.spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch });
+        return window.PlacementAPI.spawnFromAscii(def, wx, wy, {
+          G,
+          map: G.map,
+          char: ch,
+          tx,
+          ty
+        });
       }
       return null;
     };
@@ -870,13 +777,6 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     // Guarda referencia global para applyPlacementsFromMapgen
     G.__asciiPlacements = asciiPlacements;
 
-    const isWalkableTile = (tx, ty) => {
-      if (!Array.isArray(G.map)) return false;
-      const rowRef = G.map[ty];
-      if (!Array.isArray(rowRef)) return true;
-      return rowRef[tx] === 0;
-    };
-
     for (let y = 0; y < G.mapH; y++){
       const row = [];
       const colorRow = [];
@@ -892,85 +792,33 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
         if (def.kind === 'wall' || def.kind === 'void') continue;
         if (def.baseKind === 'floor' || def.kind === 'floor') continue;
 
-        if (ch === 'A' || ch === 'H' || ch === 'C') {
-          const px = x * TILE + TILE / 2;
-          const py = y * TILE + TILE / 2;
-          if (blocking || !isWalkableTile(x, y)) {
-            console.warn('[SPAWNER] Tile bloqueado, no se puede colocar spawner en', x, y);
-            continue;
-          }
-          const defSpawner = def;
-          const population = (defSpawner.kind === ENT.SPAWNER_ANIMALS)
-            ? 'animals'
-            : (defSpawner.kind === ENT.SPAWNER_HUMANS ? 'humans' : 'carts');
-          const cdBase = LevelRulesAPI?.getNumber?.(`spawners.${population}.cooldown`, population === 'animals' ? 7 : 7);
-          const radius = LevelRulesAPI?.getNumber?.(`spawners.${population}.radius`, population === 'animals' ? 3 : 3);
-          try {
-            window.SpawnerAPI?.createSpawner?.({
-              kind: defSpawner.kind,
-              spriteId: defSpawner.sprite,
-              tileX: x,
-              tileY: y,
-              x: px,
-              y: py,
-              spawnPopulation: population,
-              spawnCooldownBase: cdBase,
-              spawnRadiusTiles: radius,
-            });
-          } catch (err) {
-            console.warn('[SPAWNER] Error al crear spawner', err);
-          }
-          continue;
-        }
-
-        if ((ch === 'F' || ch === 'x') && window.FireAPI?.spawnAtTile) {
-          const px = x * TILE + TILE / 2;
-          const py = y * TILE + TILE / 2;
-          const fire = window.FireAPI.spawnAtTile(x, y, { x: px, y: py });
-          addEntity(fire);
-          continue;
-        }
-
-        if (def.isBoss || def.key === 'boss_main' || def.kind === 'boss_main') {
-          const level = (G.level ?? G.levelIndex ?? 1);
-          const boss = window.Entities?.spawnBossForLevel?.(level, x, y)
-            || (typeof def.spawn === 'function' ? def.spawn(x, y) : null);
-          if (boss) {
-            addEntity(boss);
-            G.boss = boss;
-            continue;
-          }
-        }
-
         const entity = spawnFromKind(def, x, y, ch);
         if (entity) {
           addEntity(entity);
           if (!G.player && def.kind === 'hero_spawn') {
             G.player = entity;
           }
-          if (entity.kind === ENT.ELEVATOR && !elevatorsList.includes(entity)) elevatorsList.push(entity);
         } else if (def.isSpawn) {
-          asciiPlacements.push({ type: def.kind, tx: x, ty: y, char: ch });
-        }
+
+            const entity = spawnFromKind(def, x, y, ch);
+            if (!entity) {
+              const wx = x * TILE;
+              const wy = y * TILE;
+
+              asciiPlacements.push({
+                type: def.kind,
+                x: wx + TILE * 0.5,   // centro del tile; ajusta si quieres +4 como antes
+                y: wy + TILE * 0.5,
+                _units: 'px',
+                tx: x,
+                ty: y,
+                char: ch
+              });
+            }
+          }
       }
       G.map.push(row);
       G.floorColors.push(colorRow);
-    }
-
-    // Emparejar ascensores secuencialmente
-    if (elevatorsList.length > 1) {
-      for (let i = 0; i < elevatorsList.length; i += 2) {
-        const a = elevatorsList[i];
-        const b = elevatorsList[i + 1];
-        if (!a || !b) continue;
-        const pairIndex = Math.floor(i / 2);
-        a.pairId = b.pairId = pairIndex;
-        a.pairedElevator = b;
-        b.pairedElevator = a;
-        if (window.DEBUG_ELEVATOR) {
-          try { console.log(`[Elevator] Pair #${pairIndex}: ${a.id} <-> ${b.id}`); } catch (_) {}
-        }
-      }
     }
 
     // Mezclamos con placements del generador (si ya existían)
@@ -1464,10 +1312,6 @@ function updateEntities(dt){
     try { SpawnerManager.update(dt); }
     catch(err){ if (dbg) console.warn('[updateEntities] error SpawnerManager.update', err); }
   }
-  if (window.SpawnerAPI && typeof SpawnerAPI.updateAll === 'function') {
-    try { SpawnerAPI.updateAll(dt); }
-    catch (err) { if (dbg) console.warn('[updateEntities] error SpawnerAPI.updateAll', err); }
-  }
 }
 
   // ------------------------------------------------------------
@@ -1627,8 +1471,6 @@ function updateEntities(dt){
 
     // enemigos
     updateEntities(dt);
-    // puertas (IA + quemado)
-    Entities?.Doors?.updateAllDoors?.(dt);
     // ascensores
     Entities?.Elevator?.update?.(dt);
 
@@ -1852,6 +1694,7 @@ function drawEntities(c2){
         if (!p || !p.type) continue;
 
         if (p.type === 'patient') {
+          const {x, y} = toWorld(tx, ty);
           const e = makeRect(p.x|0, p.y|0, T, T, ENT.PATIENT, '#ffd166', false, true);
           e.name = p.name || `Paciente_${G.patients.length+1}`;
           G.entities.push(e); G.patients.push(e); G.npcs.push(e);
@@ -2372,5 +2215,4 @@ function drawEntities(c2){
   }
   drawMinimap();
 })();
-// Comentario: añadido spawn ASCII del jefe de servicio en ENTITY_FACTORIES.
 // ==== /DEBUG MINI-MAP OVERLAY ================================================
