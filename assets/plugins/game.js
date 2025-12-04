@@ -1694,8 +1694,16 @@ function drawEntities(c2){
         if (!p || !p.type) continue;
 
         if (p.type === 'patient') {
-          const {x, y} = toWorld(tx, ty);
-          const e = makeRect(p.x|0, p.y|0, T, T, ENT.PATIENT, '#ffd166', false, true);
+          const e = makeRect(
+            p.x | 0,
+            p.y | 0,
+            T,
+            T,
+            ENT.PATIENT,
+            '#ffd166',
+            false,
+            true
+          );
           e.name = p.name || `Paciente_${G.patients.length+1}`;
           G.entities.push(e); G.patients.push(e); G.npcs.push(e);
         }
