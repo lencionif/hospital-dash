@@ -1715,7 +1715,7 @@ function drawEntities(c2){
           pushUnique(G.movers, entity);
         }
 
-        const kind = String(entity.kind || def?.kind || def?.key || placement?.type || '').toLowerCase();
+        const kind = String(placement?.type || def?.kind || def?.key || entity.kind || '').toLowerCase();
         if (def?.isPatient || kind.includes('patient')) {
           pushUnique(G.patients, entity);
           pushUnique(G.npcs, entity);
