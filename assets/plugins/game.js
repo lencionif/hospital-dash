@@ -1679,53 +1679,143 @@ function drawEntities(c2){
     if (G._placementsFinalized) return;          // evita duplicados
     G._placementsFinalized = true;
 
-    if (!Array.isArray(G.mapgenPlacements) || !G.mapgenPlacements.length) return;
+    const placements = (Array.isArray(G.mapgenPlacements) && G.mapgenPlacements.length)
+      ? G.mapgenPlacements
+      : (Array.isArray(G.__asciiPlacements) ? G.__asciiPlacements : []);
+    if (!placements.length) return;
 
     try {
       // Camino “oficial”: si existe el helper, úsalo
       if (typeof window.applyPlacementsFromMapgen === 'function') {
-        window.applyPlacementsFromMapgen(G.mapgenPlacements);
+        window.applyPlacementsFromMapgen(placements);
         return;
       }
 
       // Fallback LOCAL: instanciar lo básico si no hay placement.api.js
-      const T = (window.TILE_SIZE || 32);
-      for (const p of G.mapgenPlacements) {
-        if (!p || !p.type) continue;
+      const T = (window.TILE_SIZE | 0) || 32;
+      const legendApi = window.PlacementAPI || window.AsciiLegendAPI || {};
+      const getDef = legendApi.getDefFromChar || legendApi.getDef || ((ch, opts) => {
+        const def = (window.AsciiLegend && window.AsciiLegend[ch]) || null;
+        if (!def && opts?.log !== false) {
+          try { console.warn('[ASCII] Unknown char in map:', JSON.stringify(ch), opts?.context || 'finalizeLevelBuildOnce'); } catch (_) {}
+        }
+        return def;
+      });
+      const getCharForKey = legendApi.getCharForKey || (() => null);
+      const spawnFromAscii = legendApi.spawnFromAscii || null;
 
-        if (p.type === 'patient') {
-          const e = makeRect(
-            p.x | 0,
-            p.y | 0,
-            T,
-            T,
-            ENT.PATIENT,
-            '#ffd166',
-            false,
-            true
-          );
-          e.name = p.name || `Paciente_${G.patients.length+1}`;
-          G.entities.push(e); G.patients.push(e); G.npcs.push(e);
+      const pushUnique = (arr, item) => {
+        if (item && Array.isArray(arr) && !arr.includes(item)) arr.push(item);
+      };
+
+      const registerEntity = (entity, def, placement) => {
+        if (!entity) return;
+        pushUnique(G.entities, entity);
+        if (!entity.static && (entity.dynamic || entity.pushable || entity.vx || entity.vy)) {
+          pushUnique(G.movers, entity);
         }
-        else if (p.type === 'pill') {
-          const e = makeRect(p.x|0, p.y|0, T*0.6, T*0.6, ENT.PILL, '#a0ffcf', false, false);
-          e.label = p.label || 'Píldora';
-          // intenta vincularla al primer paciente existente si no se indicó target
-          e.targetName = p.targetName || (G.patients[0]?.name) || null;
-          G.entities.push(e); G.movers.push(e); G.pills.push(e);
+
+        const kind = String(entity.kind || def?.kind || def?.key || placement?.type || '').toLowerCase();
+        if (def?.isPatient || kind.includes('patient')) {
+          pushUnique(G.patients, entity);
+          pushUnique(G.npcs, entity);
         }
-        else if (p.type === 'door') {
-          const e = makeRect(p.x|0, p.y|0, T, T, ENT.DOOR, '#7f8c8d', false, true, {mass:0,rest:0,mu:0,static:true});
-          G.entities.push(e); G.door = e;
+        if (def?.kind === 'pill' || kind.includes('pill')) {
+          pushUnique(G.pills, entity);
         }
-        else if (p.type === 'boss') {
-          const e = makeRect(p.x|0, p.y|0, T*1.2, T*1.2, ENT.BOSS, '#e74c3c', false, true, {mass:8,rest:0.1,mu:0.1,static:true});
-          G.entities.push(e); G.boss = e;
+        if (def?.isNPC || kind.includes('npc')) {
+          pushUnique(G.npcs, entity);
         }
-        else if (p.type === 'cart') {
-          const e = makeRect(p.x|0, p.y|0, T, T, ENT.CART, '#b0956c', true, true, {mass:6,rest:0.35,mu:0.06});
-          G.entities.push(e); G.movers.push(e); G.cart = e;
+        if (def?.isEnemy || kind.includes('enemy')) {
+          pushUnique(G.enemies, entity);
         }
+        if (def?.isCart || kind.includes('cart')) {
+          pushUnique(G.movers, entity);
+          if (!G.cart) G.cart = entity;
+        }
+        if (def?.isDoor || kind.includes('door')) {
+          if (!G.door) G.door = entity;
+        }
+        if (kind.includes('boss')) {
+          if (!G.boss) G.boss = entity;
+        }
+        if (kind.includes('light')) {
+          pushUnique(G.lights, entity);
+        }
+        try { window.EntityGroups?.assign?.(entity); } catch (_) {}
+        try { window.EntityGroups?.register?.(entity, G); } catch (_) {}
+      };
+
+      for (const p of placements) {
+        if (!p) continue;
+
+        const px = (p.x != null ? p.x : ((p.tx || 0) * T)) | 0;
+        const py = (p.y != null ? p.y : ((p.ty || 0) * T)) | 0;
+        const tx = (p.tx != null) ? (p.tx | 0) : ((px / T) | 0);
+        const ty = (p.ty != null) ? (p.ty | 0) : ((py / T) | 0);
+
+        let ch = p.char || p.ch || p.ascii || p.symbol || null;
+        if (!ch) {
+          ch = getCharForKey(p.type || p.kind || p.factoryKey, null);
+        }
+        const def = ch ? getDef(ch, { context: 'finalizeLevelBuildOnce' }) : null;
+        const type = String(p.type || def?.kind || def?.key || ch || '').toLowerCase();
+
+        let entity = null;
+        let handled = false;
+
+        if ((type === 'player' || type === 'hero' || type === 'start' || type === 'hero_spawn') && !G.player) {
+          entity = (typeof makePlayer === 'function')
+            ? makePlayer(px, py)
+            : (window.Entities?.Hero?.spawnPlayer?.(px, py, {}) || null);
+          if (entity) {
+            G.player = entity;
+            handled = true;
+          }
+        }
+        else if (type === 'patient') {
+          entity = (window.Entities?.Patient?.spawn?.(px, py, p)) || makeRect(px, py, T, T, ENT.PATIENT, '#ffd166', false, true);
+          entity.name = p.name || entity.name || `Paciente_${G.patients.length+1}`;
+          handled = true;
+        }
+        else if (type === 'pill') {
+          entity = (window.Entities?.Objects?.spawnPill?.(p.name || p.label, px, py, p))
+            || makeRect(px, py, T * 0.6, T * 0.6, ENT.PILL, '#a0ffcf', false, false);
+          entity.label = p.label || entity.label || 'Píldora';
+          entity.targetName = p.targetName || entity.targetName || (G.patients[0]?.name) || null;
+          handled = true;
+        }
+        else if (type === 'door') {
+          entity = makeRect(px, py, T, T, ENT.DOOR, '#7f8c8d', false, true, { mass: 0, rest: 0, mu: 0, static: true });
+          handled = true;
+        }
+        else if (type === 'boss') {
+          entity = spawnBossForLevel(G.level || 1, px, py);
+          if (!entity) {
+            entity = makeRect(px, py, T * 1.2, T * 1.2, ENT.BOSS, '#e74c3c', false, true, { mass: 8, rest: 0.1, mu: 0.1, static: true });
+          }
+          handled = true;
+        }
+        else if (type === 'cart') {
+          entity = makeRect(px, py, T, T, ENT.CART, '#b0956c', true, true, { mass: 6, rest: 0.35, mu: 0.06 });
+          handled = true;
+        }
+
+        if (!handled && def && (def.kind === 'wall' || def.kind === 'void' || def.baseKind === 'floor' || def.kind === 'floor')) {
+          continue; // terreno puro, ya procesado en el mapa de tiles
+        }
+
+        if (!handled && spawnFromAscii && (def || ch)) {
+          entity = spawnFromAscii(def || ch, tx, ty, { G, map: G.map, char: ch, placement: p }, ch);
+          handled = !!entity;
+        }
+
+        if (!handled && def && spawnFromAscii) {
+          entity = spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch, placement: p }, ch);
+          handled = !!entity;
+        }
+
+        registerEntity(entity, def, p);
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
   }
