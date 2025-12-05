@@ -493,6 +493,73 @@ document.addEventListener('keydown', (e)=>{
 // Mapa activo (se puede sustituir por el de MapGen)
 let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
 
+    window.DEBUG_SPAWN_FALLBACKS = window.DEBUG_SPAWN_FALLBACKS || [];
+    window.DEBUG_MAP_HAS_UNKNOWN_CHARS = false;
+    window.DEBUG_ASCII_MAP_TEXT = window.DEBUG_ASCII_MAP_TEXT || null;
+
+    function parseDebugAsciiMap(text){
+      if (typeof text !== 'string') return null;
+      const rows = [];
+      const lines = text.split(/\r?\n/);
+      for (const rawLine of lines) {
+        const trimmed = rawLine.trim();
+        if (!trimmed) continue;           // vacío
+        if (trimmed.startsWith('#')) continue; // comentario
+        rows.push(rawLine);
+      }
+      return rows.length ? rows : null;
+    }
+
+    function validateDebugAsciiRows(rows){
+      window.DEBUG_MAP_HAS_UNKNOWN_CHARS = false;
+      if (!Array.isArray(rows)) return false;
+      const legend = window.AsciiLegend || {};
+      let hasUnknown = false;
+      for (let y = 0; y < rows.length; y++) {
+        const line = String(rows[y] ?? '');
+        for (let x = 0; x < line.length; x++) {
+          const ch = line[x];
+          if (!legend[ch]) {
+            hasUnknown = true;
+            window.DEBUG_MAP_HAS_UNKNOWN_CHARS = true;
+            try {
+              console.warn('[MAP_DEBUG] Carácter no reconocido en debug-map.txt', { char: ch, x, y });
+            } catch (_) {}
+          }
+        }
+      }
+      return hasUnknown;
+    }
+
+    function registerSpawnFallback(info){
+      if (!info) return;
+      if (!window.DEBUG_SPAWN_FALLBACKS) window.DEBUG_SPAWN_FALLBACKS = [];
+      const entry = { ...info };
+      if (Array.isArray(entry.world)) {
+        entry.world = { x: entry.world[0], y: entry.world[1] };
+      }
+      window.DEBUG_SPAWN_FALLBACKS.push(entry);
+    }
+
+    async function tryLoadDebugMapText(){
+      if (typeof fetch !== 'function') return null;
+      if (typeof window.DEBUG_ASCII_MAP_TEXT === 'string' && window.DEBUG_ASCII_MAP_TEXT.length) {
+        return window.DEBUG_ASCII_MAP_TEXT;
+      }
+      try {
+        const res = await fetch('assets/config/debug-map.txt');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const txt = await res.text();
+        window.DEBUG_ASCII_MAP_TEXT = txt;
+        return txt;
+      } catch (err) {
+        try {
+          console.warn('[MAP_DEBUG] No se pudo cargar assets/config/debug-map.txt, se usará DEFAULT_ASCII_MAP interno');
+        } catch (_) {}
+        return null;
+      }
+    }
+
   // ------------------------------------------------------------
   // Creación de entidades
   // ------------------------------------------------------------
@@ -1513,6 +1580,7 @@ function updateEntities(dt){
     // mundo
     drawTiles(ctx2d);
     drawEntities(ctx2d);
+    drawSpawnFallbacks(ctx2d);
 
     ctx2d.restore();
   }
@@ -1556,6 +1624,46 @@ function drawEntities(c2){
     }
   }
 }
+
+  function isDebugMapMode(){
+    const mode = (window.__MAP_MODE || '').toLowerCase();
+    return mode === 'debug' || mode === 'ascii';
+  }
+
+  function drawSpawnFallbacks(c2){
+    if (!isDebugMapMode()) return;
+    const list = Array.isArray(window.DEBUG_SPAWN_FALLBACKS) ? window.DEBUG_SPAWN_FALLBACKS : [];
+    if (!list.length) return;
+    const tile = window.TILE_SIZE || TILE;
+    const legend = window.AsciiLegend || {};
+    c2.save();
+    c2.textAlign = 'center';
+    c2.textBaseline = 'middle';
+    c2.font = `${Math.max(10, Math.floor(tile * 0.75))}px monospace`;
+    for (const info of list) {
+      if (!info) continue;
+      const world = info.world || {};
+      const grid = info.grid || {};
+      const cx = Number.isFinite(world.x) ? world.x : (Number.isFinite(grid.x) ? grid.x * tile + tile * 0.5 : null);
+      const cy = Number.isFinite(world.y) ? world.y : (Number.isFinite(grid.y) ? grid.y * tile + tile * 0.5 : null);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+      const def = legend[info.char];
+      const color = def?.color || 'rgba(255,0,0,0.55)';
+      c2.fillStyle = color;
+      c2.fillRect(cx - tile * 0.5, cy - tile * 0.5, tile, tile);
+      c2.strokeStyle = 'rgba(0,0,0,0.55)';
+      c2.lineWidth = 2;
+      c2.strokeRect(cx - tile * 0.5, cy - tile * 0.5, tile, tile);
+      c2.fillStyle = '#fff';
+      if (def?.color) {
+        c2.strokeStyle = 'rgba(0,0,0,0.65)';
+        c2.lineWidth = 2;
+        c2.strokeText(info.char || '?', cx, cy);
+      }
+      c2.fillText(info.char || '?', cx, cy);
+    }
+    c2.restore();
+  }
 
   // Luz del héroe + fog-of-war interna (sin plugins)
   function drawLightingAndFog(){
@@ -1941,6 +2049,13 @@ function drawEntities(c2){
           try {
             console.warn('[SPAWN_FALLBACK]', { char: p.char || ch, kind, grid: p.grid || { x: tx, y: ty }, world: [worldX, worldY] });
           } catch (_) {}
+          registerSpawnFallback({
+            char: p.char || ch,
+            kind,
+            factoryKey: def?.factoryKey || def?.key || null,
+            grid: p.grid || { x: tx, y: ty },
+            world: { x: worldX, y: worldY }
+          });
 
           if (spawnFromAscii && def) {
             entity = spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY }, ch);
@@ -1967,6 +2082,20 @@ function drawEntities(c2){
   }
 
   function loadDebugAsciiMap(){
+    if (typeof window.DEBUG_ASCII_MAP_TEXT === 'string') {
+      const parsed = parseDebugAsciiMap(window.DEBUG_ASCII_MAP_TEXT);
+      if (parsed && parsed.length) {
+        const hasUnknown = validateDebugAsciiRows(parsed);
+        if (!hasUnknown) return parsed;
+        try {
+          console.warn('[MAP_DEBUG] Se usará DEFAULT_ASCII_MAP interno por caracteres desconocidos');
+        } catch (_) {}
+      } else {
+        try {
+          console.warn('[MAP_DEBUG] debug-map.txt vacío o inválido, se usará DEFAULT_ASCII_MAP interno');
+        } catch (_) {}
+      }
+    }
     if (Array.isArray(window.DEBUG_ASCII_MAP) && window.DEBUG_ASCII_MAP.length) {
       return window.DEBUG_ASCII_MAP.map(String);
     }
@@ -1992,6 +2121,10 @@ function drawEntities(c2){
     let asciiRows = [];
     let mapWidth = 0;
     let mapHeight = 0;
+
+    if (mode === 'debug' || mode === 'ascii') {
+      await tryLoadDebugMapText();
+    }
 
     if (mode === 'normal' && !window.DEBUG_FORCE_ASCII) {
       try {
@@ -2204,6 +2337,8 @@ function drawEntities(c2){
     G.carry = null;
     G._placementsFinalized = false;
     G._debugExported = false;
+    window.DEBUG_SPAWN_FALLBACKS = [];
+    window.DEBUG_MAP_HAS_UNKNOWN_CHARS = false;
 
     // Flag global (lo usará placement.api.js para NO sembrar)
     window.DEBUG_FORCE_ASCII = DEBUG_FORCE_ASCII;
