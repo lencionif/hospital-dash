@@ -291,6 +291,60 @@
     },
   });
 
+  // ============================================================================
+  // Rig de fallback para tiles ASCII problemáticos
+  // ============================================================================
+  PuppetAPI.registerRig('debug_ascii_fallback', {
+    create(e) {
+      return {
+        t: 0,
+        bounce: 0,
+      };
+    },
+    update(state, e, dt) {
+      state.t += dt;
+      // pequeño "bobbing" para que se note
+      state.bounce = Math.sin(state.t * 6) * 1.5;
+    },
+    draw(ctx, cam, e, state) {
+      const root = window;
+      const TILE = (root.TILE_SIZE && root.TILE_SIZE | 0) || 32;
+      const { x, y } = root.toScreen ? root.toScreen(cam, e) : { x: e.x, y: e.y };
+
+      const bgColor = (e.puppet && e.puppet._color) || '#ff00ff'; // color de la casilla
+      const char = e.debugChar || '?';
+
+      ctx.save();
+      ctx.translate(x, y + state.bounce);
+      ctx.scale(cam.zoom, cam.zoom);
+
+      const w = 24;
+      const h = 24;
+      const hw = w / 2;
+      const hh = h / 2;
+
+      // Fondo
+      ctx.fillStyle = bgColor;
+      ctx.globalAlpha = 0.8;
+      ctx.fillRect(-hw, -hh, w, h);
+
+      // Borde
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeRect(-hw + 0.5, -hh + 0.5, w - 1, h - 1);
+
+      // Letra en el centro
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(char, 0, 0);
+
+      ctx.restore();
+    },
+  });
+
   // ---------------------------------------------------------------------------
   // Rigs de puertas de hospital (normales y de urgencias)
   // ---------------------------------------------------------------------------

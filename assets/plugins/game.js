@@ -1788,6 +1788,133 @@ function drawEntities(c2){
     requestAnimationFrame(loop);
   }
 
+  // ============================================================================
+  // Helper: entidad de fallback para SPAWN_FALLBACK
+  // ============================================================================
+  function createAsciiFallbackEntity(opts) {
+    const root = window;
+    const T = (root.TILE_SIZE && root.TILE_SIZE | 0) || 32;
+
+    const x = (opts && opts.x) | 0;
+    const y = (opts && opts.y) | 0;
+    const ch = (opts && opts.char) || '?';
+    const color = (opts && opts.color) || '#ff00ff'; // magenta chillón
+    const label = (opts && opts.label) || '[SPAWN_FALLBACK]';
+
+    // Entidad lo más completa posible para que nunca rompa nada
+    const e = {
+      id: root.genId ? root.genId() : ('fallback-' + Math.random()),
+      kind: (root.ENT && root.ENT.DEBUG_FALLBACK) || 'debug_fallback',
+      role: 'debug_fallback',
+      populationType: 'none',
+
+      // Transform
+      x,
+      y,
+      w: 24,
+      h: 24,
+      vx: 0,
+      vy: 0,
+      dir: 0,
+
+      // Colisión: piso pisable inofensivo
+      solid: false,
+      isTileWalkable: true,
+      isFloorTile: false,
+      isTriggerOnly: false,
+      isHazard: false,
+      collisionLayer: 'default',
+      collisionMask: 'default',
+
+      // Vida / daño desactivados
+      maxHealth: 1,
+      health: 1,
+      hearts: 1,
+      maxHearts: 1,
+      dead: false,
+      deathCause: null,
+      touchDamage: 0,
+      touchCooldown: 0.9,
+      _touchCD: 0,
+      fireImmune: true,
+
+      // Estado visual / IA mínima
+      state: 'idle',
+      facing: 'down',
+      isMoving: false,
+      isAttacking: false,
+      isEating: false,
+      isTalking: false,
+      isPushing: false,
+
+      ai: {
+        enabled: false,
+        mode: 'idle',
+        patrolPoints: null,
+        patrolIndex: 0,
+        patrolWait: 0.5,
+        _patrolTimer: 0,
+        sightRadius: 0,
+        loseSightTime: 0,
+        _loseSightTimer: 0,
+        speed: 0,
+        data: null,
+      },
+
+      // Hooks vacíos para que nunca revienten
+      aiUpdate: function () {},
+      physicsUpdate: function () {},
+      onDamage: function () {},
+      onDeath: function () {},
+      onAttackHit: function () {},
+      onEat: function () {},
+      onTalk: function () {},
+      onInteract: null,
+      onUse: null,
+      onCrush: null,
+      onEnterTile: null,
+      onLeaveTile: null,
+
+      // Info debug
+      debugChar: ch,
+      debugLabel: label,
+
+      // Puppet: rig genérico de debug
+      puppet: {
+        rig: 'debug_ascii_fallback',
+        z: root.HERO_Z || 10,
+        skin: null,
+        _color: color,   // se lo pasamos al rig
+      },
+
+      removeMe: false,
+      _culled: false,
+      rigOk: true,
+      data: {},
+    };
+
+    try {
+      if (root.PuppetAPI && e.puppet && e.puppet.rig) {
+        root.PuppetAPI.attach(e, e.puppet);
+      }
+    } catch (err) {
+      e.rigOk = false;
+      if (root.DEBUG_RIGS) {
+        console.error('[RigError][DEBUG_FALLBACK]', err);
+      }
+    }
+
+    if (root.EntityGroupsAPI && root.EntityGroupsAPI.add) {
+      root.EntityGroupsAPI.add(e, 'debug');
+    }
+
+    if (root.G && Array.isArray(root.G.entities)) {
+      root.G.entities.push(e);
+    }
+
+    return e;
+  }
+
   // === Post-parse: instanciar placements SOLO UNA VEZ ===
   function finalizeLevelBuildOnce(){
     if (G._placementsFinalized) return;          // evita duplicados
@@ -2045,27 +2172,151 @@ function drawEntities(c2){
         }
 
         if (!handled && !entity) {
-          const kind = def?.kind || def?.key || type || ch || p.type || p.kind || '';
-          try {
-            console.warn('[SPAWN_FALLBACK]', { char: p.char || ch, kind, grid: p.grid || { x: tx, y: ty }, world: [worldX, worldY] });
-          } catch (_) {}
-          registerSpawnFallback({
-            char: p.char || ch,
-            kind,
-            factoryKey: def?.factoryKey || def?.key || null,
-            grid: p.grid || { x: tx, y: ty },
-            world: { x: worldX, y: worldY }
-          });
+          // --- Datos base seguros ------------------------------------------
+          const char = p.char || ch || '?';
 
-          if (spawnFromAscii && def) {
-            entity = spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY }, ch);
+          // Coordenadas de grid (tile) para logs / debug
+          const gridX = (p.grid && typeof p.grid.x === 'number')
+            ? p.grid.x
+            : tx;
+          const gridY = (p.grid && typeof p.grid.y === 'number')
+            ? p.grid.y
+            : ty;
+
+          const kind =
+            def?.kind ||
+            def?.key ||
+            type ||
+            char ||
+            p.type ||
+            p.kind ||
+            'unknown';
+
+          // Log + registro de fallback (solo información, no rompe nada)
+          try {
+            console.warn('[SPAWN_FALLBACK]', {
+              char,
+              kind,
+              grid: { x: gridX, y: gridY },
+              world: [worldX, worldY],
+            });
+          } catch (_) {}
+
+          try {
+            registerSpawnFallback({
+              char,
+              kind,
+              factoryKey: def?.factoryKey || def?.key || null,
+              grid: { x: gridX, y: gridY },
+              world: { x: worldX, y: worldY },
+            });
+          } catch (_) {
+            // Si el registro falla tampoco queremos crashear el juego
           }
-          if (!entity && def?.factoryKey && typeof window.Entities?.factory === 'function') {
-            entity = window.Entities.factory(def.factoryKey, { tx, ty, x: worldX, y: worldY, _ascii: def });
+
+          // -----------------------------------------------------------------
+          // 1) Intento genérico: spawnFromAscii(def, ...)
+          // -----------------------------------------------------------------
+          if (!entity && spawnFromAscii && def) {
+            try {
+              entity = spawnFromAscii(
+                def,
+                gridX,
+                gridY,
+                {
+                  G,
+                  map: G.map,
+                  char,
+                  placement: p,
+                  x: worldX,
+                  y: worldY,
+                },
+                char
+              );
+            } catch (err) {
+              try {
+                console.error(
+                  '[SPAWN_FALLBACK] spawnFromAscii error',
+                  { char, kind, def },
+                  err
+                );
+              } catch (_) {}
+              entity = null;
+            }
           }
-          if (!entity && window.PlacementAPI?.spawnFallbackPlaceholder) {
-            entity = window.PlacementAPI.spawnFallbackPlaceholder(ch || kind || '?', def || null, tx, ty, 'finalizeLevelBuildOnce', { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY });
+
+          // -----------------------------------------------------------------
+          // 2) Intento por factoryKey declarada en ascii_legend
+          // -----------------------------------------------------------------
+          if (
+            !entity &&
+            def?.factoryKey &&
+            window.Entities &&
+            typeof window.Entities.factory === 'function'
+          ) {
+            try {
+              entity = window.Entities.factory(def.factoryKey, {
+                tx: gridX,
+                ty: gridY,
+                x: worldX,
+                y: worldY,
+                _ascii: def,
+                char,
+              });
+            } catch (err) {
+              try {
+                console.error(
+                  '[SPAWN_FALLBACK] Entities.factory error',
+                  def.factoryKey,
+                  { char, kind, def },
+                  err
+                );
+              } catch (_) {}
+              entity = null;
+            }
           }
+
+          // -----------------------------------------------------------------
+          // 3) Fallback definitivo: placeholder visual cuadrado con el char
+          //    → usa PlacementAPI.spawnFallbackPlaceholder que ya has creado.
+          //    → si por lo que sea falla, NO crashea el juego.
+          // -----------------------------------------------------------------
+          if (!entity) {
+            try {
+              if (window.PlacementAPI?.spawnFallbackPlaceholder) {
+                entity = window.PlacementAPI.spawnFallbackPlaceholder(
+                  char,                 // lo que se dibuja dentro del cuadrado
+                  def || null,          // definición ascii si existe
+                  gridX,
+                  gridY,
+                  'finalizeLevelBuildOnce',
+                  {
+                    G,
+                    map: G.map,
+                    char,
+                    placement: p,
+                    x: worldX,
+                    y: worldY,
+                    kind,
+                  }
+                );
+              }
+            } catch (err) {
+              try {
+                console.error(
+                  '[SPAWN_FALLBACK] spawnFallbackPlaceholder error',
+                  { char, kind, def },
+                  err
+                );
+              } catch (_) {}
+              // Si incluso el placeholder fallara, simplemente dejamos
+              // entity = null y seguimos sin crashear.
+              entity = null;
+            }
+          }
+
+          // Si hemos conseguido **algo** (aunque sea el cuadradito debug),
+          // marcamos como manejado y seguimos.
           handled = handled || !!entity;
         }
 
