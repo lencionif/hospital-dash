@@ -57,6 +57,14 @@
     ctx.closePath();
   }
 
+  function resolveSkinColor(skin, fallback) {
+    const key = String(skin || '').toLowerCase();
+    if (key.includes('roja') || key.includes('red')) return '#f44336';
+    if (key.includes('azul') || key.includes('blue')) return '#2196f3';
+    if (key.includes('verde') || key.includes('green')) return '#4caf50';
+    return fallback || '#f5f5f5';
+  }
+
   // Rig chibi para Limpiadora top-down.
   PuppetAPI.registerRig('npc_cleaner', {
     create(host) {
@@ -3018,6 +3026,127 @@
       ctx.stroke();
       ctx.restore();
     }
+  });
+
+  // Pequeños props de objetos (pastillas, jeringas, goteros, teléfono)
+  PuppetAPI.registerRig('pill', {
+    create() { return { t: 0 }; },
+    update(st, host, dt) { if (st) st.t += dt || 0; },
+    draw(ctx, cam, host) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, host, cam);
+      const zoom = (camera.zoom || 1) * (host.puppet?.scale || 1);
+      const skin = host.puppet?.skin || host.spriteKey || '';
+      const colorA = resolveSkinColor(skin, '#d9d9d9');
+      const colorB = '#ffffff';
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+      ctx.rotate((host.dir || 0) * 0.1);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 4, 0, 0, TAU);
+      ctx.fillStyle = colorB;
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-7, -4, 7, 8);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 4, 0, 0, TAU);
+      ctx.fillStyle = colorA;
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 4, 0, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    },
+  });
+
+  PuppetAPI.registerRig('syringe', {
+    create() { return { t: 0 }; },
+    update(st, host, dt) { if (st) st.t += dt || 0; },
+    draw(ctx, cam, host) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, host, cam);
+      const zoom = (camera.zoom || 1) * (host.puppet?.scale || 1);
+      const color = resolveSkinColor(host.puppet?.skin, '#8bc34a');
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(zoom, zoom);
+      ctx.rotate(-Math.PI / 8);
+      ctx.fillStyle = '#e0e0e0';
+      roundRect(ctx, -6, -2, 12, 4, 1);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.fillRect(-4, -1.5, 8, 3);
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(6, 0);
+      ctx.lineTo(9.5, 0);
+      ctx.stroke();
+      ctx.fillStyle = '#b0bec5';
+      ctx.fillRect(-1, -4.5, 2, 9);
+      ctx.restore();
+    },
+  });
+
+  PuppetAPI.registerRig('drip', {
+    create() { return { t: 0 }; },
+    update(st, host, dt) { if (st) st.t += dt || 0; },
+    draw(ctx, cam, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, host, cam);
+      const zoom = (camera.zoom || 1) * (host.puppet?.scale || 1);
+      const color = resolveSkinColor(host.puppet?.skin, '#90caf9');
+      const bob = Math.sin((st?.t || 0) * 5) * 0.5;
+      ctx.save();
+      ctx.translate(x, y - bob);
+      ctx.scale(zoom, zoom);
+      ctx.fillStyle = '#eceff1';
+      roundRect(ctx, -5, -7, 10, 14, 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      roundRect(ctx, -4, -4, 8, 8, 2);
+      ctx.fill();
+      ctx.strokeStyle = '#455a64';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(0, 7);
+      ctx.lineTo(0, 10);
+      ctx.stroke();
+      ctx.restore();
+    },
+  });
+
+  PuppetAPI.registerRig('phone', {
+    create() { return { t: 0 }; },
+    update(st, host, dt) { if (st) st.t += dt || 0; },
+    draw(ctx, cam, host, st) {
+      if (!ctx || !host || host._culled) return;
+      const { x, y, cam: camera } = baseCoords(ctx, host, cam);
+      const zoom = (camera.zoom || 1) * (host.puppet?.scale || 1);
+      const pulse = 0.1 + Math.max(0, Math.sin((st?.t || 0) * 6)) * 0.15;
+      ctx.save();
+      ctx.translate(x, y - pulse);
+      ctx.scale(zoom, zoom);
+      ctx.fillStyle = '#263238';
+      roundRect(ctx, -7, -10, 14, 20, 2);
+      ctx.fill();
+      ctx.fillStyle = '#cfd8dc';
+      roundRect(ctx, -6, -7, 12, 11, 1.5);
+      ctx.fill();
+      ctx.fillStyle = '#4caf50';
+      roundRect(ctx, -4, 5, 4, 3, 1);
+      ctx.fill();
+      ctx.fillStyle = '#f44336';
+      roundRect(ctx, 0, 5, 4, 3, 1);
+      ctx.fill();
+      ctx.restore();
+    },
   });
 
   // Rig 'npc_medica': chibi doctor hostile, animaciones completas.
