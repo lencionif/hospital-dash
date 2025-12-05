@@ -83,6 +83,20 @@
       ? (performance.now() / 1000)
       : (Date.now() / 1000);
 
+    // Devuelve true si el tile (tx, ty) está dentro del mapa.
+    function inBoundsTile(tx, ty) {
+      const w = G?.mapW | 0;
+      const h = G?.mapH | 0;
+      return tx >= 0 && ty >= 0 && tx < w && ty < h;
+    }
+
+    // Lee un tile con bounds-check. Devuelve 1 (pared) si está fuera de rango.
+    function tileAt(tx, ty) {
+      if (!inBoundsTile(tx, ty)) return 1;
+      const row = G?.map?.[ty];
+      return Array.isArray(row) ? (row[tx] | 0) : 1;
+    }
+
     function isCartEntity(ent){
       if (!ent) return false;
       const ENT = (typeof window !== 'undefined' && window.ENT) ? window.ENT : null;
@@ -130,8 +144,15 @@
       const y1 = Math.floor(py / TILE);
       const x2 = Math.floor((px + w) / TILE);
       const y2 = Math.floor((py + h) / TILE);
-      if (!G || !G.map || x1 < 0 || y1 < 0 || x2 >= G.mapW || y2 >= G.mapH) return true;
-      return G.map[y1][x1] === 1 || G.map[y1][x2] === 1 || G.map[y2][x1] === 1 || G.map[y2][x2] === 1;
+      if (!G || !G.map) return true;
+      const coords = [
+        [x1, y1], [x2, y1], [x1, y2], [x2, y2]
+      ];
+      for (const [tx, ty] of coords){
+        if (!inBoundsTile(tx, ty)) return true;
+        if (tileAt(tx, ty) === 1) return true;
+      }
+      return false;
     }
 
     function resolveOverlapPush(e, o){
@@ -166,23 +187,50 @@
     }
 
     function snapInsideMap(e){
-      if (!G || !e) return;
-      const inBounds = (tx, ty) => tx >= 0 && ty >= 0 && tx < G.mapW && ty < G.mapH;
-      if (inBounds(Math.floor(e.x / TILE), Math.floor(e.y / TILE)) &&
-          !isWall(e.x, e.y, e.w, e.h)) return;
-      if (typeof e._lastSafeX === 'number' && typeof e._lastSafeY === 'number'){
-        e.x = e._lastSafeX; e.y = e._lastSafeY; e.vx = e.vy = 0;
-        if (!isWall(e.x, e.y, e.w, e.h)) return;
-      }
-      const cx = Math.max(0, Math.min(G.mapW - 1, Math.floor(e.x / TILE)));
-      const cy = Math.max(0, Math.min(G.mapH - 1, Math.floor(e.y / TILE)));
-      for (let r = 0; r < 6; r++){
-        for (let dy = -r; dy <= r; dy++){
-          for (let dx = -r; dx <= r; dx++){
-            const tx = cx + dx, ty = cy + dy;
-            if (!inBounds(tx, ty)) continue;
-            if (G.map[ty][tx] === 0){ e.x = tx * TILE + 2; e.y = ty * TILE + 2; e.vx = e.vy = 0; return; }
-          }
+      if (!e || e._culled) return;
+      const T = window.TILE_SIZE || 32;
+
+      const mapW = G?.mapW | 0;
+      const mapH = G?.mapH | 0;
+      if (!mapW || !mapH) return;
+
+      // Clamp de seguridad por si la ENT aparece fuera de mundo
+      e.x = Math.max(0, Math.min(e.x, (mapW * T) - 1));
+      e.y = Math.max(0, Math.min(e.y, (mapH * T) - 1));
+
+      // AABB en tiles
+      const l = Math.floor(e.x / T);
+      const r = Math.floor((e.x + e.w) / T);
+      const t = Math.floor(e.y / T);
+      const b = Math.floor((e.y + e.h) / T);
+
+      for (let ty = t; ty <= b; ty++) {
+        for (let tx = l; tx <= r; tx++) {
+          if (!inBoundsTile(tx, ty)) continue;
+          const solid = tileAt(tx, ty) === 1;
+          if (!solid) continue;
+
+          const tileLeft = tx * T;
+          const tileRight = tileLeft + T;
+          const tileTop = ty * T;
+          const tileBottom = tileTop + T;
+          const entLeft = e.x;
+          const entRight = e.x + e.w;
+          const entTop = e.y;
+          const entBottom = e.y + e.h;
+
+          if (entRight <= tileLeft || entLeft >= tileRight || entBottom <= tileTop || entTop >= tileBottom) continue;
+
+          const penLeft = entRight - tileLeft;
+          const penRight = tileRight - entLeft;
+          const penTop = entBottom - tileTop;
+          const penBottom = tileBottom - entTop;
+
+          const minPen = Math.min(penLeft, penRight, penTop, penBottom);
+          if (minPen === penLeft) e.x -= penLeft;
+          else if (minPen === penRight) e.x += penRight;
+          else if (minPen === penTop) e.y -= penTop;
+          else if (minPen === penBottom) e.y += penBottom;
         }
       }
     }
