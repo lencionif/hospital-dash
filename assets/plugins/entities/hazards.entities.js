@@ -40,21 +40,37 @@
       id: root.genId ? root.genId() : `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       kind: ENT.PAPER_NOTE,
       kindName: 'paper_note',
+      populationType: 'hazards',
       x,
       y,
       w: 16,
       h: 16,
+      vx: 0,
+      vy: 0,
+      dir: 0,
       solid: false,
+      isTriggerOnly: true,
       debuffType: opts.debuffType || 'hud',
+      health: opts.health ?? 1,
+      maxHealth: opts.maxHealth ?? 1,
       touchDamage: opts.touchDamage ?? 0,
       touchCooldown: 0,
       _touchCD: 0,
+      fireImmune: false,
       dead: false,
       puppet: { rig: 'hazard_paper_note', z: HERO_Z, skin: 'default' },
+      aiState: 'idle',
+      aiTimer: 0,
       aiUpdate: paperNoteAiUpdate,
       update(dt) { paperNoteAiUpdate(this, dt); },
     };
-    try { root.PuppetAPI?.attach?.(e, e.puppet); } catch (_) {}
+
+    try {
+      const rig = root.PuppetAPI?.attach?.(e, e.puppet);
+      if (rig) e.rigOk = true;
+    } catch (_) { e.rigOk = false; }
+
+    G.entities.push(e);
     return e;
   }
 
@@ -88,6 +104,7 @@
       id: root.genId ? root.genId() : `plane-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       kind: ENT.PAPER_PLANE,
       kindName: 'paper_plane',
+      populationType: 'hazards',
       x: shooter?.x || 0,
       y: (shooter?.y || 0) - 8,
       w: 12,
@@ -96,7 +113,9 @@
       vx: 0,
       vy: 0,
       solid: false,
+      isTriggerOnly: true,
       health: 1,
+      maxHealth: 1,
       touchDamage: 0.5,
       touchCooldown: 0.9,
       _touchCD: 0,
@@ -104,10 +123,18 @@
       life: 3.0,
       speed: 90,
       puppet: { rig: 'hazard_paper_plane', z: HERO_Z, skin: 'default' },
+      aiState: 'idle',
+      aiTimer: 0,
       aiUpdate: paperPlaneAiUpdate,
       update(dt) { paperPlaneAiUpdate(this, dt); },
     };
-    try { root.PuppetAPI?.attach?.(e, e.puppet); } catch (_) {}
+
+    try {
+      const rig = root.PuppetAPI?.attach?.(e, e.puppet);
+      if (rig) e.rigOk = true;
+    } catch (_) { e.rigOk = false; }
+
+    G.entities.push(e);
     return e;
   }
 
