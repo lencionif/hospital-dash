@@ -1597,6 +1597,28 @@ function drawEntities(c2){
     // El jugador se pinta aparte con su rig (más nítido)
     if (e === G.player || e.kind === ENT.PLAYER) continue;
 
+    if (e._debugSpawnPlaceholder) {
+      const cam = G && G.camera;
+      const screenX = cam ? (e.x - cam.x) : e.x;
+      const screenY = cam ? (e.y - cam.y) : e.y;
+      const halfW = e.w * 0.5;
+      const halfH = e.h * 0.5;
+      c2.save();
+      c2.translate(screenX, screenY);
+      c2.fillStyle = e._debugColor || '#ff3366';
+      c2.fillRect(-halfW, -halfH, e.w, e.h);
+      c2.strokeStyle = '#000';
+      c2.lineWidth = 2;
+      c2.strokeRect(-halfW, -halfH, e.w, e.h);
+      c2.fillStyle = '#fff';
+      c2.font = 'bold 14px monospace';
+      c2.textAlign = 'center';
+      c2.textBaseline = 'middle';
+      c2.fillText(e._debugChar || '?', 0, 0);
+      c2.restore();
+      continue;
+    }
+
     // 1) Si la entidad tiene "muñeco" (rig), dibújalo
     const rig = e._rig || e.rig;
     if (rig && window.PuppetAPI && typeof PuppetAPI.draw === 'function'){
@@ -1915,6 +1937,59 @@ function drawEntities(c2){
     return e;
   }
 
+  function createSpawnDebugPlaceholderEntity(charLabel, worldX, worldY, def) {
+    const T = window.TILE_SIZE || 32;
+    const color = (def && def.color) || (def && def.debugColor) || '#ff3366';
+    const e = {
+      id: (typeof genId === 'function') ? genId() : ('fallback-' + Math.random().toString(36).slice(2)),
+      kind: window.ENT && window.ENT.DEBUG_PLACEHOLDER || 'DEBUG_PLACEHOLDER',
+      role: 'debug_placeholder',
+      populationType: 'none',
+      x: worldX,
+      y: worldY,
+      w: T,
+      h: T,
+      vx: 0,
+      vy: 0,
+      dir: 0,
+      solid: false,
+      isFloorTile: true,
+      isTriggerOnly: false,
+      isHazard: false,
+      collisionLayer: 'default',
+      collisionMask: 'default',
+      health: 1,
+      maxHealth: 1,
+      hearts: 1,
+      maxHearts: 1,
+      touchDamage: 0,
+      touchCooldown: 0,
+      fireImmune: true,
+      dead: false,
+      _debugSpawnPlaceholder: true,
+      _debugChar: charLabel,
+      _debugColor: color,
+      state: 'idle',
+      aiUpdate: function () {},
+      physicsUpdate: function () {},
+      onDamage: function () {},
+      onDeath: function () {},
+      onEnterTile: null,
+      onLeaveTile: null,
+      onInteract: null,
+      puppet: null,
+      rigOk: false,
+      removeMe: false,
+      _culled: false
+    };
+
+    if (window.G && Array.isArray(G.entities)) {
+      G.entities.push(e);
+    }
+
+    return e;
+  }
+
   // === Post-parse: instanciar placements SOLO UNA VEZ ===
   function finalizeLevelBuildOnce(){
     if (G._placementsFinalized) return;          // evita duplicados
@@ -2171,153 +2246,44 @@ function drawEntities(c2){
           handled = !!entity;
         }
 
-        if (!handled && !entity) {
-          // --- Datos base seguros ------------------------------------------
-          const char = p.char || ch || '?';
+        if (!handled) {
+          const charLabel = p.char || ch || '?';
+          const kind = def?.kind || def?.key || type || p.type || p.kind || charLabel || '';
 
-          // Coordenadas de grid (tile) para logs / debug
-          const gridX = (p.grid && typeof p.grid.x === 'number')
-            ? p.grid.x
-            : tx;
-          const gridY = (p.grid && typeof p.grid.y === 'number')
-            ? p.grid.y
-            : ty;
+          try { console.warn('[SPAWN_FALLBACK]', { char: charLabel, kind, grid: p.grid || { x: tx, y: ty }, world: { x: worldX, y: worldY } }); } catch (_) {}
+          try { if (typeof registerSpawnFallback === 'function') { registerSpawnFallback({ char: charLabel, kind, factoryKey: def?.factoryKey || def?.key || null, grid: p.grid || { x: tx, y: ty }, world: { x: worldX, y: worldY } }); } } catch (err) { try { console.error('[SPAWN_FALLBACK_ERROR] registerSpawnFallback', err); } catch (_) {} }
 
-          const kind =
-            def?.kind ||
-            def?.key ||
-            type ||
-            char ||
-            p.type ||
-            p.kind ||
-            'unknown';
-
-          // Log + registro de fallback (solo información, no rompe nada)
-          try {
-            console.warn('[SPAWN_FALLBACK]', {
-              char,
-              kind,
-              grid: { x: gridX, y: gridY },
-              world: [worldX, worldY],
-            });
-          } catch (_) {}
-
-          try {
-            registerSpawnFallback({
-              char,
-              kind,
-              factoryKey: def?.factoryKey || def?.key || null,
-              grid: { x: gridX, y: gridY },
-              world: { x: worldX, y: worldY },
-            });
-          } catch (_) {
-            // Si el registro falla tampoco queremos crashear el juego
-          }
-
-          // -----------------------------------------------------------------
-          // 1) Intento genérico: spawnFromAscii(def, ...)
-          // -----------------------------------------------------------------
+          // -------------------------------------------------------------------
+          // INTENTO 1: spawnFromAscii(def, ...)
+          // -------------------------------------------------------------------
           if (!entity && spawnFromAscii && def) {
-            try {
-              entity = spawnFromAscii(
-                def,
-                gridX,
-                gridY,
-                {
-                  G,
-                  map: G.map,
-                  char,
-                  placement: p,
-                  x: worldX,
-                  y: worldY,
-                },
-                char
-              );
-            } catch (err) {
-              try {
-                console.error(
-                  '[SPAWN_FALLBACK] spawnFromAscii error',
-                  { char, kind, def },
-                  err
-                );
-              } catch (_) {}
-              entity = null;
-            }
+            try { entity = spawnFromAscii( def, tx, ty, { G, map: G.map, char: charLabel, placement: p, x: worldX, y: worldY }, charLabel ); } catch (err) { entity = null; try { console.error('[SPAWN_FALLBACK_ERROR] spawnFromAscii', { char: charLabel, kind, error: String(err && err.message || err) }); } catch (_) {} }
           }
 
-          // -----------------------------------------------------------------
-          // 2) Intento por factoryKey declarada en ascii_legend
-          // -----------------------------------------------------------------
-          if (
-            !entity &&
-            def?.factoryKey &&
-            window.Entities &&
-            typeof window.Entities.factory === 'function'
-          ) {
-            try {
-              entity = window.Entities.factory(def.factoryKey, {
-                tx: gridX,
-                ty: gridY,
-                x: worldX,
-                y: worldY,
-                _ascii: def,
-                char,
-              });
-            } catch (err) {
-              try {
-                console.error(
-                  '[SPAWN_FALLBACK] Entities.factory error',
-                  def.factoryKey,
-                  { char, kind, def },
-                  err
-                );
-              } catch (_) {}
-              entity = null;
-            }
+          // -------------------------------------------------------------------
+          // INTENTO 2: Entities.factory(def.factoryKey, ...)
+          // -------------------------------------------------------------------
+          if ( !entity && def?.factoryKey && window.Entities && typeof window.Entities.factory === 'function' ) {
+            try { entity = window.Entities.factory(def.factoryKey, { tx, ty, x: worldX, y: worldY, _ascii: def }); } catch (err) { entity = null; try { console.error('[SPAWN_FALLBACK_ERROR] Entities.factory', { char: charLabel, kind, factoryKey: def.factoryKey, error: String(err && err.message || err) }); } catch (_) {} }
           }
 
-          // -----------------------------------------------------------------
-          // 3) Fallback definitivo: placeholder visual cuadrado con el char
-          //    → usa PlacementAPI.spawnFallbackPlaceholder que ya has creado.
-          //    → si por lo que sea falla, NO crashea el juego.
-          // -----------------------------------------------------------------
+          // -------------------------------------------------------------------
+          // INTENTO 3: PlacementAPI.spawnFallbackPlaceholder(...)
+          // (debe ser 100% a prueba de errores; lo refuerzas en el paso 3)
+          // -------------------------------------------------------------------
+          if (!entity && window.PlacementAPI && typeof window.PlacementAPI.spawnFallbackPlaceholder === 'function') {
+            try { entity = window.PlacementAPI.spawnFallbackPlaceholder( charLabel, def || null, tx, ty, 'finalizeLevelBuildOnce', { G, map: G.map, char: charLabel, placement: p, x: worldX, y: worldY } ); } catch (err) { entity = null; try { console.error('[SPAWN_FALLBACK_ERROR] spawnFallbackPlaceholder', { char: charLabel, kind, error: String(err && err.message || err) }); } catch (_) {} }
+          }
+
+          // -------------------------------------------------------------------
+          // INTENTO 4 (fallback final interno, garantizado):
+          // crear SIEMPRE un placeholder simple si todo lo demás ha fallado.
+          // -------------------------------------------------------------------
           if (!entity) {
-            try {
-              if (window.PlacementAPI?.spawnFallbackPlaceholder) {
-                entity = window.PlacementAPI.spawnFallbackPlaceholder(
-                  char,                 // lo que se dibuja dentro del cuadrado
-                  def || null,          // definición ascii si existe
-                  gridX,
-                  gridY,
-                  'finalizeLevelBuildOnce',
-                  {
-                    G,
-                    map: G.map,
-                    char,
-                    placement: p,
-                    x: worldX,
-                    y: worldY,
-                    kind,
-                  }
-                );
-              }
-            } catch (err) {
-              try {
-                console.error(
-                  '[SPAWN_FALLBACK] spawnFallbackPlaceholder error',
-                  { char, kind, def },
-                  err
-                );
-              } catch (_) {}
-              // Si incluso el placeholder fallara, simplemente dejamos
-              // entity = null y seguimos sin crashear.
-              entity = null;
-            }
+            try { entity = createSpawnDebugPlaceholderEntity(charLabel, worldX, worldY, def || null); } catch (err) { entity = null; try { console.error('[SPAWN_FALLBACK_ERROR] createSpawnDebugPlaceholderEntity', { char: charLabel, kind, error: String(err && err.message || err) }); } catch (_) {} }
           }
 
-          // Si hemos conseguido **algo** (aunque sea el cuadradito debug),
-          // marcamos como manejado y seguimos.
-          handled = handled || !!entity;
+          if (entity) { handled = true; }
         }
 
         registerEntity(entity, def, p);
@@ -2330,6 +2296,22 @@ function drawEntities(c2){
         }
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
+  }
+
+  function selfTestSpawnFallbackPlaceholder() {
+    try {
+      const T = window.TILE_SIZE || 32;
+      const worldX = T * 1.5;
+      const worldY = T * 1.5;
+      const e = createSpawnDebugPlaceholderEntity('#', worldX, worldY, null);
+      if (e && window.G && Array.isArray(G.entities)) {
+        console.log('[SPAWN_FALLBACK_TEST] Placeholder creado correctamente', e.id || e);
+      } else {
+        console.warn('[SPAWN_FALLBACK_TEST] No se ha podido crear placeholder de test');
+      }
+    } catch (err) {
+      try { console.error('[SPAWN_FALLBACK_TEST_ERROR]', err); } catch (_) {}
+    }
   }
 
   function loadDebugAsciiMap() {
@@ -2593,6 +2575,9 @@ function drawEntities(c2){
     }
 
     finalizeLevelBuildOnce();
+    if (mode === 'debug') {
+      selfTestSpawnFallbackPlaceholder();
+    }
     window.__toggleMinimap?.(!!window.DEBUG_MINIMAP);
   }
 
