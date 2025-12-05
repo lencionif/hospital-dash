@@ -2081,31 +2081,64 @@ function drawEntities(c2){
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
   }
 
-  function loadDebugAsciiMap(){
+  function loadDebugAsciiMap() {
+    // 1) Fuente principal: debug-map.txt → window.DEBUG_ASCII_MAP_TEXT
     if (typeof window.DEBUG_ASCII_MAP_TEXT === 'string') {
-      const parsed = parseDebugAsciiMap(window.DEBUG_ASCII_MAP_TEXT);
-      if (parsed && parsed.length) {
-        const hasUnknown = validateDebugAsciiRows(parsed);
-        if (!hasUnknown) return parsed;
+      // Texto crudo tal cual llega del fichero
+      const raw = String(window.DEBUG_ASCII_MAP_TEXT || '');
+      const txt  = raw.trim();
+
+      if (txt) {
+        // Parseo tolerante: cada línea es una fila del mapa
+        // (quitamos solo espacios en blanco al final de línea)
+        const rows = txt
+          .split(/\r?\n/)
+          .map(r => r.replace(/\s+$/, ''));
+
+        // Validación SOLO para avisar, no para descartar el mapa
         try {
-          console.warn('[MAP_DEBUG] Se usará DEFAULT_ASCII_MAP interno por caracteres desconocidos');
-        } catch (_) {}
-      } else {
-        try {
-          console.warn('[MAP_DEBUG] debug-map.txt vacío o inválido, se usará DEFAULT_ASCII_MAP interno');
-        } catch (_) {}
+          if (typeof validateDebugAsciiRows === 'function') {
+            const hasUnknown = validateDebugAsciiRows(rows);
+            if (hasUnknown) {
+              console.warn(
+                '[MAP_DEBUG] debug-map.txt contiene caracteres desconocidos; ' +
+                'se usará igualmente y esos chars se verán como SPAWN_FALLBACK.'
+              );
+            }
+          }
+        } catch (_) {
+          // Si la validación peta, no queremos romper el debug-map
+        }
+
+        // Siempre devolvemos las filas del debug-map.txt si hay contenido
+        return rows;
       }
+
+      // Hay fichero, pero está realmente vacío
+      try {
+        console.warn('[MAP_DEBUG] debug-map.txt vacío, se usará DEFAULT_ASCII_MAP interno');
+      } catch (_) {}
     }
+
+    // 2) Fallbacks antiguos (por compatibilidad)
     if (Array.isArray(window.DEBUG_ASCII_MAP) && window.DEBUG_ASCII_MAP.length) {
       return window.DEBUG_ASCII_MAP.map(String);
     }
+
     if (typeof window.DEBUG_ASCII_STRING === 'string') {
       const txt = window.DEBUG_ASCII_STRING.trim();
-      if (txt) return txt.split('\n');
+      if (txt) {
+        return txt
+          .split(/\r?\n/)
+          .map(r => r.replace(/\s+$/, ''));
+      }
     }
+
     if (window.__MAP_MODE === 'mini') {
       return DEBUG_ASCII_MINI.slice();
     }
+
+    // Nada que cargar
     return null;
   }
 
