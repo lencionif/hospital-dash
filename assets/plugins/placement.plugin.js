@@ -21,6 +21,26 @@
     return { x: tx * tile, y: ty * tile, tile };
   };
 
+  if (!root.PlacementAPI) root.PlacementAPI = {};
+  root.PlacementAPI.spawnFallbackPlaceholder = function spawnFallbackPlaceholder(
+    charLabel,
+    def,
+    tx,
+    ty,
+    source,
+    ctx
+  ){
+    try {
+      const T = root.TILE_SIZE || 32;
+      const worldX = (ctx && ctx.x) || (tx * T + T * 0.5);
+      const worldY = (ctx && ctx.y) || (ty * T + T * 0.5);
+      return createSpawnDebugPlaceholderEntity(charLabel || '?', worldX, worldY, def || null);
+    } catch (err) {
+      try { console.error('[SPAWN_FALLBACK_ERROR] PlacementAPI.spawnFallbackPlaceholder fatal', err); } catch (_) {}
+      return null;
+    }
+  };
+
   Placement.shouldRun = function shouldRun(cfg){
     const G = cfg?.G || root.G;
     if (!G || !cfg?.map || !cfg?.width || !cfg?.height) return false;

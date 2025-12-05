@@ -3561,4 +3561,36 @@
     },
   });
 
+  if (window.PuppetAPI && typeof PuppetAPI.registerRig === 'function') {
+    PuppetAPI.registerRig('debug_missing_rig', {
+      create(e) {
+        return { t: 0 };
+      },
+      update(state, e, dt) {
+        if (!state) return;
+        state.t += dt || 0;
+      },
+      draw(ctx, cam, e, state) {
+        if (!ctx || !e) return;
+        const T = e.w || (window.TILE_SIZE || 32);
+        const screenX = cam ? (e.x - cam.x) : e.x;
+        const screenY = cam ? (e.y - cam.y) : e.y;
+        const half = T * 0.5;
+        ctx.save();
+        ctx.translate(screenX, screenY);
+        ctx.fillStyle = '#ff0033';
+        ctx.fillRect(-half, -half, T, T);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-half, -half, T, T);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', 0, 0);
+        ctx.restore();
+      }
+    });
+  }
+
 })();
