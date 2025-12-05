@@ -881,33 +881,22 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
   // ------------------------------------------------------------
   // Collisiones por tiles
   // ------------------------------------------------------------
-  function inBounds(tx, ty){
-    return tx>=0 && ty>=0 && tx<G.mapW && ty<G.mapH;
+  function inBoundsTile(tx, ty){
+    const w = G?.mapW | 0;
+    const h = G?.mapH | 0;
+    return tx >= 0 && ty >= 0 && tx < w && ty < h;
+  }
+  function tileAt(tx, ty){
+    if (!inBoundsTile(tx, ty)) return 1;
+    const row = G?.map?.[ty];
+    return Array.isArray(row) ? (row[tx] | 0) : 1;
   }
   function isWallAt(px, py, w, h){
-    const map = G.map;
-    const wTiles = G.mapW | 0;
-    const hTiles = G.mapH | 0;
-    const x1 = Math.floor(px / TILE);
-    const y1 = Math.floor(py / TILE);
-    const x2 = Math.floor((px + w) / TILE);
-    const y2 = Math.floor((py + h) / TILE);
-
-    const coords = [
-      [x1, y1],
-      [x2, y1],
-      [x1, y2],
-      [x2, y2]
-    ];
-
-    for (const [tx, ty] of coords) {
-      if (tx < 0 || ty < 0 || tx >= wTiles || ty >= hTiles) return true;
-      const row = Array.isArray(map) ? map[ty] : null;
-      if (!row || typeof row[tx] === 'undefined') return true;
-      if (row[tx] === 1) return true;
-    }
-
-    return false;
+    const T = window.TILE_SIZE || TILE;
+    const tx = Math.floor(px / T);
+    const ty = Math.floor(py / T);
+    if (!G || !G.map || !inBoundsTile(tx, ty)) return true;
+    return tileAt(tx, ty) === 1;
   }
   window.isWallAt = isWallAt; // contrato
 
@@ -1702,6 +1691,17 @@ function drawEntities(c2){
     if (!placements.length) return;
 
     try {
+      const validateMapShape = () => {
+        const width = G?.mapW | 0;
+        const height = G?.mapH | 0;
+        const map = Array.isArray(G?.map) ? G.map : [];
+        if (!width || !height || map.length !== height) {
+          console.warn('[MAP_SANITY]', { width, height, rows: map.length });
+        }
+      };
+
+      validateMapShape();
+
       // Camino “oficial”: si existe el helper, úsalo
       if (typeof window.applyPlacementsFromMapgen === 'function') {
         window.applyPlacementsFromMapgen(placements);
@@ -1763,11 +1763,39 @@ function drawEntities(c2){
         try { window.EntityGroups?.register?.(entity, G); } catch (_) {}
       };
 
+      const charCounts = new Map();
+      const spawnedCounts = new Map();
+
+      const markCharSeen = (ch, def) => {
+        if (!ch || (def && (def.kind === 'wall' || def.kind === 'void' || def.baseKind === 'floor' || def.kind === 'floor'))) return;
+        const key = String(ch);
+        charCounts.set(key, (charCounts.get(key) || 0) + 1);
+      };
+
+      const markCharSpawned = (ch) => {
+        if (!ch) return;
+        const key = String(ch);
+        spawnedCounts.set(key, (spawnedCounts.get(key) || 0) + 1);
+      };
+
+      const clampPlacements = () => {
+        if (!G || !Array.isArray(G.map)) return;
+        const maxW = (G.mapW | 0) * T;
+        const maxH = (G.mapH | 0) * T;
+        for (const it of placements){
+          if (!it) continue;
+          if (typeof it.x === 'number') it.x = Math.max(0, Math.min(it.x, maxW - 1));
+          if (typeof it.y === 'number') it.y = Math.max(0, Math.min(it.y, maxH - 1));
+        }
+      };
+
+      clampPlacements();
+
       for (const p of placements) {
         if (!p) continue;
 
-        const worldX = (typeof p.x === 'number' ? p.x : ((p.tx ?? p.grid?.x ?? 0) * T)) | 0;
-        const worldY = (typeof p.y === 'number' ? p.y : ((p.ty ?? p.grid?.y ?? 0) * T)) | 0;
+        const worldX = (p.x | 0);
+        const worldY = (p.y | 0);
         const tx = (worldX / T) | 0;
         const ty = (worldY / T) | 0;
 
@@ -1776,6 +1804,7 @@ function drawEntities(c2){
           ch = getCharForKey(p.type || p.kind || p.factoryKey, null);
         }
         const def = ch ? getDef(ch, { context: 'finalizeLevelBuildOnce' }) : null;
+        markCharSeen(ch, def);
         const type = String(p.type || def?.kind || def?.key || ch || '').toLowerCase();
 
         let entity = null;
@@ -1822,6 +1851,81 @@ function drawEntities(c2){
           continue; // terreno puro, ya procesado en el mapa de tiles
         }
 
+        if (!handled && def) {
+          const kind = (def.kind || def.key || type || '').toLowerCase();
+          switch (kind) {
+            case 'mosquito':
+              entity = window.MosquitoAPI?.spawn?.(worldX, worldY, { _units: 'px' })
+                || window.Entities?.spawnMosquitoAtTile?.(tx, ty, { _ascii: def });
+              handled = !!entity;
+              break;
+            case 'rat':
+              entity = window.Entities?.spawnRatAtTile?.(tx, ty, { _ascii: def });
+              handled = !!entity;
+              break;
+            case 'door_normal':
+            case 'door':
+              entity = window.Entities?.Doors?.spawnNormalDoor?.(worldX, worldY, { tx, ty, _ascii: def });
+              handled = !!entity;
+              break;
+            case 'door_boss':
+              entity = window.Entities?.Doors?.spawnUrgentDoor?.(worldX, worldY, { tx, ty, _ascii: def });
+              handled = !!entity;
+              break;
+            case 'cart_food':
+              entity = window.Entities?.Carts?.spawnCartFood?.(tx, ty, { _ascii: def });
+              handled = !!entity;
+              break;
+            case 'cart_meds':
+              entity = window.Entities?.Carts?.spawnCartMeds?.(tx, ty, { _ascii: def });
+              handled = !!entity;
+              break;
+            case 'cart_emergency':
+              // TODO(factory) - falta implementación directa
+              break;
+            case 'fire':
+              entity = window.FireAPI?.spawnAtPx?.(worldX, worldY, { _ascii: def })
+                || window.Entities?.Fire?.createFireAtPx?.(worldX, worldY, { _ascii: def });
+              handled = !!entity;
+              break;
+            case 'water':
+              entity = window.Entities?.WaterPuddle?.spawnAtTile?.(tx, ty, { _ascii: def });
+              handled = !!entity;
+              break;
+            case 'pill':
+              entity = window.Entities?.Objects?.spawnPill?.(def?.subtype || def?.key || 'pill', worldX, worldY, { _ascii: def, placement: p })
+                || window.Entities?.Objects?.spawnPill?.(def?.subtype || 'pill', worldX, worldY, { _ascii: def, placement: p });
+              handled = !!entity;
+              break;
+            case 'phone':
+              entity = window.Entities?.Objects?.spawnPhone?.(worldX, worldY, { _ascii: def, placement: p });
+              handled = !!entity;
+              break;
+            case 'light_ok':
+            case 'light_broken':
+              entity = window.Entities?.Lights?.spawnFromAscii?.(tx, ty, def);
+              handled = !!entity;
+              break;
+            case 'bell':
+              entity = window.Entities?.Objects?.spawnBell?.(worldX, worldY, { _ascii: def, placement: p });
+              handled = !!entity;
+              break;
+            case 'bed':
+            case 'patient_bed':
+              entity = window.Entities?.Patients?.spawnBedFromAscii?.(tx, ty, def) || entity;
+              handled = handled || !!entity;
+              break;
+            case 'patient':
+            case 'furious_patient':
+            case 'patient_fury':
+              entity = window.Entities?.Patients?.spawnPatientFromAscii?.(tx, ty, def) || entity;
+              handled = handled || !!entity;
+              break;
+            default:
+              break;
+          }
+        }
+
         if (!handled && spawnFromAscii && (def || ch)) {
           entity = spawnFromAscii(def || ch, tx, ty, { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY }, ch);
           handled = !!entity;
@@ -1851,6 +1955,13 @@ function drawEntities(c2){
         }
 
         registerEntity(entity, def, p);
+        if (entity) markCharSpawned(ch);
+      }
+
+      for (const [ch] of charCounts) {
+        if ((spawnedCounts.get(ch) || 0) < 1) {
+          try { console.warn('[SPAWN_MISSING]', ch); } catch (_) {}
+        }
       }
     } catch(e){ console.warn('finalizeLevelBuildOnce (fallback):', e); }
   }
