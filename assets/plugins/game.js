@@ -885,12 +885,29 @@ let ASCII_MAP = DEFAULT_ASCII_MAP.slice();
     return tx>=0 && ty>=0 && tx<G.mapW && ty<G.mapH;
   }
   function isWallAt(px, py, w, h){
+    const map = G.map;
+    const wTiles = G.mapW | 0;
+    const hTiles = G.mapH | 0;
     const x1 = Math.floor(px / TILE);
     const y1 = Math.floor(py / TILE);
-    const x2 = Math.floor((px+w) / TILE);
-    const y2 = Math.floor((py+h) / TILE);
-    if (!inBounds(x1,y1) || !inBounds(x2,y2)) return true;
-    return G.map[y1][x1]===1 || G.map[y1][x2]===1 || G.map[y2][x1]===1 || G.map[y2][x2]===1;
+    const x2 = Math.floor((px + w) / TILE);
+    const y2 = Math.floor((py + h) / TILE);
+
+    const coords = [
+      [x1, y1],
+      [x2, y1],
+      [x1, y2],
+      [x2, y2]
+    ];
+
+    for (const [tx, ty] of coords) {
+      if (tx < 0 || ty < 0 || tx >= wTiles || ty >= hTiles) return true;
+      const row = Array.isArray(map) ? map[ty] : null;
+      if (!row || typeof row[tx] === 'undefined') return true;
+      if (row[tx] === 1) return true;
+    }
+
+    return false;
   }
   window.isWallAt = isWallAt; // contrato
 
@@ -1749,10 +1766,10 @@ function drawEntities(c2){
       for (const p of placements) {
         if (!p) continue;
 
-        const px = (p.x != null ? p.x : ((p.tx || 0) * T)) | 0;
-        const py = (p.y != null ? p.y : ((p.ty || 0) * T)) | 0;
-        const tx = (p.tx != null) ? (p.tx | 0) : ((px / T) | 0);
-        const ty = (p.ty != null) ? (p.ty | 0) : ((py / T) | 0);
+        const worldX = (typeof p.x === 'number' ? p.x : ((p.tx ?? p.grid?.x ?? 0) * T)) | 0;
+        const worldY = (typeof p.y === 'number' ? p.y : ((p.ty ?? p.grid?.y ?? 0) * T)) | 0;
+        const tx = (worldX / T) | 0;
+        const ty = (worldY / T) | 0;
 
         let ch = p.char || p.ch || p.ascii || p.symbol || null;
         if (!ch) {
@@ -1766,38 +1783,38 @@ function drawEntities(c2){
 
         if ((type === 'player' || type === 'hero' || type === 'start' || type === 'hero_spawn') && !G.player) {
           entity = (typeof makePlayer === 'function')
-            ? makePlayer(px, py)
-            : (window.Entities?.Hero?.spawnPlayer?.(px, py, {}) || null);
+            ? makePlayer(worldX, worldY)
+            : (window.Entities?.Hero?.spawnPlayer?.(worldX, worldY, {}) || null);
           if (entity) {
             G.player = entity;
             handled = true;
           }
         }
         else if (type === 'patient') {
-          entity = (window.Entities?.Patient?.spawn?.(px, py, p)) || makeRect(px, py, T, T, ENT.PATIENT, '#ffd166', false, true);
+          entity = (window.Entities?.Patient?.spawn?.(worldX, worldY, p)) || makeRect(worldX, worldY, T, T, ENT.PATIENT, '#ffd166', false, true);
           entity.name = p.name || entity.name || `Paciente_${G.patients.length+1}`;
           handled = true;
         }
         else if (type === 'pill') {
-          entity = (window.Entities?.Objects?.spawnPill?.(p.name || p.label, px, py, p))
-            || makeRect(px, py, T * 0.6, T * 0.6, ENT.PILL, '#a0ffcf', false, false);
+          entity = (window.Entities?.Objects?.spawnPill?.(p.name || p.label, worldX, worldY, p))
+            || makeRect(worldX, worldY, T * 0.6, T * 0.6, ENT.PILL, '#a0ffcf', false, false);
           entity.label = p.label || entity.label || 'Píldora';
           entity.targetName = p.targetName || entity.targetName || (G.patients[0]?.name) || null;
           handled = true;
         }
         else if (type === 'door') {
-          entity = makeRect(px, py, T, T, ENT.DOOR, '#7f8c8d', false, true, { mass: 0, rest: 0, mu: 0, static: true });
+          entity = makeRect(worldX, worldY, T, T, ENT.DOOR, '#7f8c8d', false, true, { mass: 0, rest: 0, mu: 0, static: true });
           handled = true;
         }
         else if (type === 'boss') {
-          entity = spawnBossForLevel(G.level || 1, px, py);
+          entity = spawnBossForLevel(G.level || 1, worldX, worldY);
           if (!entity) {
-            entity = makeRect(px, py, T * 1.2, T * 1.2, ENT.BOSS, '#e74c3c', false, true, { mass: 8, rest: 0.1, mu: 0.1, static: true });
+            entity = makeRect(worldX, worldY, T * 1.2, T * 1.2, ENT.BOSS, '#e74c3c', false, true, { mass: 8, rest: 0.1, mu: 0.1, static: true });
           }
           handled = true;
         }
         else if (type === 'cart') {
-          entity = makeRect(px, py, T, T, ENT.CART, '#b0956c', true, true, { mass: 6, rest: 0.35, mu: 0.06 });
+          entity = makeRect(worldX, worldY, T, T, ENT.CART, '#b0956c', true, true, { mass: 6, rest: 0.35, mu: 0.06 });
           handled = true;
         }
 
@@ -1806,13 +1823,31 @@ function drawEntities(c2){
         }
 
         if (!handled && spawnFromAscii && (def || ch)) {
-          entity = spawnFromAscii(def || ch, tx, ty, { G, map: G.map, char: ch, placement: p }, ch);
+          entity = spawnFromAscii(def || ch, tx, ty, { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY }, ch);
           handled = !!entity;
         }
 
         if (!handled && def && spawnFromAscii) {
-          entity = spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch, placement: p }, ch);
+          entity = spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY }, ch);
           handled = !!entity;
+        }
+
+        if (!handled && !entity) {
+          const kind = def?.kind || def?.key || type || ch || p.type || p.kind || '';
+          try {
+            console.warn('[SPAWN_FALLBACK]', { char: p.char || ch, kind, grid: p.grid || { x: tx, y: ty }, world: [worldX, worldY] });
+          } catch (_) {}
+
+          if (spawnFromAscii && def) {
+            entity = spawnFromAscii(def, tx, ty, { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY }, ch);
+          }
+          if (!entity && def?.factoryKey && typeof window.Entities?.factory === 'function') {
+            entity = window.Entities.factory(def.factoryKey, { tx, ty, x: worldX, y: worldY, _ascii: def });
+          }
+          if (!entity && window.PlacementAPI?.spawnFallbackPlaceholder) {
+            entity = window.PlacementAPI.spawnFallbackPlaceholder(ch || kind || '?', def || null, tx, ty, 'finalizeLevelBuildOnce', { G, map: G.map, char: ch, placement: p, x: worldX, y: worldY });
+          }
+          handled = handled || !!entity;
         }
 
         registerEntity(entity, def, p);
